@@ -1461,7 +1461,7 @@
         "titleEn": "TTB / Vacant Home Team Workflow",
         "titleEs": "Flujo de Trabajo en Equipo para TTB / Casas Vacías",
         "contentEn": "For Top to Bottom (deep clean) or vacant/Make Ready jobs, the same wet/dry split applies, but the workflow is longer and more structured. Arrival/Greet Client (10–15 min): the whole team arrives together; the Team Lead is whoever arrives first; the Lead meets the client and gets a house tour while the rest of the team unloads, then the team does their own walkthrough with the Lead; the Lead reviews any work notes with the client and asks about pre-existing damage; the Lead confirms whether the client wants a call 30 minutes before finishing for a final walkthrough (if declined, mention the 24-hour callback policy for anything missed). Lead Delegates Tasks (5 min): after the client leaves, the Lead assigns areas and communicates any client notes/damage, normally taking the task that requires the least time; the Lead and team agree on time expectations per task (using the Dirt Code time guide) and communicates the total scheduled time (example: 4 JTH with 3 techs = 12 hours of total cleaning, or 4 hours each). Lead Calls Office (20–30 min after arrival): the Lead takes before photos of areas on the Lead checklist, calls the office to confirm the Dirt Code and time expectations, and confirms the client's walkthrough preference, then begins their assigned task. Lead & Team Work Together (3–4 hours, varies by job): the Lead checks in regularly, the team stays in communication, and the Lead and others jump in on areas running long. Finish Up (30–45 min): the Lead calls the office and the client (if needed) for the final walkthrough, the team loads equipment, the Lead walks the house against the checklist and takes after-photos, does the final walkthrough with the client if needed, locks up the property per instructions, and MUST complete the Lead checklist before clocking out.",
-        "contentEs": "Para trabajos de Arriba Abajo (TTB, limpieza profunda) o de casas vacías/Preparación (Make Ready), aplica la misma división húmedo/seco, pero el flujo de trabajo es más largo y estructurado. Llegada/Saludo al Cliente (10–15 min): todo el equipo llega junto; el Líder del Equipo es quien llega primero; el Líder recibe al cliente y hace un recorrido de la casa mientras el resto del equipo descarga, y luego el equipo hace su propio recorrido con el Líder; el Líder revisa cualquier nota de trabajo con el cliente y pregunta sobre daños preexistentes; el Líder confirma si el cliente quiere una llamada 30 minutos antes de terminar para un recorrido final (si el cliente lo rechaza, menciona la política de devolución de llamada de 24 horas para cualquier cosa que se haya pasado por alto). El Líder Delega las Tareas (5 min): después de que el cliente se retira, el Líder asigna las áreas y comunica cualquier nota o daño reportado por el cliente, normalmente tomando la tarea que requiere menos tiempo; el Líder y el equipo acuerdan las expectativas de tiempo por tarea (usando la guía de tiempos del Código de Suciedad) y comunican el tiempo total programado (ejemplo: 4 JTH con 3 técnicos = 12 horas totales de limpieza, o 4 horas cada uno). El Líder Llama a la Oficina (20–30 min después de llegar): el Líder toma fotos de \"antes\" de las áreas en la lista de verificación del Líder, llama a la oficina para confirmar el Código de Suciedad y las expectativas de tiempo, y confirma la preferencia del cliente sobre el recorrido final, y luego comienza su tarea asignada. El Líder y el Equipo Trabajan Juntos (3–4 horas, varía según el trabajo): el Líder hace chequeos regularmente, el equipo se mantiene en comunicación, y el Líder y los demás ayudan en las áreas que van atrasadas. Para Terminar (30–45 min): el Líder llama a la oficina y al cliente (si es necesario) para el recorrido final, el equipo carga el equipo, el Líder recorre la casa comparándola con la lista de verificación y toma fotos de \"después\", hace el recorrido final con el cliente si es necesario, cierra la propiedad según las instrucciones, y DEBE completar la lista de verificación del Líder antes de marcar su salida.",
+        "contentEs": "Para trabajos de Arriba Abajo (TTB, limpieza profunda) o de casas vacías/Preparación (Make Ready), aplica la misma división húmedo/seco, pero el flujo de trabajo es más largo y estructurado. Llegada/Saludo al Cliente (10–15 min): todo el equipo llega junto; el Líder del Equipo es quien llega primero; el Líder recibe al cliente y hace un recorrido de la casa mientras el resto del equipo descarga, y luego el equipo hace su propio recorrido con el Líder; el Líder revisa cualquier nota de trabajo con el cliente y pregunta sobre daños preexistentes; el Líder confirma si el cliente quiere una llamada 30 minutos antes de terminar para un recorrido final (si el cliente lo rechaza, menciona la política de devolución de llamada de 24 horas para cualquier cosa que se haya pasado por alto). El Líder Delega las Tareas (5 min): después de que el cliente se retira, el Líder asigna las áreas y comunica cualquier nota o daño reportado por el cliente, normalmente tomando la tarea que requiere menos tiempo; el Líder y el equipo acuerdan las expectativas de tiempo por tarea (usando la guía de tiempos del Dirt Code) y comunican el tiempo total programado (ejemplo: 4 JTH con 3 técnicos = 12 horas totales de limpieza, o 4 horas cada uno). El Líder Llama a la Oficina (20–30 min después de llegar): el Líder toma fotos de \"antes\" de las áreas en la lista de verificación del Líder, llama a la oficina para confirmar el Dirt Code y las expectativas de tiempo, y confirma la preferencia del cliente sobre el recorrido final, y luego comienza su tarea asignada. El Líder y el Equipo Trabajan Juntos (3–4 horas, varía según el trabajo): el Líder hace chequeos regularmente, el equipo se mantiene en comunicación, y el Líder y los demás ayudan en las áreas que van atrasadas. Para Terminar (30–45 min): el Líder llama a la oficina y al cliente (si es necesario) para el recorrido final, el equipo carga el equipo, el Líder recorre la casa comparándola con la lista de verificación y toma fotos de \"después\", hace el recorrido final con el cliente si es necesario, cierra la propiedad según las instrucciones, y DEBE completar la lista de verificación del Líder antes de marcar su salida.",
         "videoUrl": null
       },
       {
@@ -1625,7 +1625,7 @@
       {
         "order": 6,
         "textEn": "On a TTB job, when should the Lead typically call the office to confirm the Dirt Code and time expectations?",
-        "textEs": "En un trabajo TTB, ¿cuándo debe el Líder llamar normalmente a la oficina para confirmar el Código de Suciedad y las expectativas de tiempo?",
+        "textEs": "En un trabajo TTB, ¿cuándo debe el Líder llamar normalmente a la oficina para confirmar el Dirt Code y las expectativas de tiempo?",
         "correctIndex": 1,
         "options": [
           {
@@ -1747,7 +1747,7 @@
         "titleEn": "Lead Technician Authorities",
         "titleEs": "Autoridades del Técnico Líder",
         "contentEn": "As a Lead Technician, you're the eyes and ears for MCC's culture on every job — being a Lead requires real leadership, and how your team begins a job is normally how it will continue. Your teammates need your support: mocking, belittling, or making fun of slower or newer techs will not be tolerated. You have the authority to: request sending a tech home if they're disrespectful toward the system, the client, or other team members; request sending a tech home if they disregard punctuality or job time expectations (enforce this and expect it to be followed); request sending a tech home if they aren't pulling 100% at the job; delegate time expectations for each area of the home, giving grace for special situations but using the Dirt Code grid as your guide; and make no promises to the client — if hesitant about any extra request (washing windows, appliances, wiping all blinds, etc.) outside the standard work order, call the office.",
-        "contentEs": "Como Técnico Líder, eres los ojos y oídos de la cultura de MCC en cada trabajo — ser Líder requiere verdadero liderazgo, y cómo tu equipo comienza un trabajo normalmente determina cómo continuará. Tus compañeros(as) de equipo necesitan tu apoyo: burlarse, menospreciar o hacer bromas sobre técnicos más lentos o nuevos no será tolerado. Tienes la autoridad de: solicitar que se envíe a un técnico a casa si es irrespetuoso con el sistema, el cliente u otros miembros del equipo; solicitar que se envíe a un técnico a casa si no respeta la puntualidad o las expectativas de tiempo del trabajo (haz cumplir esto y espera que se respete); solicitar que se envíe a un técnico a casa si no está dando el 100% en el trabajo; delegar las expectativas de tiempo para cada área de la casa, dando margen para situaciones especiales pero usando la tabla del Código de Suciedad como guía; y no hacer promesas al cliente — si tienes dudas sobre alguna solicitud adicional (lavar ventanas, electrodomésticos, limpiar todas las persianas, etc.) fuera de la orden de trabajo estándar, llama a la oficina.",
+        "contentEs": "Como Técnico Líder, eres los ojos y oídos de la cultura de MCC en cada trabajo — ser Líder requiere verdadero liderazgo, y cómo tu equipo comienza un trabajo normalmente determina cómo continuará. Tus compañeros(as) de equipo necesitan tu apoyo: burlarse, menospreciar o hacer bromas sobre técnicos más lentos o nuevos no será tolerado. Tienes la autoridad de: solicitar que se envíe a un técnico a casa si es irrespetuoso con el sistema, el cliente u otros miembros del equipo; solicitar que se envíe a un técnico a casa si no respeta la puntualidad o las expectativas de tiempo del trabajo (haz cumplir esto y espera que se respete); solicitar que se envíe a un técnico a casa si no está dando el 100% en el trabajo; delegar las expectativas de tiempo para cada área de la casa, dando margen para situaciones especiales pero usando la tabla del Dirt Code como guía; y no hacer promesas al cliente — si tienes dudas sobre alguna solicitud adicional (lavar ventanas, electrodomésticos, limpiar todas las persianas, etc.) fuera de la orden de trabajo estándar, llama a la oficina.",
         "videoUrl": null
       },
       {
@@ -3123,9 +3123,9 @@
       {
         "order": 7,
         "titleEn": "Lockout Fee",
-        "titleEs": "Tarifa por Cierre (Lockout Fee)",
+        "titleEs": "Lockout Fee (tarifa que se paga cuando no puedes completar el trabajo por causas ajenas a ti)",
         "contentEn": "If you arrive at a job and can't get in or complete the cleaning through no fault of your own (see the Lockout/Client Not Home lesson in Field Scenarios for the full process), you're paid a $25 lockout fee, and then head to your next scheduled home.",
-        "contentEs": "Si llegas a un trabajo y no puedes entrar o completar la limpieza sin que sea tu culpa (consulta la lección de Cierre/Cliente No Está en Casa en Escenarios de Campo para el proceso completo), se te paga una tarifa de cierre de $25, y luego te diriges a tu siguiente hogar programado.",
+        "contentEs": "Si llegas a un trabajo y no puedes entrar o completar la limpieza sin que sea tu culpa (consulta la lección de Cierre/Cliente No Está en Casa en Escenarios de Campo para el proceso completo), se te paga una Lockout Fee de $25, y luego te diriges a tu siguiente hogar programado.",
         "videoUrl": null
       },
       {
@@ -3536,7 +3536,7 @@
           {
             "order": 2,
             "textEn": "You're paid a $25 lockout fee",
-            "textEs": "Se te paga una tarifa de cierre de $25"
+            "textEs": "Se te paga una Lockout Fee de $25"
           },
           {
             "order": 3,
@@ -4168,14 +4168,14 @@
     "order": 13,
     "slug": "mcc-dirt-code-system",
     "titleEn": "MCC Dirt Code System",
-    "titleEs": "Sistema de Código de Suciedad (Dirt Code) de MCC",
+    "titleEs": "Sistema Dirt Code de MCC (clasifica qué tan sucio está un hogar)",
     "lessons": [
       {
         "order": 1,
         "titleEn": "What Is a Dirt Code?",
-        "titleEs": "¿Qué Es un Código de Suciedad (Dirt Code)?",
+        "titleEs": "¿Qué Es el Dirt Code?",
         "contentEn": "The Dirt Code judges how dirty a home is so the right tools, time, and technician expectations can be communicated before anyone walks in. Codes 1–4 (Immaculate to Marginal) describe increasingly lived-in homes with light dust, pets, or kids. Codes 5–10 involve a Top to Bottom (TTB) clean: 5–7 are lower-end-price TTB situations (extra pet hair, 3+ months since cleaned, recommend or insist on a TTB); 8–10 are higher-end-price TTB situations (6+ months to over a year of build-up, heavy pet hair, clutter, or a home that's never been cleaned). About 20% of clients start at a 1–4 code, but over 75% settle into a 1–4 code for their ongoing maintenance cleans. About 80% of clients start at a 5–10 code on their first cleaning (which is why most new clients begin with a TTB), but only about 25% of recurring clients stay at a 5 code long-term.",
-        "contentEs": "El Código de Suciedad evalúa qué tan sucio está un hogar para que se puedan comunicar las herramientas, el tiempo y las expectativas correctas para el técnico antes de que alguien entre. Los códigos 1–4 (Inmaculado a Marginal) describen hogares cada vez más habitados con polvo ligero, mascotas o niños. Los códigos 5–10 implican una limpieza de Arriba a Abajo (Top to Bottom, TTB): 5–7 son situaciones TTB de precio más bajo (pelo de mascota extra, 3+ meses sin limpiarse, se recomienda o se insiste en un TTB); 8–10 son situaciones TTB de precio más alto (acumulación de 6+ meses a más de un año, pelo de mascota abundante, desorden, o un hogar que nunca ha sido limpiado). Aproximadamente el 20% de los clientes comienza con un código de 1–4, pero más del 75% se asienta en un código de 1–4 para sus limpiezas de mantenimiento continuas. Aproximadamente el 80% de los clientes comienza con un código de 5–10 en su primera limpieza (por eso la mayoría de los nuevos clientes comienzan con un TTB), pero solo alrededor del 25% de los clientes recurrentes se queda en un código 5 a largo plazo.",
+        "contentEs": "El Dirt Code evalúa qué tan sucio está un hogar para que se puedan comunicar las herramientas, el tiempo y las expectativas correctas para el técnico antes de que alguien entre. Los códigos 1–4 (Inmaculado a Marginal) describen hogares cada vez más habitados con polvo ligero, mascotas o niños. Los códigos 5–10 implican una limpieza de Arriba a Abajo (Top to Bottom, TTB): 5–7 son situaciones TTB de precio más bajo (pelo de mascota extra, 3+ meses sin limpiarse, se recomienda o se insiste en un TTB); 8–10 son situaciones TTB de precio más alto (acumulación de 6+ meses a más de un año, pelo de mascota abundante, desorden, o un hogar que nunca ha sido limpiado). Aproximadamente el 20% de los clientes comienza con un código de 1–4, pero más del 75% se asienta en un código de 1–4 para sus limpiezas de mantenimiento continuas. Aproximadamente el 80% de los clientes comienza con un código de 5–10 en su primera limpieza (por eso la mayoría de los nuevos clientes comienzan con un TTB), pero solo alrededor del 25% de los clientes recurrentes se queda en un código 5 a largo plazo.",
         "videoUrl": null
       },
       {
@@ -4183,13 +4183,13 @@
         "titleEn": "Who Determines the Code, and How",
         "titleEs": "Quién Determina el Código, y Cómo",
         "contentEn": "Everyone plays a part. The process: (1) the client calls in and gives a rough self-estimated dirt code, which goes into the notes; (2) the office walks through the home (when possible) to confirm the final code; (3) the tech or Team Lead assigned to the job sends a Slack message on first arrival confirming whether the dirt code matches what's in the notes; (4) after the first cleaning, the home should settle into a maintenance dirt code (1–4) for all future recurring visits; (5) every time a tech visits after that, the home's actual condition should match the recurring dirt code on file. Use the code — nobody likes surprises (unless it's cupcakes).",
-        "contentEs": "Todos participan. El proceso: (1) el cliente llama y da una autoestimación aproximada del código de suciedad, que se registra en las notas; (2) la oficina hace un recorrido por el hogar (cuando es posible) para confirmar el código final; (3) el técnico o Líder de Equipo asignado al trabajo envía un mensaje de Slack al llegar por primera vez confirmando si el código de suciedad coincide con lo que está en las notas; (4) después de la primera limpieza, el hogar debe asentarse en un código de suciedad de mantenimiento (1–4) para todas las visitas recurrentes futuras; (5) cada vez que un técnico visita después de eso, la condición real del hogar debe coincidir con el código de suciedad recurrente registrado. Usa el código — a nadie le gustan las sorpresas (a menos que sean cupcakes).",
+        "contentEs": "Todos participan. El proceso: (1) el cliente llama y da una autoestimación aproximada del Dirt Code, que se registra en las notas; (2) la oficina hace un recorrido por el hogar (cuando es posible) para confirmar el código final; (3) el técnico o Líder de Equipo asignado al trabajo envía un mensaje de Slack al llegar por primera vez confirmando si el Dirt Code coincide con lo que está en las notas; (4) después de la primera limpieza, el hogar debe asentarse en un Dirt Code de mantenimiento (1–4) para todas las visitas recurrentes futuras; (5) cada vez que un técnico visita después de eso, la condición real del hogar debe coincidir con el Dirt Code recurrente registrado. Usa el código — a nadie le gustan las sorpresas (a menos que sean cupcakes).",
         "videoUrl": null
       },
       {
         "order": 3,
         "titleEn": "Time Expectations by Dirt Code",
-        "titleEs": "Expectativas de Tiempo Según el Código de Suciedad",
+        "titleEs": "Expectativas de Tiempo Según el Dirt Code",
         "contentEn": "Approximate room times: Kitchen — 20 min (maintenance, DC 1–4), 40–60 min (DC 5–7), 60–120 min (DC 8–10, not including appliances). Full Bath — 20 / 40–60 / 45–60 min. Half Bath — 10 / 20–30 / 30–60 min. Master Bath — 30–40 / 40–60 / 60–90 min. Laundry — 10 / 20–30 / 45–60 min. Common Rooms — 10–20 / 20–30 / 30–45 min. Bedrooms — 15–20 / 20–30 / 30–45 min. Floors — 40–60 / 60–90 / 60–90 min. For TTB jobs worked as a team, the Team Lead assigns areas and each tech is responsible for keeping pace so everyone finishes efficiently — teams must communicate time expectations when they arrive and throughout the job.",
         "contentEs": "Tiempos aproximados por habitación: Cocina — 20 min (mantenimiento, DC 1–4), 40–60 min (DC 5–7), 60–120 min (DC 8–10, sin incluir electrodomésticos). Baño Completo — 20 / 40–60 / 45–60 min. Medio Baño — 10 / 20–30 / 30–60 min. Baño Principal — 30–40 / 40–60 / 60–90 min. Lavandería — 10 / 20–30 / 45–60 min. Áreas Comunes — 10–20 / 20–30 / 30–45 min. Recámaras — 15–20 / 20–30 / 30–45 min. Pisos — 40–60 / 60–90 / 60–90 min. Para trabajos TTB realizados en equipo, el Líder de Equipo asigna las áreas y cada técnico es responsable de mantener el ritmo para que todos terminen de manera eficiente — los equipos deben comunicar las expectativas de tiempo al llegar y durante todo el trabajo.",
         "videoUrl": null
@@ -4199,7 +4199,7 @@
       {
         "order": 1,
         "textEn": "What is the purpose of the Dirt Code?",
-        "textEs": "¿Cuál es el propósito del Código de Suciedad?",
+        "textEs": "¿Cuál es el propósito del Dirt Code?",
         "correctIndex": 0,
         "options": [
           {
@@ -4248,14 +4248,14 @@
           {
             "order": 4,
             "textEn": "TTB is never based on the Dirt Code",
-            "textEs": "El TTB nunca se basa en el Código de Suciedad"
+            "textEs": "El TTB nunca se basa en el Dirt Code"
           }
         ]
       },
       {
         "order": 3,
         "textEn": "True or False: Most recurring clients settle into a Dirt Code of 1–4 for their ongoing maintenance cleans.",
-        "textEs": "Verdadero o Falso: La mayoría de los clientes recurrentes se asientan en un Código de Suciedad de 1–4 para sus limpiezas de mantenimiento continuas.",
+        "textEs": "Verdadero o Falso: La mayoría de los clientes recurrentes se asientan en un Dirt Code de 1–4 para sus limpiezas de mantenimiento continuas.",
         "correctIndex": 0,
         "options": [
           {
@@ -4273,7 +4273,7 @@
       {
         "order": 4,
         "textEn": "Who is responsible for confirming the Dirt Code matches reality on first arrival at a job?",
-        "textEs": "¿Quién es responsable de confirmar que el Código de Suciedad coincide con la realidad al llegar por primera vez a un trabajo?",
+        "textEs": "¿Quién es responsable de confirmar que el Dirt Code coincide con la realidad al llegar por primera vez a un trabajo?",
         "correctIndex": 1,
         "options": [
           {
@@ -4301,7 +4301,7 @@
       {
         "order": 5,
         "textEn": "Roughly how long should a Kitchen take on a maintenance clean (Dirt Code 1–4) versus a high Dirt Code TTB (8–10)?",
-        "textEs": "¿Aproximadamente cuánto debería tardar una Cocina en una limpieza de mantenimiento (Código de Suciedad 1–4) en comparación con un TTB de Código de Suciedad alto (8–10)?",
+        "textEs": "¿Aproximadamente cuánto debería tardar una Cocina en una limpieza de mantenimiento (Dirt Code 1–4) en comparación con un TTB de Dirt Code alto (8–10)?",
         "correctIndex": 1,
         "options": [
           {
