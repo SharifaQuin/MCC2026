@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { SessionPayload } from "@/lib/session";
 import { t } from "@/lib/i18n";
 import { setLanguageAction } from "@/app/actions/language";
+import Logo from "@/components/Logo";
 
 export default function Nav({ session }: { session: SessionPayload }) {
   const labels = t(session.language);
@@ -9,11 +10,11 @@ export default function Nav({ session }: { session: SessionPayload }) {
   const trainerOnly = session.role === "TRAINER";
 
   return (
-    <header className="border-b border-neutral-200 bg-white">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-6">
-          <span className="font-semibold text-brand-700">{labels.appName}</span>
-          <nav className="flex gap-4 text-sm">
+    <header className="border-b-2 border-gold-500 bg-white">
+      <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
+          <Logo />
+          <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             {session.role !== "TRAINER" && (
               <>
                 <Link href="/modules" className="hover:underline">
@@ -44,7 +45,7 @@ export default function Nav({ session }: { session: SessionPayload }) {
             )}
           </nav>
         </div>
-        <div className="flex items-center gap-3 text-sm">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
           <span className="text-neutral-500">{session.name}</span>
           {!trainerOnly && (
             <div className="flex gap-1">
