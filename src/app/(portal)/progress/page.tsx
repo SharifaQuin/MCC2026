@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { t } from "@/lib/i18n";
+import { loadFieldEvaluationSummaryForTrainee } from "@/lib/fieldEvalData";
 
 export default async function ProgressPage() {
   const session = await getSession();
@@ -16,6 +17,8 @@ export default async function ProgressPage() {
       quizAttempts: { where: { userId: session.sub }, orderBy: { createdAt: "desc" } },
     },
   });
+
+  const fieldEvals = await loadFieldEvaluationSummaryForTrainee(session.sub);
 
   const total = modules.length;
   const completed = modules.filter((m) => m.progress[0]?.status === "COMPLETED").length;
@@ -67,6 +70,25 @@ export default async function ProgressPage() {
           );
         })}
       </div>
+
+      <h2 className="mb-3 mt-10 text-xl font-semibold">{labels.fieldEvaluations}</h2>
+      {fieldEvals.length === 0 ? (
+        <p className="text-sm text-neutral-500">{labels.noFieldEvals}</p>
+      ) : (
+        <div className="space-y-2">
+          {fieldEvals.map((ev) => (
+            <div
+              key={ev.id}
+              className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white p-4"
+            >
+              <p className="text-sm">{new Date(ev.fieldDate).toLocaleDateString()}</p>
+              <p className="text-sm font-medium">
+                {labels.overallScore}: {ev.overallScore}/5
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

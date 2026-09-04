@@ -41,6 +41,9 @@ model User {
   quizAttempts QuizAttempt[]
   invitedBy    String?
 
+  fieldEvaluationsReceived FieldEvaluation[] @relation("TraineeFieldEvaluations")
+  fieldEvaluationsGiven    FieldEvaluation[] @relation("GradedFieldEvaluations")
+
   @@index([role])
 }
 
@@ -131,4 +134,35 @@ model QuizAttempt {
   createdAt DateTime @default(now())
 
   @@index([userId, moduleId])
+}
+
+// In-field day evaluations: a Trainer/Field Supervisor or Admin grades a
+// trainee's actual on-site performance across a fixed set of skill
+// categories, separate from the e-learning quizzes. Used to spot which
+// specific skills need extra attention/training time.
+model FieldEvaluation {
+  id           String   @id @default(cuid())
+  traineeId    String
+  trainee      User     @relation("TraineeFieldEvaluations", fields: [traineeId], references: [id], onDelete: Cascade)
+  gradedById   String
+  gradedBy     User     @relation("GradedFieldEvaluations", fields: [gradedById], references: [id])
+  fieldDate    DateTime
+  generalNotes String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  categories FieldEvalCategoryScore[]
+
+  @@index([traineeId])
+}
+
+model FieldEvalCategoryScore {
+  id           String          @id @default(cuid())
+  evaluationId String
+  evaluation   FieldEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  categoryKey  String
+  score        Int
+  checkedItems Json
+  notes        String?         @db.Text
+
+  @@index([evaluationId])
 }

@@ -24,6 +24,9 @@ export const dictionary = {
     quizNeeds100: "You need a perfect score (100%) to pass. Review and try again.",
     setPassword: "Set Your Password",
     welcome: "Welcome",
+    fieldEvaluations: "Field Day Evaluations",
+    overallScore: "Overall Score",
+    noFieldEvals: "No field day evaluations yet.",
   },
   ES: {
     appName: "Portal de Capacitación de MCC",
@@ -50,6 +53,9 @@ export const dictionary = {
     quizNeeds100: "Necesita una puntuación perfecta (100%) para aprobar. Revise e intente de nuevo.",
     setPassword: "Establezca Su Contraseña",
     welcome: "Bienvenido/a",
+    fieldEvaluations: "Evaluaciones de Día de Campo",
+    overallScore: "Puntuación General",
+    noFieldEvals: "Aún no hay evaluaciones de día de campo.",
   },
 } as const;
 
