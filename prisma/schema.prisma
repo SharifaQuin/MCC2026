@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  TRAINEE
+  ADMIN
+  TRAINER
+}
+
+enum Language {
+  EN
+  ES
+}
+
+enum ProgressStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+model User {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  name             String
+  role             Role      @default(TRAINEE)
+  passwordHash     String?
+  mustSetPassword  Boolean   @default(true)
+  inviteToken      String?   @unique
+  inviteExpiresAt  DateTime?
+  language         Language  @default(EN)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  progress     ModuleProgress[]
+  quizAttempts QuizAttempt[]
+  invitedBy    String?
+
+  @@index([role])
+}
+
+model Module {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  order         Int
+  titleEn       String
+  titleEs       String?
+  summaryEn     String?
+  summaryEs     String?
+  published     Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  lessons       Lesson[]
+  quizQuestions QuizQuestion[]
+  progress      ModuleProgress[]
+  quizAttempts  QuizAttempt[]
+
+  @@index([order])
+}
+
+model Lesson {
+  id         String   @id @default(cuid())
+  moduleId   String
+  module     Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  order      Int
+  titleEn    String
+  titleEs    String?
+  contentEn  String   @db.Text
+  contentEs  String?  @db.Text
+  videoUrl   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([moduleId, order])
+}
+
+model QuizQuestion {
+  id         String       @id @default(cuid())
+  moduleId   String
+  module     Module       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  order      Int
+  textEn     String
+  textEs     String?
+  options    QuizOption[]
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([moduleId, order])
+}
+
+model QuizOption {
+  id         String       @id @default(cuid())
+  questionId String
+  question   QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  order      Int
+  textEn     String
+  textEs     String?
+  isCorrect  Boolean      @default(false)
+
+  @@index([questionId, order])
+}
+
+model ModuleProgress {
+  id          String         @id @default(cuid())
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  moduleId    String
+  module      Module         @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  status      ProgressStatus @default(NOT_STARTED)
+  completedAt DateTime?
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([userId, moduleId])
+}
+
+model QuizAttempt {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  moduleId  String
+  module    Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  scorePct  Int
+  passed    Boolean
+  answers   Json
+  createdAt DateTime @default(now())
+
+  @@index([userId, moduleId])
+}

@@ -1,0 +1,80 @@
+import Link from "next/link";
+import type { SessionPayload } from "@/lib/session";
+import { t } from "@/lib/i18n";
+import { setLanguageAction } from "@/app/actions/language";
+
+export default function Nav({ session }: { session: SessionPayload }) {
+  const labels = t(session.language);
+
+  const trainerOnly = session.role === "TRAINER";
+
+  return (
+    <header className="border-b border-neutral-200 bg-white">
+      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-6">
+          <span className="font-semibold text-brand-700">{labels.appName}</span>
+          <nav className="flex gap-4 text-sm">
+            {session.role !== "TRAINER" && (
+              <>
+                <Link href="/modules" className="hover:underline">
+                  {labels.modules}
+                </Link>
+                <Link href="/progress" className="hover:underline">
+                  {labels.progress}
+                </Link>
+              </>
+            )}
+            {session.role === "ADMIN" && (
+              <>
+                <Link href="/admin/employees" className="hover:underline">
+                  {labels.employees}
+                </Link>
+                <Link href="/admin/content" className="hover:underline">
+                  {labels.content}
+                </Link>
+                <Link href="/admin/invite" className="hover:underline">
+                  {labels.invite}
+                </Link>
+              </>
+            )}
+            {session.role === "TRAINER" && (
+              <Link href="/trainer/employees" className="hover:underline">
+                {labels.employees}
+              </Link>
+            )}
+          </nav>
+        </div>
+        <div className="flex items-center gap-3 text-sm">
+          <span className="text-neutral-500">{session.name}</span>
+          {!trainerOnly && (
+            <div className="flex gap-1">
+              <form action={setLanguageAction.bind(null, "EN")}>
+                <button
+                  className={`rounded px-2 py-1 ${
+                    session.language === "EN" ? "bg-brand-600 text-white" : "bg-neutral-100"
+                  }`}
+                >
+                  EN
+                </button>
+              </form>
+              <form action={setLanguageAction.bind(null, "ES")}>
+                <button
+                  className={`rounded px-2 py-1 ${
+                    session.language === "ES" ? "bg-brand-600 text-white" : "bg-neutral-100"
+                  }`}
+                >
+                  ES
+                </button>
+              </form>
+            </div>
+          )}
+          <form action="/logout" method="POST">
+            <button className="rounded px-2 py-1 text-neutral-500 hover:bg-neutral-100">
+              {labels.logout}
+            </button>
+          </form>
+        </div>
+      </div>
+    </header>
+  );
+}
