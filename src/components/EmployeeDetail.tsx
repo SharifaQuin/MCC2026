@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { loadFieldEvaluationsForTrainee } from "@/lib/fieldEvalData";
 import FieldEvaluationHistory from "@/components/FieldEvaluationHistory";
 import FieldEvaluationForm from "@/components/FieldEvaluationForm";
+import AccountManagement from "@/components/AccountManagement";
 
 export async function loadEmployeeDetail(userId: string) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -23,7 +24,13 @@ export async function loadEmployeeDetail(userId: string) {
 
 type Detail = NonNullable<Awaited<ReturnType<typeof loadEmployeeDetail>>>;
 
-export function EmployeeDetailView({ data }: { data: Detail }) {
+export function EmployeeDetailView({
+  data,
+  canManageAccount = false,
+}: {
+  data: Detail;
+  canManageAccount?: boolean;
+}) {
   const { user, modules, fieldEval } = data;
 
   return (
@@ -32,6 +39,16 @@ export function EmployeeDetailView({ data }: { data: Detail }) {
         <h1 className="text-2xl font-semibold">{user.name}</h1>
         <p className="text-sm text-neutral-500">{user.email}</p>
       </div>
+
+      {canManageAccount && (
+        <section>
+          <AccountManagement
+            userId={user.id}
+            active={user.active}
+            mustSetPassword={user.mustSetPassword}
+          />
+        </section>
+      )}
 
       <section>
         <h2 className="mb-3 text-lg font-medium">Training Module Progress</h2>
@@ -77,6 +94,7 @@ export function EmployeeDetailView({ data }: { data: Detail }) {
           <FieldEvaluationForm traineeId={user.id} />
         </div>
         <FieldEvaluationHistory
+          traineeId={user.id}
           evaluations={fieldEval.evaluations}
           categoryAverages={fieldEval.categoryAverages}
           focusAreas={fieldEval.focusAreas}

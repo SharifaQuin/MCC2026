@@ -34,10 +34,13 @@ export function EmployeeListView({
           href={`${basePath}/${u.id}`}
           className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white p-4 hover:border-brand-300"
         >
-          <div>
+          <div className={u.active ? "" : "opacity-50"}>
             <p className="font-medium">{u.name}</p>
             <p className="text-xs text-neutral-500">{u.email}</p>
-            {u.mustSetPassword && (
+            {!u.active && (
+              <p className="mt-1 text-xs font-medium text-red-600">Deactivated</p>
+            )}
+            {u.active && u.mustSetPassword && (
               <p className="mt-1 text-xs font-medium text-amber-600">Invite pending</p>
             )}
           </div>

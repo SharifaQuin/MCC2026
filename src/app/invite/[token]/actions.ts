@@ -28,6 +28,9 @@ export async function setPasswordAction(
   if (!user || (user.inviteExpiresAt && user.inviteExpiresAt < new Date())) {
     return { error: "This invite link is invalid or has expired. Ask your admin to resend it." };
   }
+  if (!user.active) {
+    return { error: "This account has been deactivated. Contact your administrator." };
+  }
 
   const passwordHash = await hashPassword(password);
   await prisma.user.update({

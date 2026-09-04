@@ -28,6 +28,10 @@ export async function loginAction(
     return { error: "Invalid email or password." };
   }
 
+  if (!user.active) {
+    return { error: "This account has been deactivated. Contact your administrator." };
+  }
+
   if (user.mustSetPassword) {
     return {
       error:

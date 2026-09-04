@@ -31,6 +31,7 @@ model User {
   role             Role      @default(TRAINEE)
   passwordHash     String?
   mustSetPassword  Boolean   @default(true)
+  active           Boolean   @default(true)
   inviteToken      String?   @unique
   inviteExpiresAt  DateTime?
   language         Language  @default(EN)

@@ -1,4 +1,4 @@
-import { findCategory } from "@/lib/fieldEval";
+import FieldEvaluationEntry from "@/components/FieldEvaluationEntry";
 
 interface CategoryAvg {
   key: string;
@@ -25,10 +25,12 @@ interface EvalEntry {
 }
 
 export default function FieldEvaluationHistory({
+  traineeId,
   evaluations,
   categoryAverages,
   focusAreas,
 }: {
+  traineeId: string;
   evaluations: EvalEntry[];
   categoryAverages: CategoryAvg[];
   focusAreas: CategoryAvg[];
@@ -73,37 +75,7 @@ export default function FieldEvaluationHistory({
         <p className="mb-2 text-sm font-medium text-neutral-500">Field day history</p>
         <div className="space-y-3">
           {evaluations.map((ev) => (
-            <div key={ev.id} className="rounded-lg border border-neutral-200 bg-white p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="font-medium">
-                  {new Date(ev.fieldDate).toLocaleDateString()} — Overall: {ev.overallScore}/5
-                </p>
-                <p className="text-xs text-neutral-400">Graded by {ev.gradedByName}</p>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {ev.categories.map((c) => {
-                  const def = findCategory(c.categoryKey);
-                  return (
-                    <div key={c.categoryKey} className="rounded-md bg-neutral-50 p-2 text-sm">
-                      <p className="font-medium">
-                        {def?.label ?? c.categoryKey}: {c.score}/5
-                      </p>
-                      {c.checkedItems.length > 0 && (
-                        <ul className="ml-4 list-disc text-xs text-neutral-600">
-                          {c.checkedItems.map((item) => (
-                            <li key={item}>{item}</li>
-                          ))}
-                        </ul>
-                      )}
-                      {c.notes && <p className="mt-1 text-xs italic text-neutral-500">{c.notes}</p>}
-                    </div>
-                  );
-                })}
-              </div>
-              {ev.generalNotes && (
-                <p className="mt-2 text-sm italic text-neutral-600">{ev.generalNotes}</p>
-              )}
-            </div>
+            <FieldEvaluationEntry key={ev.id} evaluation={ev} traineeId={traineeId} />
           ))}
         </div>
       </div>
