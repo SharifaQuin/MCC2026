@@ -27,6 +27,8 @@ export const dictionary = {
     fieldEvaluations: "Field Day Evaluations",
     overallScore: "Overall Score",
     noFieldEvals: "No field day evaluations yet.",
+    backToModules: "← Back to Modules",
+    dashboard: "Dashboard",
   },
   ES: {
     appName: "Portal de Capacitación de MCC",
@@ -56,6 +58,8 @@ export const dictionary = {
     fieldEvaluations: "Evaluaciones de Día de Campo",
     overallScore: "Puntuación General",
     noFieldEvals: "Aún no hay evaluaciones de día de campo.",
+    backToModules: "← Volver a Módulos",
+    dashboard: "Panel",
   },
 } as const;
 

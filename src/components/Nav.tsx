@@ -27,6 +27,9 @@ export default function Nav({ session }: { session: SessionPayload }) {
             )}
             {session.role === "ADMIN" && (
               <>
+                <Link href="/admin" className="hover:underline">
+                  {labels.dashboard}
+                </Link>
                 <Link href="/admin/employees" className="hover:underline">
                   {labels.employees}
                 </Link>

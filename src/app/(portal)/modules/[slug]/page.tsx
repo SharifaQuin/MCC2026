@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { getModuleDetail, markModuleInProgress } from "@/lib/courses";
@@ -21,6 +22,9 @@ export default async function ModuleDetailPage({ params }: { params: { slug: str
   return (
     <div className="space-y-10">
       <div>
+        <Link href="/modules" className="mb-3 inline-block text-sm text-brand-700 hover:underline">
+          {labels.backToModules}
+        </Link>
         <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
           Module {detail.module.order}
         </p>

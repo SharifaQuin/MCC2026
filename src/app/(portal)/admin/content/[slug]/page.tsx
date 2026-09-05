@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import ModuleMetaForm from "./ModuleMetaForm";
@@ -20,6 +21,12 @@ export default async function AdminModuleEditorPage({ params }: { params: { slug
   return (
     <div className="space-y-8">
       <div>
+        <Link
+          href="/admin/content"
+          className="mb-3 inline-block text-sm text-brand-700 hover:underline"
+        >
+          ← Back to Content Editor
+        </Link>
         <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
           Module {module.order}
         </p>
