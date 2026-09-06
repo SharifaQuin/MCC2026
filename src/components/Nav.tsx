@@ -13,7 +13,9 @@ export default function Nav({ session }: { session: SessionPayload }) {
     <header className="border-b-2 border-gold-500 bg-white">
       <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
-          <Logo />
+          <Link href="/">
+            <Logo />
+          </Link>
           <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             {session.role !== "TRAINER" && (
               <>
