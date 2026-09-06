@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { completeLessonAction } from "./actions";
+import { completeLessonAction, markVideoWatchedAction } from "./actions";
 
 function formatCountdown(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -65,16 +65,22 @@ export default function LessonContinueButton({
 }) {
   const shouldGate = !bypassGate && !!minWatchSeconds && minWatchSeconds > 0;
   const [remaining, setRemaining] = useState(minWatchSeconds ?? 0);
+  const watchedMarked = useRef(false);
 
   useEffect(() => {
     if (!shouldGate) return;
     const startedAt = Date.now();
     const interval = setInterval(() => {
       const elapsed = Math.floor((Date.now() - startedAt) / 1000);
-      setRemaining(Math.max(0, (minWatchSeconds ?? 0) - elapsed));
+      const nextRemaining = Math.max(0, (minWatchSeconds ?? 0) - elapsed);
+      setRemaining(nextRemaining);
+      if (nextRemaining === 0 && !watchedMarked.current) {
+        watchedMarked.current = true;
+        void markVideoWatchedAction(lessonId, slug);
+      }
     }, 1000);
     return () => clearInterval(interval);
-  }, [shouldGate, minWatchSeconds]);
+  }, [shouldGate, minWatchSeconds, lessonId, slug]);
 
   const gated = shouldGate && remaining > 0;
   const action = completeLessonAction.bind(null, lessonId, slug, nextHref);
