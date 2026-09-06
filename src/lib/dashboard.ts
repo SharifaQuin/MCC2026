@@ -8,6 +8,7 @@ export async function loadAdminDashboard() {
     where: { role: "TRAINEE" },
     include: {
       progress: { where: { status: "COMPLETED" } },
+      _count: { select: { fieldEvaluationsReceived: true } },
     },
   });
 
@@ -51,6 +52,16 @@ export async function loadAdminDashboard() {
     .map((e) => ({ id: e.id, name: e.name, lastLoginAt: e.lastLoginAt }))
     .sort((a, b) => (a.lastLoginAt?.getTime() ?? 0) - (b.lastLoginAt?.getTime() ?? 0));
 
+  const noFieldEvalYet = activeEmployees
+    .filter(
+      (e) =>
+        totalModules > 0 &&
+        e.progress.length === totalModules &&
+        e.certificationStatus !== "CERTIFIED" &&
+        e._count.fieldEvaluationsReceived === 0
+    )
+    .map((e) => ({ id: e.id, name: e.name }));
+
   const allCategoryScores = await prisma.fieldEvalCategoryScore.findMany({
     select: { categoryKey: true, score: true },
   });
@@ -79,5 +90,6 @@ export async function loadAdminDashboard() {
     pendingCertifications,
     avgDaysToCertify,
     stalledEmployees,
+    noFieldEvalYet,
   };
 }

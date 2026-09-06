@@ -96,6 +96,26 @@ export default async function AdminDashboardPage() {
         </div>
       )}
 
+      {stats.noFieldEvalYet.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-5">
+          <p className="mb-3 font-medium text-amber-800">
+            Finished all modules, no field evaluation logged yet
+          </p>
+          <ul className="space-y-2">
+            {stats.noFieldEvalYet.map((s) => (
+              <li key={s.id}>
+                <Link
+                  href={`/admin/employees/${s.id}`}
+                  className="text-sm font-medium text-amber-900 underline hover:no-underline"
+                >
+                  {s.name}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {stats.stalledEmployees.length > 0 && (
         <div className="rounded-lg border border-neutral-200 bg-white p-5">
           <p className="mb-3 font-medium text-neutral-700">

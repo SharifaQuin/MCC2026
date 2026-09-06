@@ -1,4 +1,5 @@
-import { loadEmployeeSummaries, EmployeeListView } from "@/components/EmployeeList";
+import { loadEmployeeSummaries } from "@/components/EmployeeList";
+import { EmployeeListView } from "@/components/EmployeeListView";
 
 export default async function TrainerEmployeesPage() {
   const data = await loadEmployeeSummaries();

@@ -6,7 +6,17 @@ function getSecret() {
   return new TextEncoder().encode(process.env.AUTH_SECRET ?? "");
 }
 
-const PUBLIC_PATHS = ["/login", "/invite"];
+// Static assets a browser/OS may request without a session cookie present —
+// e.g. the tab favicon on /login itself, or "Add to Home Screen" fetching
+// the manifest/icons before anyone has logged in.
+const PUBLIC_PATHS = [
+  "/login",
+  "/invite",
+  "/manifest.webmanifest",
+  "/icon.svg",
+  "/apple-icon.png",
+  "/icons",
+];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
