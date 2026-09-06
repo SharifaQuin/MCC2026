@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
@@ -8,6 +9,11 @@ export default async function ProgressPage() {
   const session = await getSession();
   if (!session) redirect("/login");
   const labels = t(session.language);
+
+  const me = await prisma.user.findUnique({
+    where: { id: session.sub },
+    select: { certificationStatus: true },
+  });
 
   const modules = await prisma.module.findMany({
     where: { published: true },
@@ -29,6 +35,18 @@ export default async function ProgressPage() {
       <p className="mb-6 text-sm text-neutral-500">
         {completed} / {total} modules completed
       </p>
+
+      {me?.certificationStatus === "CERTIFIED" && (
+        <div className="mb-6 flex items-center justify-between rounded-lg border border-green-200 bg-green-50 p-4">
+          <p className="font-medium text-green-800">{labels.certifiedBanner}</p>
+          <Link
+            href={`/certificate/${session.sub}`}
+            className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+          >
+            {labels.viewMyCertificate}
+          </Link>
+        </div>
+      )}
 
       <div className="space-y-3">
         {modules.map((m) => {

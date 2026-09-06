@@ -40,6 +40,7 @@ export async function setPasswordAction(
       mustSetPassword: false,
       inviteToken: null,
       inviteExpiresAt: null,
+      lastLoginAt: new Date(),
     },
   });
 

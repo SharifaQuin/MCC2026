@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { loadQuizMissRates } from "@/lib/quizStats";
 import ModuleMetaForm from "./ModuleMetaForm";
 import LessonEditor from "./LessonEditor";
 import QuestionEditor from "./QuestionEditor";
@@ -17,6 +18,8 @@ export default async function AdminModuleEditorPage({ params }: { params: { slug
     },
   });
   if (!module) notFound();
+
+  const missRates = await loadQuizMissRates(module.id);
 
   return (
     <div className="space-y-8">
@@ -52,7 +55,12 @@ export default async function AdminModuleEditorPage({ params }: { params: { slug
 
       <section>
         <h2 className="mb-3 text-lg font-medium">Quiz Questions</h2>
-        <QuestionEditor moduleId={module.id} slug={module.slug} questions={module.quizQuestions} />
+        <QuestionEditor
+          moduleId={module.id}
+          slug={module.slug}
+          questions={module.quizQuestions}
+          missRates={missRates}
+        />
       </section>
     </div>
   );

@@ -15,10 +15,21 @@ export default async function ModulesPage() {
   if (!session) redirect("/login");
   const labels = t(session.language);
   const modules = await getModuleListForUser(session.sub);
+  const nextModule = modules.find((m) => !m.locked && m.status !== "COMPLETED");
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold">{labels.modules}</h1>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">{labels.modules}</h1>
+        {nextModule && (
+          <Link
+            href={`/modules/${nextModule.slug}`}
+            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            {labels.continueTraining}
+          </Link>
+        )}
+      </div>
       <ol className="space-y-3">
         {modules.map((m) => {
           const title = session.language === "ES" && m.titleEs ? m.titleEs : m.titleEn;

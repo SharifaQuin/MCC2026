@@ -45,6 +45,7 @@ model User {
   inviteToken      String?   @unique
   inviteExpiresAt  DateTime?
   language         Language  @default(EN)
+  lastLoginAt      DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

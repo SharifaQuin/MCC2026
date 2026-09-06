@@ -10,7 +10,7 @@ export default function Nav({ session }: { session: SessionPayload }) {
   const trainerOnly = session.role === "TRAINER";
 
   return (
-    <header className="border-b-2 border-gold-500 bg-white">
+    <header className="border-b-2 border-gold-500 bg-white print:hidden">
       <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
           <Link href="/">
@@ -24,6 +24,9 @@ export default function Nav({ session }: { session: SessionPayload }) {
                 </Link>
                 <Link href="/progress" className="hover:underline">
                   {labels.progress}
+                </Link>
+                <Link href="/glossary" className="hover:underline">
+                  {labels.glossary}
                 </Link>
               </>
             )}

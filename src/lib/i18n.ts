@@ -29,6 +29,11 @@ export const dictionary = {
     noFieldEvals: "No field day evaluations yet.",
     backToModules: "← Back to Modules",
     dashboard: "Dashboard",
+    certifiedBanner: "You're a certified Technician! 🎉",
+    viewMyCertificate: "View My Certificate",
+    continueTraining: "Continue Training",
+    glossary: "Glossary",
+    glossarySubtitle: "Quick reference for terms used throughout training and on the job.",
   },
   ES: {
     appName: "Portal de Capacitación de MCC",
@@ -60,6 +65,11 @@ export const dictionary = {
     noFieldEvals: "Aún no hay evaluaciones de día de campo.",
     backToModules: "← Volver a Módulos",
     dashboard: "Panel",
+    certifiedBanner: "¡Eres un Técnico certificado! 🎉",
+    viewMyCertificate: "Ver Mi Certificado",
+    continueTraining: "Continuar Capacitación",
+    glossary: "Glosario",
+    glossarySubtitle: "Referencia rápida de términos usados en la capacitación y en el trabajo.",
   },
 } as const;
 

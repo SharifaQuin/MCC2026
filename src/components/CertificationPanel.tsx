@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import {
@@ -190,6 +191,15 @@ export default function CertificationPanel({
       )}
 
       {canDecide && status === "PENDING" && <DecideButtons traineeId={traineeId} />}
+
+      {status === "CERTIFIED" && (
+        <Link
+          href={`/certificate/${traineeId}`}
+          className="mb-3 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+        >
+          View Certificate
+        </Link>
+      )}
 
       {canDecide && status === "CERTIFIED" && (
         <button

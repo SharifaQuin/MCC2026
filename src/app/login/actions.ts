@@ -44,6 +44,8 @@ export async function loginAction(
     return { error: "Invalid email or password." };
   }
 
+  await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+
   await setSessionCookie({
     sub: user.id,
     role: user.role,

@@ -63,6 +63,10 @@ export default async function AdminDashboardPage() {
           tone={stats.pendingCertifications.length > 0 ? "warn" : "neutral"}
         />
         <StatCard label="Certified Technicians" value={stats.certifiedCount} tone="good" />
+        <StatCard
+          label="Avg. Days to Certification"
+          value={stats.avgDaysToCertify !== null ? stats.avgDaysToCertify : "—"}
+        />
         <StatCard label="Field Evaluations (Last 30 Days)" value={stats.recentEvaluations} />
         <StatCard label="Deactivated Accounts" value={stats.deactivated} />
       </div>
@@ -86,6 +90,31 @@ export default async function AdminDashboardPage() {
                     recommended {new Date(p.certRecommendedAt).toLocaleDateString()}
                   </span>
                 )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {stats.stalledEmployees.length > 0 && (
+        <div className="rounded-lg border border-neutral-200 bg-white p-5">
+          <p className="mb-3 font-medium text-neutral-700">
+            Needs a nudge (no activity in 7+ days, or never logged in)
+          </p>
+          <ul className="space-y-2">
+            {stats.stalledEmployees.map((s) => (
+              <li key={s.id}>
+                <Link
+                  href={`/admin/employees/${s.id}`}
+                  className="text-sm font-medium text-neutral-800 underline hover:no-underline"
+                >
+                  {s.name}
+                </Link>
+                <span className="ml-2 text-xs text-neutral-500">
+                  {s.lastLoginAt
+                    ? `last active ${new Date(s.lastLoginAt).toLocaleDateString()}`
+                    : "never logged in"}
+                </span>
               </li>
             ))}
           </ul>

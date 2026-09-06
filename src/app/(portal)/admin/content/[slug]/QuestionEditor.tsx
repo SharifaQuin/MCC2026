@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { updateQuestionAction, deleteQuestionAction, createQuestionAction } from "../actions";
+import type { QuestionMissRate } from "@/lib/quizStats";
 
 interface Option {
   id: string;
@@ -18,7 +19,33 @@ interface Question {
   options: Option[];
 }
 
-function QuestionRow({ question, slug }: { question: Question; slug: string }) {
+function MissRateBadge({ missRate }: { missRate?: QuestionMissRate }) {
+  if (!missRate || missRate.missRatePct === null) {
+    return <span className="text-xs text-neutral-400">No attempts yet</span>;
+  }
+  const tone =
+    missRate.missRatePct >= 50
+      ? "bg-red-100 text-red-700"
+      : missRate.missRatePct >= 25
+        ? "bg-amber-100 text-amber-700"
+        : "bg-neutral-100 text-neutral-500";
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>
+      {missRate.missRatePct}% missed ({missRate.totalAnswered} answer
+      {missRate.totalAnswered === 1 ? "" : "s"})
+    </span>
+  );
+}
+
+function QuestionRow({
+  question,
+  slug,
+  missRate,
+}: {
+  question: Question;
+  slug: string;
+  missRate?: QuestionMissRate;
+}) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [correctOptionId, setCorrectOptionId] = useState(
@@ -35,7 +62,10 @@ function QuestionRow({ question, slug }: { question: Question; slug: string }) {
         <span className="font-medium">
           {question.order}. {question.textEn}
         </span>
-        <span className="text-xs text-neutral-400">{open ? "Hide" : "Edit"}</span>
+        <div className="flex shrink-0 items-center gap-3">
+          <MissRateBadge missRate={missRate} />
+          <span className="text-xs text-neutral-400">{open ? "Hide" : "Edit"}</span>
+        </div>
       </button>
 
       {open && (
@@ -123,17 +153,24 @@ export default function QuestionEditor({
   moduleId,
   slug,
   questions,
+  missRates,
 }: {
   moduleId: string;
   slug: string;
   questions: Question[];
+  missRates?: Record<string, QuestionMissRate>;
 }) {
   const [pending, startTransition] = useTransition();
 
   return (
     <div className="space-y-3">
       {questions.map((question) => (
-        <QuestionRow key={question.id} question={question} slug={slug} />
+        <QuestionRow
+          key={question.id}
+          question={question}
+          slug={slug}
+          missRate={missRates?.[question.id]}
+        />
       ))}
       <button
         type="button"

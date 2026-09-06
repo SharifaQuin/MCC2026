@@ -27,11 +27,29 @@ export async function loadAdminDashboard() {
   });
 
   const certifiedCount = employees.filter((e) => e.certificationStatus === "CERTIFIED").length;
+
+  const daysToCertify = employees
+    .filter((e) => e.certificationStatus === "CERTIFIED" && e.certDecidedAt)
+    .map((e) => (e.certDecidedAt!.getTime() - e.createdAt.getTime()) / (1000 * 60 * 60 * 24));
+  const avgDaysToCertify =
+    daysToCertify.length > 0
+      ? Math.round((daysToCertify.reduce((a, b) => a + b, 0) / daysToCertify.length) * 10) / 10
+      : null;
   const pendingCertifications = await prisma.user.findMany({
     where: { role: "TRAINEE", certificationStatus: "PENDING" },
     select: { id: true, name: true, certRecommendedAt: true },
     orderBy: { certRecommendedAt: "asc" },
   });
+
+  const sevenDaysAgo = new Date(Date.now() - 1000 * 60 * 60 * 24 * 7);
+  const stalledEmployees = activeEmployees
+    .filter(
+      (e) =>
+        e.certificationStatus !== "CERTIFIED" &&
+        (!e.lastLoginAt || e.lastLoginAt < sevenDaysAgo)
+    )
+    .map((e) => ({ id: e.id, name: e.name, lastLoginAt: e.lastLoginAt }))
+    .sort((a, b) => (a.lastLoginAt?.getTime() ?? 0) - (b.lastLoginAt?.getTime() ?? 0));
 
   const allCategoryScores = await prisma.fieldEvalCategoryScore.findMany({
     select: { categoryKey: true, score: true },
@@ -59,5 +77,7 @@ export async function loadAdminDashboard() {
     orgFocusAreas,
     certifiedCount,
     pendingCertifications,
+    avgDaysToCertify,
+    stalledEmployees,
   };
 }
