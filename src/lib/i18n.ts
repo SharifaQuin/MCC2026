@@ -34,6 +34,7 @@ export const dictionary = {
     continueTraining: "Continue Training",
     glossary: "Glossary",
     glossarySubtitle: "Quick reference for terms used throughout training and on the job.",
+    myAccount: "My Account",
   },
   ES: {
     appName: "Portal de Capacitación de MCC",
@@ -70,6 +71,7 @@ export const dictionary = {
     continueTraining: "Continuar Capacitación",
     glossary: "Glosario",
     glossarySubtitle: "Referencia rápida de términos usados en la capacitación y en el trabajo.",
+    myAccount: "Mi Cuenta",
   },
 } as const;
 

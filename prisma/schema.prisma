@@ -46,6 +46,8 @@ model User {
   inviteExpiresAt  DateTime?
   language         Language  @default(EN)
   lastLoginAt      DateTime?
+  failedLoginAttempts Int    @default(0)
+  lockedUntil      DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

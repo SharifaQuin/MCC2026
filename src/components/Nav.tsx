@@ -52,6 +52,9 @@ export default function Nav({ session }: { session: SessionPayload }) {
         </div>
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <span className="text-neutral-500">{session.name}</span>
+          <Link href="/account" className="hover:underline">
+            {labels.myAccount}
+          </Link>
           {!trainerOnly && (
             <div className="flex gap-1">
               <form action={setLanguageAction.bind(null, "EN")}>
