@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { completeLessonAction, markVideoWatchedAction } from "./actions";
+import { completeLessonAction } from "./actions";
 
 function formatCountdown(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -76,7 +76,14 @@ export default function LessonContinueButton({
       setRemaining(nextRemaining);
       if (nextRemaining === 0 && !watchedMarked.current) {
         watchedMarked.current = true;
-        void markVideoWatchedAction(lessonId, slug);
+        // A plain fetch, not a Server Action — a Server Action call here
+        // would trigger Next's automatic refresh of this page, remounting
+        // the video iframe (restarting it) and this timer.
+        void fetch(`/api/lessons/${lessonId}/watched`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug }),
+        });
       }
     }, 1000);
     return () => clearInterval(interval);
