@@ -94,6 +94,7 @@ export async function updateLessonAction(lessonId: string, slug: string, formDat
         videoDurationSeconds !== null && Number.isFinite(videoDurationSeconds)
           ? videoDurationSeconds
           : null,
+      imageUrl: String(formData.get("imageUrl") ?? "") || null,
     },
   });
   revalidatePath(`/admin/content/${slug}`);

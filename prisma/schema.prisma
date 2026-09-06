@@ -138,6 +138,10 @@ model Lesson {
   // unlocks — set by an admin to roughly the video's runtime. Null means
   // no minimum wait (text-only lessons, or a video without a known length).
   videoDurationSeconds Int?
+  // A compressed base64 data URI (or external URL) for an optional photo/
+  // diagram shown above the lesson text. @db.Text since a data URI is
+  // far longer than the default varchar limit.
+  imageUrl   String? @db.Text
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { updateLessonAction, deleteLessonAction, createLessonAction } from "../actions";
+import { fileToResizedDataUrl } from "@/lib/imageResize";
 
 interface Lesson {
   id: string;
@@ -12,11 +13,14 @@ interface Lesson {
   contentEs: string | null;
   videoUrl: string | null;
   videoDurationSeconds: number | null;
+  imageUrl: string | null;
 }
 
 function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [imageUrl, setImageUrl] = useState(lesson.imageUrl ?? "");
+  const [imageError, setImageError] = useState<string | null>(null);
 
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -100,6 +104,46 @@ function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
                 Trainees can&apos;t continue past this lesson until this much time has passed.
               </p>
             </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium">Photo (optional)</label>
+            <input type="hidden" name="imageUrl" value={imageUrl} />
+            {imageUrl && (
+              <div className="mb-2 flex items-start gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={imageUrl}
+                  alt=""
+                  className="h-24 w-auto rounded-md border border-neutral-200 object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => setImageUrl("")}
+                  className="text-xs font-medium text-red-600 hover:underline"
+                >
+                  Remove photo
+                </button>
+              </div>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setImageError(null);
+                try {
+                  setImageUrl(await fileToResizedDataUrl(file));
+                } catch {
+                  setImageError("Couldn't read that image — try a different file.");
+                }
+              }}
+              className="block w-full text-sm"
+            />
+            {imageError && <p className="mt-1 text-xs text-red-600">{imageError}</p>}
+            <p className="mt-1 text-xs text-neutral-400">
+              Shown above the lesson text (below the video, if this lesson has one).
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <button

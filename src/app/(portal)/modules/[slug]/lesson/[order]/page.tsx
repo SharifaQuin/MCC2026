@@ -4,6 +4,7 @@ import { getSession } from "@/lib/session";
 import { getLessonDetail, markModuleInProgress } from "@/lib/courses";
 import { t } from "@/lib/i18n";
 import LessonContinueButton from "./LessonContinueButton";
+import LessonContent from "@/components/LessonContent";
 
 export default async function LessonPage({
   params,
@@ -64,7 +65,15 @@ export default async function LessonPage({
             />
           </div>
         )}
-        <p className="whitespace-pre-line text-sm text-neutral-700">{lContent}</p>
+        {detail.lesson.imageUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={detail.lesson.imageUrl}
+            alt=""
+            className="mb-4 w-full rounded-md object-cover"
+          />
+        )}
+        <LessonContent text={lContent} />
       </div>
 
       <LessonContinueButton

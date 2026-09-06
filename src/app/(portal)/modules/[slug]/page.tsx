@@ -49,20 +49,34 @@ export default async function ModuleOverviewPage({ params }: { params: { slug: s
             const lTitle = lang === "ES" && lesson.titleEs ? lesson.titleEs : lesson.titleEn;
             const isCompleted =
               overview.status === "COMPLETED" || overview.completedLessonIds.has(lesson.id);
+            const isReachable =
+              overview.status === "COMPLETED" ||
+              isCompleted ||
+              lesson.order === overview.firstIncompleteOrder;
+            const badge = (
+              <span
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-medium ${
+                  isCompleted ? "bg-green-100 text-green-700" : "bg-neutral-100 text-neutral-500"
+                }`}
+              >
+                {isCompleted ? "✓" : i + 1}
+              </span>
+            );
             return (
               <li key={lesson.id} className="flex items-center gap-3 text-sm">
-                <span
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-medium ${
-                    isCompleted
-                      ? "bg-green-100 text-green-700"
-                      : "bg-neutral-100 text-neutral-500"
-                  }`}
-                >
-                  {isCompleted ? "✓" : i + 1}
-                </span>
-                <span className={isCompleted ? "text-neutral-500" : "text-neutral-800"}>
-                  {lTitle}
-                </span>
+                {badge}
+                {isReachable ? (
+                  <Link
+                    href={`/modules/${params.slug}/lesson/${lesson.order}`}
+                    className={`hover:underline ${
+                      isCompleted ? "text-neutral-600" : "font-medium text-brand-700"
+                    }`}
+                  >
+                    {lTitle}
+                  </Link>
+                ) : (
+                  <span className="text-neutral-400">{lTitle}</span>
+                )}
               </li>
             );
           })}
