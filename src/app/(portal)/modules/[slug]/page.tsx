@@ -45,6 +45,7 @@ export default async function ModuleDetailPage({ params }: { params: { slug: str
                   <iframe
                     src={lesson.videoUrl}
                     className="h-full w-full"
+                    allow="encrypted-media; fullscreen; microphone; screen-wake-lock;"
                     allowFullScreen
                     title={lTitle}
                   />
