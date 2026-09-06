@@ -98,18 +98,11 @@ export const GLOSSARY: GlossaryTerm[] = [
       "El tiempo real que le toma a un técnico limpiar la casa. Un trabajo de 3 JTH podría tomar en realidad 2.75 horas reales.",
   },
   {
-    term: "Full-time / Part-time",
+    term: "Employment Status",
     definitionEn:
-      "Full-time: scheduled 35+ hours/week. Part-time: scheduled less than 35 hours/week, and ineligible for select company benefits.",
+      "Every MCC technician is a full-time, direct employee. MCC does not use part-time, seasonal, or temporary staff, and does not hire through outside staffing agencies.",
     definitionEs:
-      "Tiempo Completo: programado para 35+ horas/semana. Medio Tiempo: menos de 35 horas/semana, y no elegible para ciertos beneficios.",
-  },
-  {
-    term: "Regular / Temporary",
-    definitionEn:
-      "Regular: works directly for MCC and is paid by MCC. Temporary: paid by an outside staffing agency, not MCC's payroll.",
-    definitionEs:
-      "Regular: trabaja directamente para MCC y recibe su pago de MCC. Temporal: recibe su pago de una agencia externa, no de la nómina de MCC.",
+      "Cada técnico de MCC es un empleado de tiempo completo y directo. MCC no utiliza personal de medio tiempo, temporal ni de temporada, y no contrata a través de agencias de personal externas.",
   },
   {
     term: "Dirt Code",

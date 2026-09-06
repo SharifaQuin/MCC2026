@@ -676,10 +676,10 @@
       },
       {
         "order": 4,
-        "titleEn": "Employment Status Definitions",
-        "titleEs": "Definiciones de Estatus de Empleo",
-        "contentEn": "Full-time: scheduled to work 35 hours or more per week. Part-time: scheduled to work less than 35 hours per week, and ineligible for select company benefits. Every employee is also designated as either: Regular — works directly for MCC, whether full-time or part-time; or Temporary — does not work directly for MCC and is not paid through MCC's payroll (may work full-time or part-time hours, but is paid by an outside staffing agency).",
-        "contentEs": "Tiempo Completo: programado para trabajar 35 horas o más por semana. Medio Tiempo: programado para trabajar menos de 35 horas por semana, y no elegible para ciertos beneficios de la empresa. Además, cada empleado se clasifica como: Regular — trabaja directamente para MCC, ya sea tiempo completo o medio tiempo; o Temporal — no trabaja directamente para MCC y no recibe su pago a través de la nómina de MCC (puede trabajar horas de tiempo completo o medio tiempo, pero recibe su pago de una agencia de personal externa).",
+        "titleEn": "All MCC Technicians Are Full-Time Employees",
+        "titleEs": "Todos los Técnicos de MCC Son Empleados de Tiempo Completo",
+        "contentEn": "Every technician at MCC is a full-time, direct employee. MCC does not use part-time, seasonal, or temporary staff, and does not hire through outside staffing agencies — when you work for MCC, you work directly for MCC.",
+        "contentEs": "Cada técnico en MCC es un empleado de tiempo completo y directo. MCC no utiliza personal de medio tiempo, temporal ni de temporada, y no contrata a través de agencias de personal externas — cuando trabajas para MCC, trabajas directamente para MCC.",
         "videoUrl": null
       }
     ],
@@ -844,57 +844,19 @@
       },
       {
         "order": 7,
-        "textEn": "How many hours per week must you be scheduled to be classified as full-time?",
-        "textEs": "¿Cuántas horas por semana debes tener programadas para ser clasificado como tiempo completo?",
-        "correctIndex": 2,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "20 or more",
-            "textEs": "20 o más"
-          },
-          {
-            "order": 2,
-            "textEn": "30 or more",
-            "textEs": "30 o más"
-          },
-          {
-            "order": 3,
-            "textEn": "35 or more",
-            "textEs": "35 o más"
-          },
-          {
-            "order": 4,
-            "textEn": "40 or more, no exceptions",
-            "textEs": "40 o más, sin excepciones"
-          }
-        ]
-      },
-      {
-        "order": 8,
-        "textEn": "What's the difference between a \"Regular\" and a \"Temporary\" employee at MCC?",
-        "textEs": "¿Cuál es la diferencia entre un empleado \"Regular\" y uno \"Temporal\" en MCC?",
+        "textEn": "True or False: MCC hires part-time, seasonal, or temporary staff through an outside staffing agency.",
+        "textEs": "Verdadero o Falso: MCC contrata personal de medio tiempo, temporal o de temporada a través de una agencia de personal externa.",
         "correctIndex": 1,
         "options": [
           {
             "order": 1,
-            "textEn": "There is no difference",
-            "textEs": "No hay diferencia"
+            "textEn": "True",
+            "textEs": "Verdadero"
           },
           {
             "order": 2,
-            "textEn": "Regular employees work directly for and are paid by MCC; Temporary employees are paid by an outside agency and don't work directly for MCC",
-            "textEs": "Los empleados Regulares trabajan directamente para MCC y reciben su pago de MCC; los empleados Temporales reciben su pago de una agencia externa y no trabajan directamente para MCC"
-          },
-          {
-            "order": 3,
-            "textEn": "Temporary employees are always full-time",
-            "textEs": "Los empleados Temporales siempre son de tiempo completo"
-          },
-          {
-            "order": 4,
-            "textEn": "Regular means part-time, Temporary means full-time",
-            "textEs": "Regular significa medio tiempo, Temporal significa tiempo completo"
+            "textEn": "False — every MCC technician is a full-time, direct employee",
+            "textEs": "Falso — todos los técnicos de MCC son empleados de tiempo completo y directos"
           }
         ]
       }
