@@ -47,13 +47,25 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (pathname.startsWith("/admin") && payload.role !== "ADMIN") {
+  if (
+    (pathname.startsWith("/admin/content") || pathname.startsWith("/admin/permissions")) &&
+    payload.role !== "ADMIN"
+  ) {
+    return NextResponse.redirect(new URL("/", req.url));
+  }
+
+  if (
+    pathname.startsWith("/admin") &&
+    payload.role !== "ADMIN" &&
+    payload.role !== "SERVICE_MANAGER"
+  ) {
     return NextResponse.redirect(new URL("/", req.url));
   }
 
   if (
     pathname.startsWith("/trainer") &&
     payload.role !== "TRAINER" &&
+    payload.role !== "SERVICE_MANAGER" &&
     payload.role !== "ADMIN"
   ) {
     return NextResponse.redirect(new URL("/", req.url));

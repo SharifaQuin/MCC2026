@@ -38,7 +38,7 @@ export function EmployeeDetailView({
 }: {
   data: Detail;
   canManageAccount?: boolean;
-  viewerRole: "ADMIN" | "TRAINER";
+  viewerRole: "ADMIN" | "TRAINER" | "SERVICE_MANAGER";
 }) {
   const { user, modules, fieldEval } = data;
 
@@ -58,8 +58,8 @@ export function EmployeeDetailView({
           recommendedByName={user.certRecommendedBy?.name ?? null}
           decidedAt={user.certDecidedAt}
           decidedByName={user.certDecidedBy?.name ?? null}
-          canRecommend={viewerRole === "ADMIN" || viewerRole === "TRAINER"}
-          canDecide={viewerRole === "ADMIN"}
+          canRecommend
+          canDecide={viewerRole === "ADMIN" || viewerRole === "SERVICE_MANAGER"}
         />
       </section>
 

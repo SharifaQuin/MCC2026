@@ -11,15 +11,21 @@ export interface CertActionState {
 
 async function requireTrainerOrAdmin() {
   const session = await getSession();
-  if (!session || (session.role !== "ADMIN" && session.role !== "TRAINER")) {
+  if (
+    !session ||
+    (session.role !== "ADMIN" && session.role !== "TRAINER" && session.role !== "SERVICE_MANAGER")
+  ) {
     throw new Error("Not authorized");
   }
   return session;
 }
 
-async function requireAdmin() {
+// The final certify/decline call: Admin/Owner or a Service Manager, not a Trainer.
+async function requireDecisionMaker() {
   const session = await getSession();
-  if (!session || session.role !== "ADMIN") throw new Error("Not authorized");
+  if (!session || (session.role !== "ADMIN" && session.role !== "SERVICE_MANAGER")) {
+    throw new Error("Not authorized");
+  }
   return session;
 }
 
@@ -63,7 +69,7 @@ export async function recommendForCertificationAction(
 
 export async function certifyAction(traineeId: string): Promise<CertActionState> {
   try {
-    await requireAdmin();
+    await requireDecisionMaker();
   } catch {
     return { error: "Not authorized." };
   }
@@ -88,7 +94,7 @@ export async function declineAction(
 ): Promise<CertActionState> {
   let session;
   try {
-    session = await requireAdmin();
+    session = await requireDecisionMaker();
   } catch {
     return { error: "Not authorized." };
   }
@@ -113,7 +119,7 @@ export async function declineAction(
 }
 
 export async function revertCertificationAction(traineeId: string) {
-  await requireAdmin();
+  await requireDecisionMaker();
   await prisma.user.update({
     where: { id: traineeId },
     data: {

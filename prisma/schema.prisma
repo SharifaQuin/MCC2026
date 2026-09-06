@@ -11,6 +11,17 @@ enum Role {
   TRAINEE
   ADMIN
   TRAINER
+  SERVICE_MANAGER
+}
+
+// A "vertical" of the business. HR is where the training/onboarding portal
+// (everything built so far) lives; the others are placeholders until those
+// departments get real content built out.
+enum Department {
+  SALES
+  HR
+  OPERATIONS
+  MANAGEMENT
 }
 
 enum Language {
@@ -71,7 +82,25 @@ model User {
   certDecidedBy      User?     @relation("CertDecidedBy", fields: [certDecidedById], references: [id])
   certDecisionsMade  User[]    @relation("CertDecidedBy")
 
+  departmentAccess DepartmentAccess[]
+
   @@index([role])
+}
+
+// Grants a user access to a department beyond their home HR area — e.g. an
+// assistant who should see (and maybe edit) Sales but nothing else. Admin/
+// Owner bypasses this entirely and always sees every department with full
+// edit rights; everyone else always has implicit view access to HR.
+model DepartmentAccess {
+  id         String     @id @default(cuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department Department
+  canEdit    Boolean    @default(false)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@unique([userId, department])
 }
 
 model Module {

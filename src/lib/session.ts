@@ -3,8 +3,14 @@ import { cookies } from "next/headers";
 
 export const SESSION_COOKIE = "mcc_session";
 
-export type Role = "TRAINEE" | "ADMIN" | "TRAINER";
+export type Role = "TRAINEE" | "ADMIN" | "TRAINER" | "SERVICE_MANAGER";
 export type Language = "EN" | "ES";
+
+// Service Manager has Trainer abilities plus certify/decline and
+// invite/account management, but never content editing (Admin/Owner-only).
+export function isAdminOrServiceManager(role: Role | undefined): boolean {
+  return role === "ADMIN" || role === "SERVICE_MANAGER";
+}
 
 export interface SessionPayload {
   sub: string;

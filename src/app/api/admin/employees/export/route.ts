@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
+import { getSession, isAdminOrServiceManager } from "@/lib/session";
 import { buildEmployeeExportCsv } from "@/lib/export";
 
 export async function GET() {
   const session = await getSession();
-  if (!session || session.role !== "ADMIN") {
+  if (!session || !isAdminOrServiceManager(session.role)) {
     return new NextResponse("Not authorized", { status: 403 });
   }
 

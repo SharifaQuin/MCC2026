@@ -2,12 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/session";
+import { getSession, isAdminOrServiceManager } from "@/lib/session";
 import { generateInviteToken } from "@/lib/password";
 
-async function requireAdmin() {
+async function requireAdminOrServiceManager() {
   const session = await getSession();
-  if (!session || session.role !== "ADMIN") throw new Error("Not authorized");
+  if (!session || !isAdminOrServiceManager(session.role)) throw new Error("Not authorized");
   return session;
 }
 
@@ -21,7 +21,7 @@ export async function resetPasswordAction(
   _prevState: ResetPasswordState,
   _formData: FormData
 ): Promise<ResetPasswordState> {
-  await requireAdmin();
+  await requireAdminOrServiceManager();
 
   const inviteToken = generateInviteToken();
   await prisma.user.update({
@@ -40,7 +40,7 @@ export async function resetPasswordAction(
 }
 
 export async function setAccountActiveAction(userId: string, active: boolean) {
-  await requireAdmin();
+  await requireAdminOrServiceManager();
   await prisma.user.update({ where: { id: userId }, data: { active } });
   revalidatePath(`/admin/employees/${userId}`);
   revalidatePath("/admin/employees");

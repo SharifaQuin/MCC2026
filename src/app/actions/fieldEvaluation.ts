@@ -12,7 +12,10 @@ export interface FieldEvalState {
 
 async function requireAdminOrTrainer() {
   const session = await getSession();
-  if (!session || (session.role !== "ADMIN" && session.role !== "TRAINER")) {
+  if (
+    !session ||
+    (session.role !== "ADMIN" && session.role !== "TRAINER" && session.role !== "SERVICE_MANAGER")
+  ) {
     throw new Error("Not authorized");
   }
   return session;

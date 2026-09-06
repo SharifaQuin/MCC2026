@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { generateInviteToken } from "@/lib/password";
+import { isAdminOrServiceManager } from "@/lib/session";
 
 export interface InviteState {
   error?: string;
@@ -15,7 +16,7 @@ export async function inviteAction(
   formData: FormData
 ): Promise<InviteState> {
   const session = await getSession();
-  if (!session || session.role !== "ADMIN") {
+  if (!session || !isAdminOrServiceManager(session.role)) {
     return { error: "Not authorized." };
   }
 

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { generateInviteToken } from "@/lib/password";
+import { isAdminOrServiceManager } from "@/lib/session";
 
 export interface BulkInviteResult {
   name: string;
@@ -32,7 +33,7 @@ export async function bulkInviteAction(
   formData: FormData
 ): Promise<BulkInviteState> {
   const session = await getSession();
-  if (!session || session.role !== "ADMIN") {
+  if (!session || !isAdminOrServiceManager(session.role)) {
     return { error: "Not authorized." };
   }
 
