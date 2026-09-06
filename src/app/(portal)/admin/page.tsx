@@ -57,9 +57,40 @@ export default async function AdminDashboardPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <StatCard
+          label="Pending Certification Review"
+          value={stats.pendingCertifications.length}
+          tone={stats.pendingCertifications.length > 0 ? "warn" : "neutral"}
+        />
+        <StatCard label="Certified Technicians" value={stats.certifiedCount} tone="good" />
         <StatCard label="Field Evaluations (Last 30 Days)" value={stats.recentEvaluations} />
         <StatCard label="Deactivated Accounts" value={stats.deactivated} />
       </div>
+
+      {stats.pendingCertifications.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-5">
+          <p className="mb-3 font-medium text-amber-800">
+            Awaiting your certification review
+          </p>
+          <ul className="space-y-2">
+            {stats.pendingCertifications.map((p) => (
+              <li key={p.id}>
+                <Link
+                  href={`/admin/employees/${p.id}`}
+                  className="text-sm font-medium text-amber-900 underline hover:no-underline"
+                >
+                  {p.name}
+                </Link>
+                {p.certRecommendedAt && (
+                  <span className="ml-2 text-xs text-amber-700">
+                    recommended {new Date(p.certRecommendedAt).toLocaleDateString()}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {stats.orgFocusAreas.length > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-5">
@@ -84,8 +115,8 @@ export default async function AdminDashboardPage() {
       )}
 
       <div className="rounded-lg border border-dashed border-neutral-300 p-5 text-sm text-neutral-500">
-        Coming in a later version: certification requests/approvals, work anniversaries and start
-        dates, and other HR data on this dashboard.
+        Coming in a later version: work anniversaries, start dates, and other HR data on this
+        dashboard.
       </div>
     </div>
   );

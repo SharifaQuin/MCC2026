@@ -24,6 +24,16 @@ enum ProgressStatus {
   COMPLETED
 }
 
+// Tracks an employee's path from Trainee to certified Technician: a Trainer
+// recommends once the 3-day field training is done, then a Manager/Admin
+// makes the final call.
+enum CertificationStatus {
+  NOT_RECOMMENDED
+  PENDING
+  CERTIFIED
+  DECLINED
+}
+
 model User {
   id               String    @id @default(cuid())
   email            String    @unique
@@ -44,6 +54,19 @@ model User {
 
   fieldEvaluationsReceived FieldEvaluation[] @relation("TraineeFieldEvaluations")
   fieldEvaluationsGiven    FieldEvaluation[] @relation("GradedFieldEvaluations")
+
+  certificationStatus CertificationStatus @default(NOT_RECOMMENDED)
+  certNotes           String?             @db.Text
+
+  certRecommendedAt        DateTime?
+  certRecommendedById      String?
+  certRecommendedBy        User?     @relation("CertRecommendedBy", fields: [certRecommendedById], references: [id])
+  certRecommendationsMade  User[]    @relation("CertRecommendedBy")
+
+  certDecidedAt      DateTime?
+  certDecidedById    String?
+  certDecidedBy      User?     @relation("CertDecidedBy", fields: [certDecidedById], references: [id])
+  certDecisionsMade  User[]    @relation("CertDecidedBy")
 
   @@index([role])
 }

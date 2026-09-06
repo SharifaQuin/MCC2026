@@ -26,6 +26,13 @@ export async function loadAdminDashboard() {
     where: { fieldDate: { gte: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30) } },
   });
 
+  const certifiedCount = employees.filter((e) => e.certificationStatus === "CERTIFIED").length;
+  const pendingCertifications = await prisma.user.findMany({
+    where: { role: "TRAINEE", certificationStatus: "PENDING" },
+    select: { id: true, name: true, certRecommendedAt: true },
+    orderBy: { certRecommendedAt: "asc" },
+  });
+
   const allCategoryScores = await prisma.fieldEvalCategoryScore.findMany({
     select: { categoryKey: true, score: true },
   });
@@ -50,5 +57,7 @@ export async function loadAdminDashboard() {
     notStarted,
     recentEvaluations,
     orgFocusAreas,
+    certifiedCount,
+    pendingCertifications,
   };
 }

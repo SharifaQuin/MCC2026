@@ -3,9 +3,16 @@ import { loadFieldEvaluationsForTrainee } from "@/lib/fieldEvalData";
 import FieldEvaluationHistory from "@/components/FieldEvaluationHistory";
 import FieldEvaluationForm from "@/components/FieldEvaluationForm";
 import AccountManagement from "@/components/AccountManagement";
+import CertificationPanel from "@/components/CertificationPanel";
 
 export async function loadEmployeeDetail(userId: string) {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      certRecommendedBy: { select: { name: true } },
+      certDecidedBy: { select: { name: true } },
+    },
+  });
   if (!user) return null;
 
   const modules = await prisma.module.findMany({
@@ -27,9 +34,11 @@ type Detail = NonNullable<Awaited<ReturnType<typeof loadEmployeeDetail>>>;
 export function EmployeeDetailView({
   data,
   canManageAccount = false,
+  viewerRole,
 }: {
   data: Detail;
   canManageAccount?: boolean;
+  viewerRole: "ADMIN" | "TRAINER";
 }) {
   const { user, modules, fieldEval } = data;
 
@@ -39,6 +48,20 @@ export function EmployeeDetailView({
         <h1 className="text-2xl font-semibold">{user.name}</h1>
         <p className="text-sm text-neutral-500">{user.email}</p>
       </div>
+
+      <section>
+        <CertificationPanel
+          traineeId={user.id}
+          status={user.certificationStatus}
+          notes={user.certNotes}
+          recommendedAt={user.certRecommendedAt}
+          recommendedByName={user.certRecommendedBy?.name ?? null}
+          decidedAt={user.certDecidedAt}
+          decidedByName={user.certDecidedBy?.name ?? null}
+          canRecommend={viewerRole === "ADMIN" || viewerRole === "TRAINER"}
+          canDecide={viewerRole === "ADMIN"}
+        />
+      </section>
 
       {canManageAccount && (
         <section>

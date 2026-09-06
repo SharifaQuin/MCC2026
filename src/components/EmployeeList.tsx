@@ -44,9 +44,21 @@ export function EmployeeListView({
               <p className="mt-1 text-xs font-medium text-amber-600">Invite pending</p>
             )}
           </div>
-          <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-600">
-            {u.progress.length} / {totalModules} modules
-          </span>
+          <div className="flex items-center gap-2">
+            {u.certificationStatus === "CERTIFIED" && (
+              <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
+                Technician
+              </span>
+            )}
+            {u.certificationStatus === "PENDING" && (
+              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">
+                Pending Review
+              </span>
+            )}
+            <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-600">
+              {u.progress.length} / {totalModules} modules
+            </span>
+          </div>
         </Link>
       ))}
     </div>

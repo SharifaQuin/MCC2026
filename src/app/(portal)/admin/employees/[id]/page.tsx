@@ -4,5 +4,5 @@ import { loadEmployeeDetail, EmployeeDetailView } from "@/components/EmployeeDet
 export default async function AdminEmployeeDetailPage({ params }: { params: { id: string } }) {
   const data = await loadEmployeeDetail(params.id);
   if (!data) notFound();
-  return <EmployeeDetailView data={data} canManageAccount />;
+  return <EmployeeDetailView data={data} canManageAccount viewerRole="ADMIN" />;
 }
