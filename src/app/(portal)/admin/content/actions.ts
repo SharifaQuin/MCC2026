@@ -79,6 +79,9 @@ export async function createLessonAction(moduleId: string, slug: string) {
 
 export async function updateLessonAction(lessonId: string, slug: string, formData: FormData) {
   await requireAdmin();
+  const durationRaw = String(formData.get("videoDurationSeconds") ?? "").trim();
+  const videoDurationSeconds = durationRaw ? parseInt(durationRaw, 10) : null;
+
   await prisma.lesson.update({
     where: { id: lessonId },
     data: {
@@ -87,6 +90,10 @@ export async function updateLessonAction(lessonId: string, slug: string, formDat
       contentEn: String(formData.get("contentEn") ?? ""),
       contentEs: String(formData.get("contentEs") ?? "") || null,
       videoUrl: String(formData.get("videoUrl") ?? "") || null,
+      videoDurationSeconds:
+        videoDurationSeconds !== null && Number.isFinite(videoDurationSeconds)
+          ? videoDurationSeconds
+          : null,
     },
   });
   revalidatePath(`/admin/content/${slug}`);

@@ -11,6 +11,7 @@ interface Lesson {
   contentEn: string;
   contentEs: string | null;
   videoUrl: string | null;
+  videoDurationSeconds: number | null;
 }
 
 function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
@@ -73,14 +74,32 @@ function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
               />
             </div>
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium">Video URL (embed link)</label>
-            <input
-              name="videoUrl"
-              defaultValue={lesson.videoUrl ?? ""}
-              placeholder="Paste YouTube embed link once uploaded"
-              className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium">Video URL (embed link)</label>
+              <input
+                name="videoUrl"
+                defaultValue={lesson.videoUrl ?? ""}
+                placeholder="Paste YouTube/Synthesia embed link once uploaded"
+                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium">
+                Video length (seconds)
+              </label>
+              <input
+                type="number"
+                min={0}
+                name="videoDurationSeconds"
+                defaultValue={lesson.videoDurationSeconds ?? ""}
+                placeholder="e.g. 90"
+                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+              />
+              <p className="mt-1 text-xs text-neutral-400">
+                Trainees can&apos;t continue past this lesson until this much time has passed.
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <button

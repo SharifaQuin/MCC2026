@@ -62,8 +62,9 @@ model User {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  progress     ModuleProgress[]
-  quizAttempts QuizAttempt[]
+  progress       ModuleProgress[]
+  lessonProgress LessonProgress[]
+  quizAttempts   QuizAttempt[]
   invitedBy    String?
 
   fieldEvaluationsReceived FieldEvaluation[] @relation("TraineeFieldEvaluations")
@@ -133,10 +134,29 @@ model Lesson {
   contentEn  String   @db.Text
   contentEs  String?  @db.Text
   videoUrl   String?
+  // How long the trainee must keep this lesson open before "Continue"
+  // unlocks — set by an admin to roughly the video's runtime. Null means
+  // no minimum wait (text-only lessons, or a video without a known length).
+  videoDurationSeconds Int?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  progress LessonProgress[]
+
   @@index([moduleId, order])
+}
+
+// One row per trainee per completed lesson — lets the step-by-step lesson
+// flow know where to resume and stops a trainee from skipping ahead via URL.
+model LessonProgress {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId    String
+  lesson      Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  completedAt DateTime @default(now())
+
+  @@unique([userId, lessonId])
 }
 
 model QuizQuestion {

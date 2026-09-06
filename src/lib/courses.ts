@@ -29,46 +29,136 @@ export async function getModuleListForUser(userId: string) {
   });
 }
 
-export async function getModuleDetail(slug: string, userId: string) {
+async function getModuleLockStatus(moduleId: string, userId: string) {
+  const allModules = await prisma.module.findMany({
+    where: { published: true },
+    orderBy: { order: "asc" },
+    select: { id: true, order: true },
+  });
+  const idx = allModules.findIndex((m) => m.id === moduleId);
+  if (idx <= 0) return false;
+
+  const prevModule = allModules[idx - 1];
+  const prevProgress = await prisma.moduleProgress.findUnique({
+    where: { userId_moduleId: { userId, moduleId: prevModule.id } },
+  });
+  return prevProgress?.status !== "COMPLETED";
+}
+
+export async function getModuleOverview(slug: string, userId: string) {
   const module = await prisma.module.findUnique({
     where: { slug },
     include: {
-      lessons: { orderBy: { order: "asc" } },
-      quizQuestions: {
+      lessons: {
         orderBy: { order: "asc" },
-        include: { options: { orderBy: { order: "asc" } } },
+        select: { id: true, order: true, titleEn: true, titleEs: true },
       },
       progress: { where: { userId } },
     },
   });
   if (!module) return null;
 
-  const allModules = await prisma.module.findMany({
-    where: { published: true },
-    orderBy: { order: "asc" },
-    select: { id: true, order: true },
-  });
-  const idx = allModules.findIndex((m) => m.id === module.id);
-  let locked = false;
-  if (idx > 0) {
-    const prevModule = allModules[idx - 1];
-    const prevProgress = await prisma.moduleProgress.findUnique({
-      where: { userId_moduleId: { userId, moduleId: prevModule.id } },
-    });
-    locked = prevProgress?.status !== "COMPLETED";
-  }
+  const locked = await getModuleLockStatus(module.id, userId);
+  const status = (module.progress[0]?.status ?? "NOT_STARTED") as
+    | "NOT_STARTED"
+    | "IN_PROGRESS"
+    | "COMPLETED";
 
-  const attempts = await prisma.quizAttempt.findMany({
-    where: { userId, moduleId: module.id },
-    orderBy: { createdAt: "desc" },
+  const lessonProgress = await prisma.lessonProgress.findMany({
+    where: { userId, lessonId: { in: module.lessons.map((l) => l.id) } },
+    select: { lessonId: true },
   });
+  const completedLessonIds = new Set(lessonProgress.map((p) => p.lessonId));
+
+  // Once a module is fully certified via its quiz, don't keep re-gating
+  // lesson-by-lesson navigation for someone just coming back to review it.
+  const allLessonsCompleted =
+    status === "COMPLETED" || module.lessons.every((l) => completedLessonIds.has(l.id));
+  const firstIncompleteOrder =
+    module.lessons.find((l) => !completedLessonIds.has(l.id))?.order ?? module.lessons[0]?.order ?? 1;
 
   return {
     module,
-    status: module.progress[0]?.status ?? "NOT_STARTED",
+    status,
     locked,
-    attempts,
+    completedLessonIds,
+    allLessonsCompleted,
+    firstIncompleteOrder,
   };
+}
+
+export async function getLessonDetail(slug: string, order: number, userId: string) {
+  const module = await prisma.module.findUnique({
+    where: { slug },
+    include: { lessons: { orderBy: { order: "asc" } } },
+  });
+  if (!module) return null;
+
+  const lesson = module.lessons.find((l) => l.order === order);
+  if (!lesson) return null;
+
+  const locked = await getModuleLockStatus(module.id, userId);
+  const status = await prisma.moduleProgress.findUnique({
+    where: { userId_moduleId: { userId, moduleId: module.id } },
+  });
+  const moduleCompleted = status?.status === "COMPLETED";
+
+  const lessonProgress = await prisma.lessonProgress.findMany({
+    where: { userId, lessonId: { in: module.lessons.map((l) => l.id) } },
+    select: { lessonId: true },
+  });
+  const completedLessonIds = new Set(lessonProgress.map((p) => p.lessonId));
+
+  const firstIncompleteOrder =
+    module.lessons.find((l) => !completedLessonIds.has(l.id))?.order ?? module.lessons[0]?.order ?? 1;
+  const priorIncomplete = !moduleCompleted && order > firstIncompleteOrder;
+
+  const totalLessons = module.lessons.length;
+  const isLast = order === module.lessons[module.lessons.length - 1]?.order;
+  const alreadyCompleted = completedLessonIds.has(lesson.id);
+
+  return {
+    module,
+    lesson,
+    locked,
+    priorIncomplete,
+    firstIncompleteOrder,
+    totalLessons,
+    isLast,
+    alreadyCompleted,
+    moduleCompleted,
+  };
+}
+
+export async function getModuleQuiz(slug: string, userId: string) {
+  const module = await prisma.module.findUnique({
+    where: { slug },
+    include: {
+      quizQuestions: {
+        orderBy: { order: "asc" },
+        include: { options: { orderBy: { order: "asc" } } },
+      },
+    },
+  });
+  if (!module) return null;
+
+  const overview = await getModuleOverview(slug, userId);
+  if (!overview) return null;
+
+  return {
+    module,
+    locked: overview.locked,
+    allLessonsCompleted: overview.allLessonsCompleted,
+    firstIncompleteOrder: overview.firstIncompleteOrder,
+  };
+}
+
+export async function markLessonComplete(userId: string, lessonId: string) {
+  await prisma.lessonProgress.upsert({
+    where: { userId_lessonId: { userId, lessonId } },
+    create: { userId, lessonId },
+    update: {},
+  });
 }
 
 export async function markModuleInProgress(userId: string, moduleId: string) {

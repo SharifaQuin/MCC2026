@@ -1,79 +1,89 @@
 import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { getSession } from "@/lib/session";
-import { getModuleDetail, markModuleInProgress } from "@/lib/courses";
+import { getModuleOverview, markModuleInProgress } from "@/lib/courses";
 import { t } from "@/lib/i18n";
-import QuizForm from "./QuizForm";
 
-export default async function ModuleDetailPage({ params }: { params: { slug: string } }) {
+export default async function ModuleOverviewPage({ params }: { params: { slug: string } }) {
   const session = await getSession();
   if (!session) redirect("/login");
   const labels = t(session.language);
 
-  const detail = await getModuleDetail(params.slug, session.sub);
-  if (!detail) notFound();
-  if (detail.locked) redirect("/modules");
+  const overview = await getModuleOverview(params.slug, session.sub);
+  if (!overview) notFound();
+  if (overview.locked) redirect("/modules");
 
-  await markModuleInProgress(session.sub, detail.module.id);
+  await markModuleInProgress(session.sub, overview.module.id);
 
   const lang = session.language;
-  const title = lang === "ES" && detail.module.titleEs ? detail.module.titleEs : detail.module.titleEn;
+  const title =
+    lang === "ES" && overview.module.titleEs ? overview.module.titleEs : overview.module.titleEn;
+  const lessons = overview.module.lessons;
+
+  const continueHref =
+    overview.status === "COMPLETED"
+      ? `/modules/${params.slug}/lesson/1`
+      : `/modules/${params.slug}/lesson/${overview.firstIncompleteOrder}`;
+  const continueLabel =
+    overview.status === "NOT_STARTED"
+      ? labels.startModule
+      : overview.status === "COMPLETED"
+        ? labels.reviewModule
+        : labels.continue;
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       <div>
         <Link href="/modules" className="mb-3 inline-block text-sm text-brand-700 hover:underline">
           {labels.backToModules}
         </Link>
         <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
-          Module {detail.module.order}
+          Module {overview.module.order}
         </p>
         <h1 className="text-2xl font-semibold">{title}</h1>
       </div>
 
-      <div className="space-y-6">
-        {detail.module.lessons.map((lesson, i) => {
-          const lTitle = lang === "ES" && lesson.titleEs ? lesson.titleEs : lesson.titleEn;
-          const lContent = lang === "ES" && lesson.contentEs ? lesson.contentEs : lesson.contentEn;
-          return (
-            <div key={lesson.id} className="rounded-lg border border-neutral-200 bg-white p-5">
-              <h2 className="mb-2 font-medium">
-                {i + 1}. {lTitle}
-              </h2>
-              {lesson.videoUrl ? (
-                <div className="mb-3 aspect-video w-full overflow-hidden rounded-md bg-black">
-                  <iframe
-                    src={lesson.videoUrl}
-                    className="h-full w-full"
-                    allow="encrypted-media; fullscreen; microphone; screen-wake-lock;"
-                    allowFullScreen
-                    title={lTitle}
-                  />
-                </div>
-              ) : (
-                <p className="mb-3 text-xs italic text-neutral-400">
-                  Video coming soon — Paste YouTube link once uploaded.
-                </p>
-              )}
-              <p className="whitespace-pre-line text-sm text-neutral-700">{lContent}</p>
-            </div>
-          );
-        })}
+      <div className="rounded-lg border border-neutral-200 bg-white p-5">
+        <ol className="space-y-2">
+          {lessons.map((lesson, i) => {
+            const lTitle = lang === "ES" && lesson.titleEs ? lesson.titleEs : lesson.titleEn;
+            const isCompleted =
+              overview.status === "COMPLETED" || overview.completedLessonIds.has(lesson.id);
+            return (
+              <li key={lesson.id} className="flex items-center gap-3 text-sm">
+                <span
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-medium ${
+                    isCompleted
+                      ? "bg-green-100 text-green-700"
+                      : "bg-neutral-100 text-neutral-500"
+                  }`}
+                >
+                  {isCompleted ? "✓" : i + 1}
+                </span>
+                <span className={isCompleted ? "text-neutral-500" : "text-neutral-800"}>
+                  {lTitle}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
       </div>
 
-      <div>
-        <h2 className="mb-4 text-xl font-semibold">{labels.startQuiz}</h2>
-        <QuizForm
-          moduleId={detail.module.id}
-          slug={params.slug}
-          language={lang}
-          questions={detail.module.quizQuestions.map((q) => ({
-            id: q.id,
-            textEn: q.textEn,
-            textEs: q.textEs,
-            options: q.options.map((o) => ({ id: o.id, textEn: o.textEn, textEs: o.textEs })),
-          }))}
-        />
+      <div className="flex flex-wrap gap-3">
+        <Link
+          href={continueHref}
+          className="rounded-md bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700"
+        >
+          {continueLabel}
+        </Link>
+        {overview.allLessonsCompleted && (
+          <Link
+            href={`/modules/${params.slug}/quiz`}
+            className="rounded-md border border-brand-600 px-5 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50"
+          >
+            {labels.goToQuiz}
+          </Link>
+        )}
       </div>
     </div>
   );
