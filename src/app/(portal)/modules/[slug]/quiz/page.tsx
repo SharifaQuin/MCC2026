@@ -43,6 +43,7 @@ export default async function ModuleQuizPage({ params }: { params: { slug: strin
           textEs: q.textEs,
           options: q.options.map((o) => ({ id: o.id, textEn: o.textEn, textEs: o.textEs })),
         }))}
+        nextModule={quiz.nextModule}
       />
     </div>
   );

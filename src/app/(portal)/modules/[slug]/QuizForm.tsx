@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useFormState, useFormStatus } from "react-dom";
 import { submitQuizAction, QuizState } from "./actions";
 import type { Language } from "@/lib/session";
@@ -30,16 +31,24 @@ function SubmitButton({ label }: { label: string }) {
   );
 }
 
+interface NextModule {
+  slug: string;
+  titleEn: string;
+  titleEs: string | null;
+}
+
 export default function QuizForm({
   moduleId,
   slug,
   questions,
   language,
+  nextModule,
 }: {
   moduleId: string;
   slug: string;
   questions: Question[];
   language: Language;
+  nextModule: NextModule | null;
 }) {
   const labels = t(language);
   const action = submitQuizAction.bind(
@@ -88,10 +97,37 @@ export default function QuizForm({
             {state.scorePct}% — {state.passed ? labels.passed : labels.failed}
           </p>
           {!state.passed && <p className="mt-1">{labels.quizNeeds100}</p>}
+          {state.passed && (
+            <div className="mt-3">
+              {nextModule ? (
+                <Link
+                  href={`/modules/${nextModule.slug}`}
+                  className="inline-block rounded-md bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700"
+                >
+                  {labels.continueToModule}{" "}
+                  {language === "ES" && nextModule.titleEs ? nextModule.titleEs : nextModule.titleEn}
+                </Link>
+              ) : (
+                <div className="space-y-2">
+                  <p>{labels.allModulesComplete}</p>
+                  <Link
+                    href="/modules"
+                    className="inline-block rounded-md bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700"
+                  >
+                    {labels.backToModulesList}
+                  </Link>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      <SubmitButton label={state?.submitted && !state.passed ? labels.retakeQuiz : labels.submitQuiz} />
+      {!state?.passed && (
+        <SubmitButton
+          label={state?.submitted && !state.passed ? labels.retakeQuiz : labels.submitQuiz}
+        />
+      )}
     </form>
   );
 }

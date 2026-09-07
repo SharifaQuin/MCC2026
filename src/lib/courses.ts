@@ -145,11 +145,18 @@ export async function getModuleQuiz(slug: string, userId: string) {
   const overview = await getModuleOverview(slug, userId);
   if (!overview) return null;
 
+  const nextModule = await prisma.module.findFirst({
+    where: { published: true, order: { gt: module.order } },
+    orderBy: { order: "asc" },
+    select: { slug: true, titleEn: true, titleEs: true },
+  });
+
   return {
     module,
     locked: overview.locked,
     allLessonsCompleted: overview.allLessonsCompleted,
     firstIncompleteOrder: overview.firstIncompleteOrder,
+    nextModule,
   };
 }
 

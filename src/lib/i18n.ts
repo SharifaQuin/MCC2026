@@ -45,6 +45,9 @@ export const dictionary = {
     watchToUnlock: "Watch the video to continue",
     continueAvailableIn: "Continue available in",
     lessonComplete: "Lesson complete",
+    continueToModule: "Continue to",
+    allModulesComplete: "You've completed all available training modules!",
+    backToModulesList: "Back to Modules",
   },
   ES: {
     appName: "Portal de Capacitación de MCC",
@@ -92,6 +95,9 @@ export const dictionary = {
     watchToUnlock: "Mira el video para continuar",
     continueAvailableIn: "Continuar disponible en",
     lessonComplete: "Lección completada",
+    continueToModule: "Continuar a",
+    allModulesComplete: "¡Has completado todos los módulos de capacitación disponibles!",
+    backToModulesList: "Volver a Módulos",
   },
 } as const;
 
