@@ -49,6 +49,7 @@ export default async function LessonPage({
         </Link>
         <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
           {labels.lessonWord} {order} {labels.ofWord} {detail.totalLessons}
+          {detail.lesson.estimatedMinutes && <> · ~{detail.lesson.estimatedMinutes} min</>}
         </p>
         <h1 className="text-2xl font-semibold">{lTitle}</h1>
       </div>

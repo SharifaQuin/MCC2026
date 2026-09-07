@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { getModuleQuiz } from "@/lib/courses";
+import { shuffle } from "@/lib/shuffle";
 import { t } from "@/lib/i18n";
 import QuizForm from "../QuizForm";
 
@@ -37,11 +38,11 @@ export default async function ModuleQuizPage({ params }: { params: { slug: strin
         moduleId={quiz.module.id}
         slug={params.slug}
         language={lang}
-        questions={quiz.module.quizQuestions.map((q) => ({
+        questions={shuffle(quiz.module.quizQuestions).map((q) => ({
           id: q.id,
           textEn: q.textEn,
           textEs: q.textEs,
-          options: q.options.map((o) => ({ id: o.id, textEn: o.textEn, textEs: o.textEs })),
+          options: shuffle(q.options).map((o) => ({ id: o.id, textEn: o.textEn, textEs: o.textEs })),
         }))}
         nextModule={quiz.nextModule}
       />

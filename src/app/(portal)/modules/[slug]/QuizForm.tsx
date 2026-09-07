@@ -61,29 +61,67 @@ export default function QuizForm({
 
   return (
     <form action={formAction} className="space-y-8">
-      {questions.map((question, qi) => (
-        <fieldset key={question.id} className="rounded-lg border border-neutral-200 bg-white p-4">
-          <legend className="mb-3 font-medium">
-            {qi + 1}. {language === "ES" && question.textEs ? question.textEs : question.textEn}
-          </legend>
-          <div className="space-y-2">
-            {question.options
-              .filter((o) => (language === "ES" ? o.textEs || o.textEn : o.textEn))
-              .map((option) => (
-                <label key={option.id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name={`q_${question.id}`}
-                    value={option.id}
-                    required
-                    className="h-4 w-4"
-                  />
-                  {language === "ES" && option.textEs ? option.textEs : option.textEn}
-                </label>
-              ))}
-          </div>
-        </fieldset>
-      ))}
+      {questions.map((question, qi) => {
+        const result = state?.results?.find((r) => r.questionId === question.id);
+        return (
+          <fieldset
+            key={question.id}
+            className={`rounded-lg border bg-white p-4 ${
+              result ? (result.correct ? "border-green-300" : "border-red-300") : "border-neutral-200"
+            }`}
+          >
+            <legend className="sr-only">Question {qi + 1}</legend>
+            <div className="mb-3 flex w-full items-start gap-2 font-medium">
+              <span className="min-w-0 flex-1">
+                {qi + 1}. {language === "ES" && question.textEs ? question.textEs : question.textEn}
+              </span>
+              {result && (
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                    result.correct ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                  }`}
+                >
+                  {result.correct ? "✓" : "✗"}
+                </span>
+              )}
+            </div>
+            <div className="space-y-2">
+              {question.options
+                .filter((o) => (language === "ES" ? o.textEs || o.textEn : o.textEn))
+                .map((option) => {
+                  const isCorrectOption = result && option.id === result.correctOptionId;
+                  const isWrongSelection =
+                    result && !result.correct && option.id === result.selectedOptionId;
+                  return (
+                    <label
+                      key={option.id}
+                      className={`flex items-center gap-2 rounded-md px-2 py-1 text-sm ${
+                        isCorrectOption
+                          ? "bg-green-50 text-green-800"
+                          : isWrongSelection
+                            ? "bg-red-50 text-red-800"
+                            : ""
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name={`q_${question.id}`}
+                        value={option.id}
+                        defaultChecked={option.id === result?.selectedOptionId}
+                        required
+                        className="h-4 w-4"
+                      />
+                      {language === "ES" && option.textEs ? option.textEs : option.textEn}
+                      {isCorrectOption && (
+                        <span className="text-xs font-medium">— correct answer</span>
+                      )}
+                    </label>
+                  );
+                })}
+            </div>
+          </fieldset>
+        );
+      })}
 
       {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
 

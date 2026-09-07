@@ -14,6 +14,7 @@ interface Lesson {
   videoUrl: string | null;
   videoDurationSeconds: number | null;
   imageUrl: string | null;
+  estimatedMinutes: number | null;
 }
 
 function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
@@ -104,6 +105,22 @@ function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
                 Trainees can&apos;t continue past this lesson until this much time has passed.
               </p>
             </div>
+          </div>
+          <div>
+            <label className="mb-1 block w-40 text-xs font-medium">
+              Estimated time (minutes)
+            </label>
+            <input
+              type="number"
+              min={0}
+              name="estimatedMinutes"
+              defaultValue={lesson.estimatedMinutes ?? ""}
+              placeholder="e.g. 5"
+              className="w-40 rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            />
+            <p className="mt-1 text-xs text-neutral-400">
+              Shown to trainees so they know how long this lesson takes. Optional.
+            </p>
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium">Photo (optional)</label>

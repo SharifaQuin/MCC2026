@@ -6,6 +6,7 @@ export async function getModuleListForUser(userId: string) {
     orderBy: { order: "asc" },
     include: {
       progress: { where: { userId } },
+      lessons: { select: { estimatedMinutes: true } },
     },
   });
 
@@ -15,6 +16,9 @@ export async function getModuleListForUser(userId: string) {
     const status = progress?.status ?? "NOT_STARTED";
     const locked = !previousCompleted;
     previousCompleted = status === "COMPLETED";
+    const totalMinutes = m.lessons.some((l) => l.estimatedMinutes)
+      ? m.lessons.reduce((sum, l) => sum + (l.estimatedMinutes ?? 0), 0)
+      : null;
     return {
       id: m.id,
       slug: m.slug,
@@ -25,6 +29,7 @@ export async function getModuleListForUser(userId: string) {
       summaryEs: m.summaryEs,
       status: status as "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED",
       locked,
+      totalMinutes,
     };
   });
 }
@@ -51,7 +56,7 @@ export async function getModuleOverview(slug: string, userId: string) {
     include: {
       lessons: {
         orderBy: { order: "asc" },
-        select: { id: true, order: true, titleEn: true, titleEs: true },
+        select: { id: true, order: true, titleEn: true, titleEs: true, estimatedMinutes: true },
       },
       progress: { where: { userId } },
     },
@@ -182,9 +187,17 @@ export async function markModuleInProgress(userId: string, moduleId: string) {
   }
 }
 
+interface QuestionResult {
+  questionId: string;
+  selectedOptionId: string | null;
+  correctOptionId: string | null;
+  correct: boolean;
+}
+
 interface GradeResult {
   scorePct: number;
   passed: boolean;
+  results: QuestionResult[];
 }
 
 export async function submitQuizAttempt(
@@ -198,12 +211,18 @@ export async function submitQuizAttempt(
   });
 
   let correct = 0;
+  const results: QuestionResult[] = [];
   for (const question of questions) {
-    const selectedOptionId = answers[question.id];
+    const selectedOptionId = answers[question.id] ?? null;
     const correctOption = question.options.find((o) => o.isCorrect);
-    if (selectedOptionId && correctOption && selectedOptionId === correctOption.id) {
-      correct += 1;
-    }
+    const isCorrect = !!(selectedOptionId && correctOption && selectedOptionId === correctOption.id);
+    if (isCorrect) correct += 1;
+    results.push({
+      questionId: question.id,
+      selectedOptionId,
+      correctOptionId: correctOption?.id ?? null,
+      correct: isCorrect,
+    });
   }
 
   const scorePct = questions.length === 0 ? 100 : Math.round((correct / questions.length) * 100);
@@ -227,5 +246,5 @@ export async function submitQuizAttempt(
     },
   });
 
-  return { scorePct, passed };
+  return { scorePct, passed, results };
 }

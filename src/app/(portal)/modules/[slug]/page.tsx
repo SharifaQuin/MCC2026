@@ -19,6 +19,9 @@ export default async function ModuleOverviewPage({ params }: { params: { slug: s
   const title =
     lang === "ES" && overview.module.titleEs ? overview.module.titleEs : overview.module.titleEn;
   const lessons = overview.module.lessons;
+  const totalMinutes = lessons.some((l) => l.estimatedMinutes)
+    ? lessons.reduce((sum, l) => sum + (l.estimatedMinutes ?? 0), 0)
+    : null;
 
   const continueHref =
     overview.status === "COMPLETED"
@@ -41,6 +44,9 @@ export default async function ModuleOverviewPage({ params }: { params: { slug: s
           Module {overview.module.order}
         </p>
         <h1 className="text-2xl font-semibold">{title}</h1>
+        {totalMinutes !== null && (
+          <p className="mt-1 text-sm text-neutral-500">~{totalMinutes} min total</p>
+        )}
       </div>
 
       <div className="rounded-lg border border-neutral-200 bg-white p-5">
@@ -76,6 +82,9 @@ export default async function ModuleOverviewPage({ params }: { params: { slug: s
                   </Link>
                 ) : (
                   <span className="text-neutral-400">{lTitle}</span>
+                )}
+                {lesson.estimatedMinutes && (
+                  <span className="text-xs text-neutral-400">~{lesson.estimatedMinutes} min</span>
                 )}
               </li>
             );

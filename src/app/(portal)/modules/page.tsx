@@ -64,6 +64,9 @@ export default async function ModulesPage() {
                     </Link>
                   )}
                   {summary && <p className="mt-1 text-sm text-neutral-500">{summary}</p>}
+                  {m.totalMinutes !== null && (
+                    <p className="mt-1 text-xs text-neutral-400">~{m.totalMinutes} min</p>
+                  )}
                   {m.locked && <p className="mt-1 text-xs text-neutral-400">{labels.locked}</p>}
                 </div>
                 <span className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ${statusStyles[m.status]}`}>

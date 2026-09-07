@@ -4,10 +4,18 @@ import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/session";
 import { submitQuizAttempt } from "@/lib/courses";
 
+export interface QuestionResult {
+  questionId: string;
+  selectedOptionId: string | null;
+  correctOptionId: string | null;
+  correct: boolean;
+}
+
 export interface QuizState {
   scorePct?: number;
   passed?: boolean;
   submitted?: boolean;
+  results?: QuestionResult[];
   error?: string;
 }
 

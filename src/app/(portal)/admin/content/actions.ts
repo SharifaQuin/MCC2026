@@ -81,6 +81,8 @@ export async function updateLessonAction(lessonId: string, slug: string, formDat
   await requireAdmin();
   const durationRaw = String(formData.get("videoDurationSeconds") ?? "").trim();
   const videoDurationSeconds = durationRaw ? parseInt(durationRaw, 10) : null;
+  const minutesRaw = String(formData.get("estimatedMinutes") ?? "").trim();
+  const estimatedMinutes = minutesRaw ? parseInt(minutesRaw, 10) : null;
 
   await prisma.lesson.update({
     where: { id: lessonId },
@@ -95,6 +97,8 @@ export async function updateLessonAction(lessonId: string, slug: string, formDat
           ? videoDurationSeconds
           : null,
       imageUrl: String(formData.get("imageUrl") ?? "") || null,
+      estimatedMinutes:
+        estimatedMinutes !== null && Number.isFinite(estimatedMinutes) ? estimatedMinutes : null,
     },
   });
   revalidatePath(`/admin/content/${slug}`);
