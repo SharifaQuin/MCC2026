@@ -420,6 +420,553 @@
   },
   {
     "order": 2,
+    "slug": "company-terminology-definitions",
+    "titleEn": "Company Terminology & Definitions",
+    "titleEs": "Terminología y Definiciones de la Empresa",
+    "lessons": [
+      {
+        "order": 1,
+        "titleEn": "Roles & Team Terms",
+        "titleEs": "Roles y Términos del Equipo",
+        "contentEn": "Team Lead: whoever arrives at a home first when there's no official Lead Technician on the team — they handle all the pre-cleaning walkthrough procedures. Lead Technician: a technician who has completed all necessary training and evaluation to be promoted to the next position above Cleaning Technician. Office: the central meeting hub where you pick up supplies/refreshments and speak with a manager.",
+        "contentEs": "Team Lead (Líder del Equipo): quien llega primero a una casa cuando no hay un Técnico Líder oficial en el equipo — esta persona se encarga de todos los procedimientos de recorrido previos a la limpieza. Técnico Líder (Lead Technician): un técnico que ha completado todo el entrenamiento y evaluación necesarios para ser ascendido a la posición inmediatamente superior a Técnico de Limpieza. Oficina: el punto central de reunión donde recoges suministros/refrigerios y hablas con un gerente.",
+        "videoUrl": null
+      },
+      {
+        "order": 2,
+        "titleEn": "Types of Cleanings",
+        "titleEs": "Tipos de Limpiezas",
+        "contentEn": "Initial Clean: the first time we clean a new recurring client's home — slightly deeper than a standard maintenance cleaning. One-Time Clean: the only time we clean a client's home, done as a maintenance cleaning (normally for special occasions). Recurring Clean: on the schedule regularly — weekly, biweekly, or monthly. Flex House: a client who's flexible and often hosts newer technicians, giving 100% honest feedback on performance. Top to Bottom (TTB) Clean: a complete deep cleaning before recurring services start — also known as a Deep Cleaning (furnished homes). Make Ready Clean: a vacant/empty home cleaned before move-in or after move-out — also known as a Move-In/Move-Out Cleaning. Post-Construction: a cleaning after a home has been renovated or is under construction. A La Carte: only a specific area or item needs cleaning (example: just the kitchen, or one room).",
+        "contentEs": "Limpieza Inicial (Initial Clean): la primera vez que limpiamos la casa de un nuevo cliente recurrente — un poco más profunda que una limpieza de mantenimiento estándar. Limpieza Única (One-Time Clean): la única vez que limpiamos la casa de un cliente, realizada como una limpieza de mantenimiento (normalmente para ocasiones especiales). Limpieza Recurrente (Recurring Clean): programada regularmente — semanal, quincenal o mensual. Flex House (Casa Flexible): un cliente flexible que frecuentemente recibe a técnicos nuevos, dando retroalimentación 100% honesta sobre su desempeño. Limpieza de Arriba Abajo (Top to Bottom / TTB): una limpieza profunda completa antes de que inicien los servicios recurrentes — también conocida como Limpieza Profunda (Deep Cleaning) en casas amuebladas. Limpieza de Preparación (Make Ready Clean): una casa vacía/desocupada que se limpia antes de una mudanza de entrada o después de una de salida — también conocida como Limpieza de Mudanza (Move-In/Move-Out Cleaning). Post-Construcción: una limpieza después de que una casa ha sido remodelada o está en construcción. A La Carte (A la Carta): solo se necesita limpiar un área o artículo específico (ejemplo: solo la cocina, o una sola habitación).",
+        "videoUrl": null
+      },
+      {
+        "order": 3,
+        "titleEn": "Time & Pay Terms",
+        "titleEs": "Términos de Tiempo y Pago",
+        "contentEn": "CRM: the system holding client information, schedules, timesheets, and HR data — for MCC, this is TCS. Supplies: any equipment or products used to clean a home. JTH (Job Ticket Hours): the time frame a client has paid for their home to be cleaned (3 JTH = 3 hours paid to clean). Actual Hours / Labor Hours: the real time it takes a technician to clean the house (a 3 JTH job might actually take 2.75 actual hours).",
+        "contentEs": "CRM: el sistema que contiene la información de los clientes, horarios, hojas de tiempo y datos de recursos humanos — para MCC, este sistema es TCS. Suministros: cualquier equipo o producto que se use para limpiar una casa. JTH (Job Ticket Hours / Horas de Boleto de Trabajo): el tiempo que el cliente ha pagado para que se limpie su casa (3 JTH = 3 horas pagadas de limpieza). Horas Reales / Horas Laborales: el tiempo real que le toma a un técnico limpiar la casa (un trabajo de 3 JTH podría tomar en realidad 2.75 horas reales).",
+        "videoUrl": null
+      },
+      {
+        "order": 4,
+        "titleEn": "All MCC Technicians Are Full-Time Employees",
+        "titleEs": "Todos los Técnicos de MCC Son Empleados de Tiempo Completo",
+        "contentEn": "Every technician at MCC is a full-time, direct employee. MCC does not use part-time, seasonal, or temporary staff, and does not hire through outside staffing agencies — when you work for MCC, you work directly for MCC.",
+        "contentEs": "Cada técnico en MCC es un empleado de tiempo completo y directo. MCC no utiliza personal de medio tiempo, temporal ni de temporada, y no contrata a través de agencias de personal externas — cuando trabajas para MCC, trabajas directamente para MCC.",
+        "videoUrl": null
+      }
+    ],
+    "quiz": [
+      {
+        "order": 1,
+        "textEn": "What is the difference between a \"Team Lead\" and a \"Lead Technician\"?",
+        "textEs": "¿Cuál es la diferencia entre un \"Líder del Equipo\" (Team Lead) y un \"Técnico Líder\" (Lead Technician)?",
+        "correctIndex": 1,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "They're the same thing",
+            "textEs": "Son lo mismo"
+          },
+          {
+            "order": 2,
+            "textEn": "Team Lead is whoever arrives first when there's no assigned Lead Tech; Lead Technician is a promoted role earned through training and evaluation",
+            "textEs": "El Líder del Equipo es quien llega primero cuando no hay un Técnico Líder asignado; el Técnico Líder es un puesto de ascenso que se gana mediante entrenamiento y evaluación"
+          },
+          {
+            "order": 3,
+            "textEn": "Team Lead is a permanent promotion; Lead Technician is temporary",
+            "textEs": "El Líder del Equipo es un ascenso permanente; el Técnico Líder es temporal"
+          },
+          {
+            "order": 4,
+            "textEn": "Lead Technician only applies to solo jobs",
+            "textEs": "El Técnico Líder solo aplica a trabajos individuales"
+          }
+        ]
+      },
+      {
+        "order": 2,
+        "textEn": "What is an Initial Clean?",
+        "textEs": "¿Qué es una Limpieza Inicial (Initial Clean)?",
+        "correctIndex": 0,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "The first cleaning for a new recurring client, slightly deeper than standard maintenance",
+            "textEs": "La primera limpieza para un nuevo cliente recurrente, un poco más profunda que el mantenimiento estándar"
+          },
+          {
+            "order": 2,
+            "textEn": "Any one-time cleaning",
+            "textEs": "Cualquier limpieza de una sola vez"
+          },
+          {
+            "order": 3,
+            "textEn": "A cleaning done only for move-outs",
+            "textEs": "Una limpieza realizada solo para mudanzas de salida"
+          },
+          {
+            "order": 4,
+            "textEn": "The same as a TTB clean",
+            "textEs": "Lo mismo que una limpieza TTB"
+          }
+        ]
+      },
+      {
+        "order": 3,
+        "textEn": "What does JTH stand for, and what does it represent?",
+        "textEs": "¿Qué significa JTH y qué representa?",
+        "correctIndex": 0,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "Job Ticket Hours — the time frame the client paid for the cleaning",
+            "textEs": "Job Ticket Hours (Horas de Boleto de Trabajo) — el tiempo que el cliente pagó por la limpieza"
+          },
+          {
+            "order": 2,
+            "textEn": "Job Team Hours — the number of technicians on a job",
+            "textEs": "Job Team Hours — el número de técnicos en un trabajo"
+          },
+          {
+            "order": 3,
+            "textEn": "Just This House — a one-time clean",
+            "textEs": "Just This House — una limpieza de una sola vez"
+          },
+          {
+            "order": 4,
+            "textEn": "Job Task History — a log of past cleanings",
+            "textEs": "Job Task History — un registro de limpiezas anteriores"
+          }
+        ]
+      },
+      {
+        "order": 4,
+        "textEn": "True or False: Actual/Labor Hours and JTH are always exactly the same number.",
+        "textEs": "Verdadero o Falso: Las Horas Reales/Laborales y las JTH siempre son exactamente el mismo número.",
+        "correctIndex": 1,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "True",
+            "textEs": "Verdadero"
+          },
+          {
+            "order": 2,
+            "textEn": "False — Actual Hours are how long the job really took, which can be more or less than the JTH paid for",
+            "textEs": "Falso — las Horas Reales son el tiempo que realmente tomó el trabajo, que puede ser más o menos que las JTH pagadas"
+          }
+        ]
+      },
+      {
+        "order": 5,
+        "textEn": "What is a Make Ready Clean also known as?",
+        "textEs": "¿Cómo se le conoce también a una Limpieza de Preparación (Make Ready Clean)?",
+        "correctIndex": 0,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "A Move-In/Move-Out Cleaning",
+            "textEs": "Una Limpieza de Mudanza (Move-In/Move-Out Cleaning)"
+          },
+          {
+            "order": 2,
+            "textEn": "A Flex House cleaning",
+            "textEs": "Una limpieza de Flex House"
+          },
+          {
+            "order": 3,
+            "textEn": "An Initial Clean",
+            "textEs": "Una Limpieza Inicial"
+          },
+          {
+            "order": 4,
+            "textEn": "A One-Time Clean",
+            "textEs": "Una Limpieza Única"
+          }
+        ]
+      },
+      {
+        "order": 6,
+        "textEn": "What system does MCC use as its CRM?",
+        "textEs": "¿Qué sistema usa MCC como su CRM?",
+        "correctIndex": 0,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "TCS",
+            "textEs": "TCS"
+          },
+          {
+            "order": 2,
+            "textEn": "Slack",
+            "textEs": "Slack"
+          },
+          {
+            "order": 3,
+            "textEn": "QuickBooks",
+            "textEs": "QuickBooks"
+          },
+          {
+            "order": 4,
+            "textEn": "CareerPlug",
+            "textEs": "CareerPlug"
+          }
+        ]
+      },
+      {
+        "order": 7,
+        "textEn": "True or False: MCC hires part-time, seasonal, or temporary staff through an outside staffing agency.",
+        "textEs": "Verdadero o Falso: MCC contrata personal de medio tiempo, temporal o de temporada a través de una agencia de personal externa.",
+        "correctIndex": 1,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "True",
+            "textEs": "Verdadero"
+          },
+          {
+            "order": 2,
+            "textEn": "False — every MCC technician is a full-time, direct employee",
+            "textEs": "Falso — todos los técnicos de MCC son empleados de tiempo completo y directos"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "order": 3,
+    "slug": "apps-we-use-daily",
+    "titleEn": "Apps We Use Daily",
+    "titleEs": "Aplicaciones que Usamos a Diario",
+    "lessons": [
+      {
+        "order": 1,
+        "titleEn": "TCS (The Cleaning Software)",
+        "titleEs": "TCS (The Cleaning Software)",
+        "contentEn": "TCS is the scheduling app for technicians and clients. See your 3-day schedule, clock in/out and take lunch, view client home details, and submit job updates/notifications. Install: choose webhook by phone type (Apple/Android), choose English or Spanish version, save to favorites. Service Manager provides login credentials.",
+        "contentEs": "TCS es la aplicación de programación para técnicos y clientes. Consulta tu horario de los próximos 3 días, registra tu entrada/salida y tu hora de almuerzo, ve los detalles del hogar del cliente, y envía actualizaciones/notificaciones del trabajo. Instalación: elige el enlace según el tipo de teléfono (Apple/Android), elige la versión en inglés o en español, y guárdala en tus favoritos. Tu Gerente de Servicio te proporciona las credenciales de acceso.",
+        "videoUrl": null
+      },
+      {
+        "order": 2,
+        "titleEn": "TCS Walkthrough — First Job to Last Job (English)",
+        "titleEs": "Recorrido de TCS — Del Primer Trabajo al Último Trabajo (Inglés)",
+        "contentEn": "Full walkthrough video of using TCS from clocking in at the first job to clocking out at the last.",
+        "contentEs": "Video con el recorrido completo de cómo usar TCS, desde registrar la entrada en el primer trabajo hasta la salida en el último.",
+        "videoUrl": null
+      },
+      {
+        "order": 3,
+        "titleEn": "TCS Walkthrough — Primer Trabajo al Último Trabajo (Español)",
+        "titleEs": "Recorrido de TCS — Primer Trabajo al Último Trabajo (Español)",
+        "contentEn": "Video completo de cómo usar TCS desde registrar la entrada en el primer trabajo hasta la salida en el último.",
+        "contentEs": "Video completo de cómo usar TCS desde registrar la entrada en el primer trabajo hasta la salida en el último.",
+        "videoUrl": null
+      },
+      {
+        "order": 4,
+        "titleEn": "Slack",
+        "titleEs": "Slack",
+        "contentEn": "Team communication app — DMs to managers, teammates, and office staff, plus company updates. NOT used for clocking in/out, lunch, or viewing client home details — that's TCS only.",
+        "contentEs": "Aplicación de comunicación del equipo — mensajes directos a gerentes, compañeros de equipo y personal de oficina, además de actualizaciones de la empresa. NO se usa para registrar entrada/salida, el almuerzo, ni ver los detalles del hogar del cliente — eso es solo en TCS.",
+        "videoUrl": null
+      },
+      {
+        "order": 5,
+        "titleEn": "Contacting HR",
+        "titleEs": "Cómo Contactar a Recursos Humanos",
+        "contentEn": "HR is reached by email only, not Slack: HR@mamascleaningcrew.com. Use email for time-off requests, complaints, policy questions, and anything HR/Administration handles.",
+        "contentEs": "A Recursos Humanos se le contacta solo por correo electrónico, no por Slack: HR@mamascleaningcrew.com. Usa el correo electrónico para solicitudes de tiempo libre, quejas, preguntas sobre políticas, y cualquier asunto que maneje Recursos Humanos/Administración.",
+        "videoUrl": null
+      },
+      {
+        "order": 6,
+        "titleEn": "Who to Contact for What (Departments)",
+        "titleEs": "A Quién Contactar para Qué (Departamentos)",
+        "contentEn": "MCC is organized into four departments — knowing who handles what saves you time. Logistics (report to Brenda & Shar, via Slack): scheduling, drive time, customer requests, invoice changes, job notes, customer tips, \"who am I working with.\" Administration (report to HR, EMAIL ONLY — HR@mamascleaningcrew.com): time-off requests, breakage/accidents, complaints, cancellations/lockouts, policy questions, general concerns, \"who am I working with.\" Marketing/Sales (report to Adam, via Slack): promotions, client referrals, invoice pricing, social media, door hangers, video production, \"who am I working with.\" Quality Control (report to Shar, via Slack): cleaning concerns, inspections, the rewards program, client reviews, QDS (chemical usage — how to correctly use each chemical as directed by the manufacturer), supply requests, and \"how do I clean this?\" questions.",
+        "contentEs": "MCC está organizada en cuatro departamentos — saber quién maneja qué te ahorra tiempo. Logística (repórtate con Brenda y Shar, por Slack): programación, tiempo de traslado, solicitudes de clientes, cambios de factura, notas del trabajo, propinas de clientes, \"con quién voy a trabajar\". Administración (repórtate con Recursos Humanos, SOLO POR CORREO — HR@mamascleaningcrew.com): solicitudes de tiempo libre, roturas/accidentes, quejas, cancelaciones/cierres sin acceso (lockouts), preguntas sobre políticas, inquietudes generales, \"con quién voy a trabajar\". Marketing/Ventas (repórtate con Adam, por Slack): promociones, referidos de clientes, precios de facturas, redes sociales, volantes de puerta, producción de video, \"con quién voy a trabajar\". Control de Calidad (repórtate con Shar, por Slack): inquietudes sobre limpieza, inspecciones, el programa de recompensas, reseñas de clientes, QDS (uso de químicos — cómo usar correctamente cada químico según lo indique el fabricante), solicitudes de suministros, y preguntas de \"¿cómo limpio esto?\".",
+        "videoUrl": null
+      }
+    ],
+    "quiz": [
+      {
+        "order": 1,
+        "textEn": "What does TCS stand for?",
+        "textEs": "¿Qué significa TCS?",
+        "correctIndex": 0,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "The Cleaning Software",
+            "textEs": "The Cleaning Software"
+          },
+          {
+            "order": 2,
+            "textEn": "Team Communication System",
+            "textEs": "Sistema de Comunicación del Equipo"
+          },
+          {
+            "order": 3,
+            "textEn": "Technician Check-in System",
+            "textEs": "Sistema de Registro de Técnicos"
+          }
+        ]
+      },
+      {
+        "order": 2,
+        "textEn": "Which app do you use to clock in for your scheduled shift every day?",
+        "textEs": "¿Qué aplicación usas para registrar tu entrada a tu turno programado cada día?",
+        "correctIndex": 1,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "Slack",
+            "textEs": "Slack"
+          },
+          {
+            "order": 2,
+            "textEn": "TCS",
+            "textEs": "TCS"
+          }
+        ]
+      },
+      {
+        "order": 3,
+        "textEn": "In which app can you see your schedule for the next 3 days?",
+        "textEs": "¿En qué aplicación puedes ver tu horario de los próximos 3 días?",
+        "correctIndex": 0,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "TCS",
+            "textEs": "TCS"
+          },
+          {
+            "order": 2,
+            "textEn": "Slack",
+            "textEs": "Slack"
+          }
+        ]
+      },
+      {
+        "order": 4,
+        "textEn": "True or False: You can clock out for lunch using Slack.",
+        "textEs": "Verdadero o Falso: Puedes registrar tu salida de almuerzo usando Slack.",
+        "correctIndex": 1,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "True",
+            "textEs": "Verdadero"
+          },
+          {
+            "order": 2,
+            "textEn": "False — lunch clock-out is done in TCS",
+            "textEs": "Falso — la salida de almuerzo se registra en TCS"
+          }
+        ]
+      },
+      {
+        "order": 5,
+        "textEn": "How can you reach HR?",
+        "textEs": "¿Cómo puedes contactar a Recursos Humanos?",
+        "correctIndex": 0,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "Email only (HR@mamascleaningcrew.com)",
+            "textEs": "Solo por correo electrónico (HR@mamascleaningcrew.com)"
+          },
+          {
+            "order": 2,
+            "textEn": "Slack",
+            "textEs": "Slack"
+          },
+          {
+            "order": 3,
+            "textEn": "TCS",
+            "textEs": "TCS"
+          },
+          {
+            "order": 4,
+            "textEn": "Phone call to any manager",
+            "textEs": "Llamando por teléfono a cualquier gerente"
+          }
+        ]
+      },
+      {
+        "order": 6,
+        "textEn": "In which app can you see company updates?",
+        "textEs": "¿En qué aplicación puedes ver las actualizaciones de la empresa?",
+        "correctIndex": 1,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "TCS",
+            "textEs": "TCS"
+          },
+          {
+            "order": 2,
+            "textEn": "Slack",
+            "textEs": "Slack"
+          }
+        ]
+      },
+      {
+        "order": 7,
+        "textEn": "True or False: You can see a scheduled client's home details using Slack.",
+        "textEs": "Verdadero o Falso: Puedes ver los detalles del hogar de un cliente programado usando Slack.",
+        "correctIndex": 1,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "True",
+            "textEs": "Verdadero"
+          },
+          {
+            "order": 2,
+            "textEn": "False — client home details are in TCS",
+            "textEs": "Falso — los detalles del hogar del cliente están en TCS"
+          }
+        ]
+      },
+      {
+        "order": 8,
+        "textEn": "In which app do you send important updates/notifications for a scheduled job?",
+        "textEs": "¿En qué aplicación envías actualizaciones/notificaciones importantes de un trabajo programado?",
+        "correctIndex": 0,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "TCS",
+            "textEs": "TCS"
+          },
+          {
+            "order": 2,
+            "textEn": "Slack",
+            "textEs": "Slack"
+          }
+        ]
+      },
+      {
+        "order": 9,
+        "textEn": "If you have a question about scheduling or drive time, which department should you contact?",
+        "textEs": "Si tienes una pregunta sobre programación o tiempo de traslado, ¿a qué departamento debes contactar?",
+        "correctIndex": 0,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "Logistics (Brenda & Shar)",
+            "textEs": "Logística (Brenda y Shar)"
+          },
+          {
+            "order": 2,
+            "textEn": "Marketing/Sales (Adam)",
+            "textEs": "Marketing/Ventas (Adam)"
+          },
+          {
+            "order": 3,
+            "textEn": "Quality Control (Shar)",
+            "textEs": "Control de Calidad (Shar)"
+          },
+          {
+            "order": 4,
+            "textEn": "Administration (HR)",
+            "textEs": "Administración (Recursos Humanos)"
+          }
+        ]
+      },
+      {
+        "order": 10,
+        "textEn": "If you want to report an accident, breakage, or a lockout, which department handles that?",
+        "textEs": "Si quieres reportar un accidente, una rotura, o un cierre sin acceso (lockout), ¿qué departamento se encarga de eso?",
+        "correctIndex": 0,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "Administration (HR)",
+            "textEs": "Administración (Recursos Humanos)"
+          },
+          {
+            "order": 2,
+            "textEn": "Marketing/Sales (Adam)",
+            "textEs": "Marketing/Ventas (Adam)"
+          },
+          {
+            "order": 3,
+            "textEn": "Logistics (Brenda & Shar)",
+            "textEs": "Logística (Brenda y Shar)"
+          },
+          {
+            "order": 4,
+            "textEn": "Quality Control (Shar)",
+            "textEs": "Control de Calidad (Shar)"
+          }
+        ]
+      },
+      {
+        "order": 11,
+        "textEn": "Who do you contact for cleaning concerns, inspections, or \"how do I clean this\" questions?",
+        "textEs": "¿A quién contactas para inquietudes sobre limpieza, inspecciones, o preguntas de \"cómo limpio esto\"?",
+        "correctIndex": 0,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "Quality Control (Shar)",
+            "textEs": "Control de Calidad (Shar)"
+          },
+          {
+            "order": 2,
+            "textEn": "Marketing/Sales (Adam)",
+            "textEs": "Marketing/Ventas (Adam)"
+          },
+          {
+            "order": 3,
+            "textEn": "Administration (HR)",
+            "textEs": "Administración (Recursos Humanos)"
+          },
+          {
+            "order": 4,
+            "textEn": "Logistics (Brenda & Shar)",
+            "textEs": "Logística (Brenda y Shar)"
+          }
+        ]
+      },
+      {
+        "order": 12,
+        "textEn": "What does QDS refer to?",
+        "textEs": "¿A qué se refiere QDS?",
+        "correctIndex": 1,
+        "options": [
+          {
+            "order": 1,
+            "textEn": "Quarterly Delivery Schedule",
+            "textEs": "Programa de Entrega Trimestral"
+          },
+          {
+            "order": 2,
+            "textEn": "Chemical usage — how to correctly use each chemical as directed by the manufacturer",
+            "textEs": "Uso de químicos — cómo usar correctamente cada químico según lo indique el fabricante"
+          },
+          {
+            "order": 3,
+            "textEn": "A customer discount system",
+            "textEs": "Un sistema de descuentos para clientes"
+          },
+          {
+            "order": 4,
+            "textEn": "Daily quality scores for each technician",
+            "textEs": "Puntuaciones diarias de calidad para cada técnico"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "order": 4,
     "slug": "a-day-in-the-life",
     "titleEn": "A Day in the Life",
     "titleEs": "Un Día en la Vida",
@@ -645,225 +1192,7 @@
     ]
   },
   {
-    "order": 3,
-    "slug": "company-terminology-definitions",
-    "titleEn": "Company Terminology & Definitions",
-    "titleEs": "Terminología y Definiciones de la Empresa",
-    "lessons": [
-      {
-        "order": 1,
-        "titleEn": "Roles & Team Terms",
-        "titleEs": "Roles y Términos del Equipo",
-        "contentEn": "Team Lead: whoever arrives at a home first when there's no official Lead Technician on the team — they handle all the pre-cleaning walkthrough procedures. Lead Technician: a technician who has completed all necessary training and evaluation to be promoted to the next position above Cleaning Technician. Office: the central meeting hub where you pick up supplies/refreshments and speak with a manager.",
-        "contentEs": "Team Lead (Líder del Equipo): quien llega primero a una casa cuando no hay un Técnico Líder oficial en el equipo — esta persona se encarga de todos los procedimientos de recorrido previos a la limpieza. Técnico Líder (Lead Technician): un técnico que ha completado todo el entrenamiento y evaluación necesarios para ser ascendido a la posición inmediatamente superior a Técnico de Limpieza. Oficina: el punto central de reunión donde recoges suministros/refrigerios y hablas con un gerente.",
-        "videoUrl": null
-      },
-      {
-        "order": 2,
-        "titleEn": "Types of Cleanings",
-        "titleEs": "Tipos de Limpiezas",
-        "contentEn": "Initial Clean: the first time we clean a new recurring client's home — slightly deeper than a standard maintenance cleaning. One-Time Clean: the only time we clean a client's home, done as a maintenance cleaning (normally for special occasions). Recurring Clean: on the schedule regularly — weekly, biweekly, or monthly. Flex House: a client who's flexible and often hosts newer technicians, giving 100% honest feedback on performance. Top to Bottom (TTB) Clean: a complete deep cleaning before recurring services start — also known as a Deep Cleaning (furnished homes). Make Ready Clean: a vacant/empty home cleaned before move-in or after move-out — also known as a Move-In/Move-Out Cleaning. Post-Construction: a cleaning after a home has been renovated or is under construction. A La Carte: only a specific area or item needs cleaning (example: just the kitchen, or one room).",
-        "contentEs": "Limpieza Inicial (Initial Clean): la primera vez que limpiamos la casa de un nuevo cliente recurrente — un poco más profunda que una limpieza de mantenimiento estándar. Limpieza Única (One-Time Clean): la única vez que limpiamos la casa de un cliente, realizada como una limpieza de mantenimiento (normalmente para ocasiones especiales). Limpieza Recurrente (Recurring Clean): programada regularmente — semanal, quincenal o mensual. Flex House (Casa Flexible): un cliente flexible que frecuentemente recibe a técnicos nuevos, dando retroalimentación 100% honesta sobre su desempeño. Limpieza de Arriba Abajo (Top to Bottom / TTB): una limpieza profunda completa antes de que inicien los servicios recurrentes — también conocida como Limpieza Profunda (Deep Cleaning) en casas amuebladas. Limpieza de Preparación (Make Ready Clean): una casa vacía/desocupada que se limpia antes de una mudanza de entrada o después de una de salida — también conocida como Limpieza de Mudanza (Move-In/Move-Out Cleaning). Post-Construcción: una limpieza después de que una casa ha sido remodelada o está en construcción. A La Carte (A la Carta): solo se necesita limpiar un área o artículo específico (ejemplo: solo la cocina, o una sola habitación).",
-        "videoUrl": null
-      },
-      {
-        "order": 3,
-        "titleEn": "Time & Pay Terms",
-        "titleEs": "Términos de Tiempo y Pago",
-        "contentEn": "CRM: the system holding client information, schedules, timesheets, and HR data — for MCC, this is TCS. Supplies: any equipment or products used to clean a home. JTH (Job Ticket Hours): the time frame a client has paid for their home to be cleaned (3 JTH = 3 hours paid to clean). Actual Hours / Labor Hours: the real time it takes a technician to clean the house (a 3 JTH job might actually take 2.75 actual hours).",
-        "contentEs": "CRM: el sistema que contiene la información de los clientes, horarios, hojas de tiempo y datos de recursos humanos — para MCC, este sistema es TCS. Suministros: cualquier equipo o producto que se use para limpiar una casa. JTH (Job Ticket Hours / Horas de Boleto de Trabajo): el tiempo que el cliente ha pagado para que se limpie su casa (3 JTH = 3 horas pagadas de limpieza). Horas Reales / Horas Laborales: el tiempo real que le toma a un técnico limpiar la casa (un trabajo de 3 JTH podría tomar en realidad 2.75 horas reales).",
-        "videoUrl": null
-      },
-      {
-        "order": 4,
-        "titleEn": "All MCC Technicians Are Full-Time Employees",
-        "titleEs": "Todos los Técnicos de MCC Son Empleados de Tiempo Completo",
-        "contentEn": "Every technician at MCC is a full-time, direct employee. MCC does not use part-time, seasonal, or temporary staff, and does not hire through outside staffing agencies — when you work for MCC, you work directly for MCC.",
-        "contentEs": "Cada técnico en MCC es un empleado de tiempo completo y directo. MCC no utiliza personal de medio tiempo, temporal ni de temporada, y no contrata a través de agencias de personal externas — cuando trabajas para MCC, trabajas directamente para MCC.",
-        "videoUrl": null
-      }
-    ],
-    "quiz": [
-      {
-        "order": 1,
-        "textEn": "What is the difference between a \"Team Lead\" and a \"Lead Technician\"?",
-        "textEs": "¿Cuál es la diferencia entre un \"Líder del Equipo\" (Team Lead) y un \"Técnico Líder\" (Lead Technician)?",
-        "correctIndex": 1,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "They're the same thing",
-            "textEs": "Son lo mismo"
-          },
-          {
-            "order": 2,
-            "textEn": "Team Lead is whoever arrives first when there's no assigned Lead Tech; Lead Technician is a promoted role earned through training and evaluation",
-            "textEs": "El Líder del Equipo es quien llega primero cuando no hay un Técnico Líder asignado; el Técnico Líder es un puesto de ascenso que se gana mediante entrenamiento y evaluación"
-          },
-          {
-            "order": 3,
-            "textEn": "Team Lead is a permanent promotion; Lead Technician is temporary",
-            "textEs": "El Líder del Equipo es un ascenso permanente; el Técnico Líder es temporal"
-          },
-          {
-            "order": 4,
-            "textEn": "Lead Technician only applies to solo jobs",
-            "textEs": "El Técnico Líder solo aplica a trabajos individuales"
-          }
-        ]
-      },
-      {
-        "order": 2,
-        "textEn": "What is an Initial Clean?",
-        "textEs": "¿Qué es una Limpieza Inicial (Initial Clean)?",
-        "correctIndex": 0,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "The first cleaning for a new recurring client, slightly deeper than standard maintenance",
-            "textEs": "La primera limpieza para un nuevo cliente recurrente, un poco más profunda que el mantenimiento estándar"
-          },
-          {
-            "order": 2,
-            "textEn": "Any one-time cleaning",
-            "textEs": "Cualquier limpieza de una sola vez"
-          },
-          {
-            "order": 3,
-            "textEn": "A cleaning done only for move-outs",
-            "textEs": "Una limpieza realizada solo para mudanzas de salida"
-          },
-          {
-            "order": 4,
-            "textEn": "The same as a TTB clean",
-            "textEs": "Lo mismo que una limpieza TTB"
-          }
-        ]
-      },
-      {
-        "order": 3,
-        "textEn": "What does JTH stand for, and what does it represent?",
-        "textEs": "¿Qué significa JTH y qué representa?",
-        "correctIndex": 0,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "Job Ticket Hours — the time frame the client paid for the cleaning",
-            "textEs": "Job Ticket Hours (Horas de Boleto de Trabajo) — el tiempo que el cliente pagó por la limpieza"
-          },
-          {
-            "order": 2,
-            "textEn": "Job Team Hours — the number of technicians on a job",
-            "textEs": "Job Team Hours — el número de técnicos en un trabajo"
-          },
-          {
-            "order": 3,
-            "textEn": "Just This House — a one-time clean",
-            "textEs": "Just This House — una limpieza de una sola vez"
-          },
-          {
-            "order": 4,
-            "textEn": "Job Task History — a log of past cleanings",
-            "textEs": "Job Task History — un registro de limpiezas anteriores"
-          }
-        ]
-      },
-      {
-        "order": 4,
-        "textEn": "True or False: Actual/Labor Hours and JTH are always exactly the same number.",
-        "textEs": "Verdadero o Falso: Las Horas Reales/Laborales y las JTH siempre son exactamente el mismo número.",
-        "correctIndex": 1,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "True",
-            "textEs": "Verdadero"
-          },
-          {
-            "order": 2,
-            "textEn": "False — Actual Hours are how long the job really took, which can be more or less than the JTH paid for",
-            "textEs": "Falso — las Horas Reales son el tiempo que realmente tomó el trabajo, que puede ser más o menos que las JTH pagadas"
-          }
-        ]
-      },
-      {
-        "order": 5,
-        "textEn": "What is a Make Ready Clean also known as?",
-        "textEs": "¿Cómo se le conoce también a una Limpieza de Preparación (Make Ready Clean)?",
-        "correctIndex": 0,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "A Move-In/Move-Out Cleaning",
-            "textEs": "Una Limpieza de Mudanza (Move-In/Move-Out Cleaning)"
-          },
-          {
-            "order": 2,
-            "textEn": "A Flex House cleaning",
-            "textEs": "Una limpieza de Flex House"
-          },
-          {
-            "order": 3,
-            "textEn": "An Initial Clean",
-            "textEs": "Una Limpieza Inicial"
-          },
-          {
-            "order": 4,
-            "textEn": "A One-Time Clean",
-            "textEs": "Una Limpieza Única"
-          }
-        ]
-      },
-      {
-        "order": 6,
-        "textEn": "What system does MCC use as its CRM?",
-        "textEs": "¿Qué sistema usa MCC como su CRM?",
-        "correctIndex": 0,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "TCS",
-            "textEs": "TCS"
-          },
-          {
-            "order": 2,
-            "textEn": "Slack",
-            "textEs": "Slack"
-          },
-          {
-            "order": 3,
-            "textEn": "QuickBooks",
-            "textEs": "QuickBooks"
-          },
-          {
-            "order": 4,
-            "textEn": "CareerPlug",
-            "textEs": "CareerPlug"
-          }
-        ]
-      },
-      {
-        "order": 7,
-        "textEn": "True or False: MCC hires part-time, seasonal, or temporary staff through an outside staffing agency.",
-        "textEs": "Verdadero o Falso: MCC contrata personal de medio tiempo, temporal o de temporada a través de una agencia de personal externa.",
-        "correctIndex": 1,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "True",
-            "textEs": "Verdadero"
-          },
-          {
-            "order": 2,
-            "textEn": "False — every MCC technician is a full-time, direct employee",
-            "textEs": "Falso — todos los técnicos de MCC son empleados de tiempo completo y directos"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "order": 4,
+    "order": 5,
     "slug": "golden-rules-of-cleaning",
     "titleEn": "Golden Rules of Cleaning",
     "titleEs": "Reglas de Oro de la Limpieza",
@@ -1397,7 +1726,7 @@
     ]
   },
   {
-    "order": 5,
+    "order": 6,
     "slug": "working-in-teams-working-solo",
     "titleEn": "Working in Teams & Working Solo",
     "titleEs": "Trabajo en Equipo y Trabajo Individual",
@@ -1699,7 +2028,7 @@
     ]
   },
   {
-    "order": 6,
+    "order": 7,
     "slug": "lead-technician-role-authority",
     "titleEn": "Lead Technician Role & Authority",
     "titleEs": "Rol y Autoridad del Técnico Líder",
@@ -1883,7 +2212,7 @@
     ]
   },
   {
-    "order": 7,
+    "order": 8,
     "slug": "taking-care-of-you",
     "titleEn": "Taking Care of You",
     "titleEs": "Cuidando de Ti",
@@ -2019,7 +2348,7 @@
     ]
   },
   {
-    "order": 8,
+    "order": 9,
     "slug": "attendance-workplace-policies",
     "titleEn": "Attendance & Workplace Policies",
     "titleEs": "Asistencia y Políticas del Lugar de Trabajo",
@@ -2537,7 +2866,7 @@
     ]
   },
   {
-    "order": 9,
+    "order": 10,
     "slug": "workplace-conduct-performance-expectations",
     "titleEn": "Workplace Conduct & Performance Expectations",
     "titleEs": "Conducta en el Lugar de Trabajo y Expectativas de Desempeño",
@@ -3029,7 +3358,7 @@
     ]
   },
   {
-    "order": 10,
+    "order": 11,
     "slug": "pay-structure",
     "titleEn": "Pay Structure",
     "titleEs": "Estructura de Pago",
@@ -3571,7 +3900,7 @@
     ]
   },
   {
-    "order": 11,
+    "order": 12,
     "slug": "incentive-rewards-program",
     "titleEn": "Incentive & Rewards Program",
     "titleEs": "Programa de Incentivos y Recompensas",
@@ -3849,7 +4178,7 @@
     ]
   },
   {
-    "order": 12,
+    "order": 13,
     "slug": "meal-rest-break-policy",
     "titleEn": "Meal & Rest Break Policy",
     "titleEs": "Política de Descansos para Comida y Descanso",
@@ -4127,7 +4456,7 @@
     ]
   },
   {
-    "order": 13,
+    "order": 14,
     "slug": "mcc-dirt-code-system",
     "titleEn": "MCC Dirt Code System",
     "titleEs": "Sistema Dirt Code de MCC (clasifica qué tan sucio está un hogar)",
@@ -4319,7 +4648,7 @@
     ]
   },
   {
-    "order": 14,
+    "order": 15,
     "slug": "supplies-tools-safety",
     "titleEn": "Supplies, Tools & Safety",
     "titleEs": "Suministros, Herramientas y Seguridad",
@@ -5065,335 +5394,6 @@
             "order": 4,
             "textEn": "Only if the client asks",
             "textEs": "Solo si el cliente lo solicita"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "order": 15,
-    "slug": "apps-we-use-daily",
-    "titleEn": "Apps We Use Daily",
-    "titleEs": "Aplicaciones que Usamos a Diario",
-    "lessons": [
-      {
-        "order": 1,
-        "titleEn": "TCS (The Cleaning Software)",
-        "titleEs": "TCS (The Cleaning Software)",
-        "contentEn": "TCS is the scheduling app for technicians and clients. See your 3-day schedule, clock in/out and take lunch, view client home details, and submit job updates/notifications. Install: choose webhook by phone type (Apple/Android), choose English or Spanish version, save to favorites. Service Manager provides login credentials.",
-        "contentEs": "TCS es la aplicación de programación para técnicos y clientes. Consulta tu horario de los próximos 3 días, registra tu entrada/salida y tu hora de almuerzo, ve los detalles del hogar del cliente, y envía actualizaciones/notificaciones del trabajo. Instalación: elige el enlace según el tipo de teléfono (Apple/Android), elige la versión en inglés o en español, y guárdala en tus favoritos. Tu Gerente de Servicio te proporciona las credenciales de acceso.",
-        "videoUrl": null
-      },
-      {
-        "order": 2,
-        "titleEn": "TCS Walkthrough — First Job to Last Job (English)",
-        "titleEs": "Recorrido de TCS — Del Primer Trabajo al Último Trabajo (Inglés)",
-        "contentEn": "Full walkthrough video of using TCS from clocking in at the first job to clocking out at the last.",
-        "contentEs": "Video con el recorrido completo de cómo usar TCS, desde registrar la entrada en el primer trabajo hasta la salida en el último.",
-        "videoUrl": null
-      },
-      {
-        "order": 3,
-        "titleEn": "TCS Walkthrough — Primer Trabajo al Último Trabajo (Español)",
-        "titleEs": "Recorrido de TCS — Primer Trabajo al Último Trabajo (Español)",
-        "contentEn": "Video completo de cómo usar TCS desde registrar la entrada en el primer trabajo hasta la salida en el último.",
-        "contentEs": "Video completo de cómo usar TCS desde registrar la entrada en el primer trabajo hasta la salida en el último.",
-        "videoUrl": null
-      },
-      {
-        "order": 4,
-        "titleEn": "Slack",
-        "titleEs": "Slack",
-        "contentEn": "Team communication app — DMs to managers, teammates, and office staff, plus company updates. NOT used for clocking in/out, lunch, or viewing client home details — that's TCS only.",
-        "contentEs": "Aplicación de comunicación del equipo — mensajes directos a gerentes, compañeros de equipo y personal de oficina, además de actualizaciones de la empresa. NO se usa para registrar entrada/salida, el almuerzo, ni ver los detalles del hogar del cliente — eso es solo en TCS.",
-        "videoUrl": null
-      },
-      {
-        "order": 5,
-        "titleEn": "Contacting HR",
-        "titleEs": "Cómo Contactar a Recursos Humanos",
-        "contentEn": "HR is reached by email only, not Slack: HR@mamascleaningcrew.com. Use email for time-off requests, complaints, policy questions, and anything HR/Administration handles.",
-        "contentEs": "A Recursos Humanos se le contacta solo por correo electrónico, no por Slack: HR@mamascleaningcrew.com. Usa el correo electrónico para solicitudes de tiempo libre, quejas, preguntas sobre políticas, y cualquier asunto que maneje Recursos Humanos/Administración.",
-        "videoUrl": null
-      },
-      {
-        "order": 6,
-        "titleEn": "Who to Contact for What (Departments)",
-        "titleEs": "A Quién Contactar para Qué (Departamentos)",
-        "contentEn": "MCC is organized into four departments — knowing who handles what saves you time. Logistics (report to Brenda & Shar, via Slack): scheduling, drive time, customer requests, invoice changes, job notes, customer tips, \"who am I working with.\" Administration (report to HR, EMAIL ONLY — HR@mamascleaningcrew.com): time-off requests, breakage/accidents, complaints, cancellations/lockouts, policy questions, general concerns, \"who am I working with.\" Marketing/Sales (report to Adam, via Slack): promotions, client referrals, invoice pricing, social media, door hangers, video production, \"who am I working with.\" Quality Control (report to Shar, via Slack): cleaning concerns, inspections, the rewards program, client reviews, QDS (chemical usage — how to correctly use each chemical as directed by the manufacturer), supply requests, and \"how do I clean this?\" questions.",
-        "contentEs": "MCC está organizada en cuatro departamentos — saber quién maneja qué te ahorra tiempo. Logística (repórtate con Brenda y Shar, por Slack): programación, tiempo de traslado, solicitudes de clientes, cambios de factura, notas del trabajo, propinas de clientes, \"con quién voy a trabajar\". Administración (repórtate con Recursos Humanos, SOLO POR CORREO — HR@mamascleaningcrew.com): solicitudes de tiempo libre, roturas/accidentes, quejas, cancelaciones/cierres sin acceso (lockouts), preguntas sobre políticas, inquietudes generales, \"con quién voy a trabajar\". Marketing/Ventas (repórtate con Adam, por Slack): promociones, referidos de clientes, precios de facturas, redes sociales, volantes de puerta, producción de video, \"con quién voy a trabajar\". Control de Calidad (repórtate con Shar, por Slack): inquietudes sobre limpieza, inspecciones, el programa de recompensas, reseñas de clientes, QDS (uso de químicos — cómo usar correctamente cada químico según lo indique el fabricante), solicitudes de suministros, y preguntas de \"¿cómo limpio esto?\".",
-        "videoUrl": null
-      }
-    ],
-    "quiz": [
-      {
-        "order": 1,
-        "textEn": "What does TCS stand for?",
-        "textEs": "¿Qué significa TCS?",
-        "correctIndex": 0,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "The Cleaning Software",
-            "textEs": "The Cleaning Software"
-          },
-          {
-            "order": 2,
-            "textEn": "Team Communication System",
-            "textEs": "Sistema de Comunicación del Equipo"
-          },
-          {
-            "order": 3,
-            "textEn": "Technician Check-in System",
-            "textEs": "Sistema de Registro de Técnicos"
-          }
-        ]
-      },
-      {
-        "order": 2,
-        "textEn": "Which app do you use to clock in for your scheduled shift every day?",
-        "textEs": "¿Qué aplicación usas para registrar tu entrada a tu turno programado cada día?",
-        "correctIndex": 1,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "Slack",
-            "textEs": "Slack"
-          },
-          {
-            "order": 2,
-            "textEn": "TCS",
-            "textEs": "TCS"
-          }
-        ]
-      },
-      {
-        "order": 3,
-        "textEn": "In which app can you see your schedule for the next 3 days?",
-        "textEs": "¿En qué aplicación puedes ver tu horario de los próximos 3 días?",
-        "correctIndex": 0,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "TCS",
-            "textEs": "TCS"
-          },
-          {
-            "order": 2,
-            "textEn": "Slack",
-            "textEs": "Slack"
-          }
-        ]
-      },
-      {
-        "order": 4,
-        "textEn": "True or False: You can clock out for lunch using Slack.",
-        "textEs": "Verdadero o Falso: Puedes registrar tu salida de almuerzo usando Slack.",
-        "correctIndex": 1,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "True",
-            "textEs": "Verdadero"
-          },
-          {
-            "order": 2,
-            "textEn": "False — lunch clock-out is done in TCS",
-            "textEs": "Falso — la salida de almuerzo se registra en TCS"
-          }
-        ]
-      },
-      {
-        "order": 5,
-        "textEn": "How can you reach HR?",
-        "textEs": "¿Cómo puedes contactar a Recursos Humanos?",
-        "correctIndex": 0,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "Email only (HR@mamascleaningcrew.com)",
-            "textEs": "Solo por correo electrónico (HR@mamascleaningcrew.com)"
-          },
-          {
-            "order": 2,
-            "textEn": "Slack",
-            "textEs": "Slack"
-          },
-          {
-            "order": 3,
-            "textEn": "TCS",
-            "textEs": "TCS"
-          },
-          {
-            "order": 4,
-            "textEn": "Phone call to any manager",
-            "textEs": "Llamando por teléfono a cualquier gerente"
-          }
-        ]
-      },
-      {
-        "order": 6,
-        "textEn": "In which app can you see company updates?",
-        "textEs": "¿En qué aplicación puedes ver las actualizaciones de la empresa?",
-        "correctIndex": 1,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "TCS",
-            "textEs": "TCS"
-          },
-          {
-            "order": 2,
-            "textEn": "Slack",
-            "textEs": "Slack"
-          }
-        ]
-      },
-      {
-        "order": 7,
-        "textEn": "True or False: You can see a scheduled client's home details using Slack.",
-        "textEs": "Verdadero o Falso: Puedes ver los detalles del hogar de un cliente programado usando Slack.",
-        "correctIndex": 1,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "True",
-            "textEs": "Verdadero"
-          },
-          {
-            "order": 2,
-            "textEn": "False — client home details are in TCS",
-            "textEs": "Falso — los detalles del hogar del cliente están en TCS"
-          }
-        ]
-      },
-      {
-        "order": 8,
-        "textEn": "In which app do you send important updates/notifications for a scheduled job?",
-        "textEs": "¿En qué aplicación envías actualizaciones/notificaciones importantes de un trabajo programado?",
-        "correctIndex": 0,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "TCS",
-            "textEs": "TCS"
-          },
-          {
-            "order": 2,
-            "textEn": "Slack",
-            "textEs": "Slack"
-          }
-        ]
-      },
-      {
-        "order": 9,
-        "textEn": "If you have a question about scheduling or drive time, which department should you contact?",
-        "textEs": "Si tienes una pregunta sobre programación o tiempo de traslado, ¿a qué departamento debes contactar?",
-        "correctIndex": 0,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "Logistics (Brenda & Shar)",
-            "textEs": "Logística (Brenda y Shar)"
-          },
-          {
-            "order": 2,
-            "textEn": "Marketing/Sales (Adam)",
-            "textEs": "Marketing/Ventas (Adam)"
-          },
-          {
-            "order": 3,
-            "textEn": "Quality Control (Shar)",
-            "textEs": "Control de Calidad (Shar)"
-          },
-          {
-            "order": 4,
-            "textEn": "Administration (HR)",
-            "textEs": "Administración (Recursos Humanos)"
-          }
-        ]
-      },
-      {
-        "order": 10,
-        "textEn": "If you want to report an accident, breakage, or a lockout, which department handles that?",
-        "textEs": "Si quieres reportar un accidente, una rotura, o un cierre sin acceso (lockout), ¿qué departamento se encarga de eso?",
-        "correctIndex": 0,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "Administration (HR)",
-            "textEs": "Administración (Recursos Humanos)"
-          },
-          {
-            "order": 2,
-            "textEn": "Marketing/Sales (Adam)",
-            "textEs": "Marketing/Ventas (Adam)"
-          },
-          {
-            "order": 3,
-            "textEn": "Logistics (Brenda & Shar)",
-            "textEs": "Logística (Brenda y Shar)"
-          },
-          {
-            "order": 4,
-            "textEn": "Quality Control (Shar)",
-            "textEs": "Control de Calidad (Shar)"
-          }
-        ]
-      },
-      {
-        "order": 11,
-        "textEn": "Who do you contact for cleaning concerns, inspections, or \"how do I clean this\" questions?",
-        "textEs": "¿A quién contactas para inquietudes sobre limpieza, inspecciones, o preguntas de \"cómo limpio esto\"?",
-        "correctIndex": 0,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "Quality Control (Shar)",
-            "textEs": "Control de Calidad (Shar)"
-          },
-          {
-            "order": 2,
-            "textEn": "Marketing/Sales (Adam)",
-            "textEs": "Marketing/Ventas (Adam)"
-          },
-          {
-            "order": 3,
-            "textEn": "Administration (HR)",
-            "textEs": "Administración (Recursos Humanos)"
-          },
-          {
-            "order": 4,
-            "textEn": "Logistics (Brenda & Shar)",
-            "textEs": "Logística (Brenda y Shar)"
-          }
-        ]
-      },
-      {
-        "order": 12,
-        "textEn": "What does QDS refer to?",
-        "textEs": "¿A qué se refiere QDS?",
-        "correctIndex": 1,
-        "options": [
-          {
-            "order": 1,
-            "textEn": "Quarterly Delivery Schedule",
-            "textEs": "Programa de Entrega Trimestral"
-          },
-          {
-            "order": 2,
-            "textEn": "Chemical usage — how to correctly use each chemical as directed by the manufacturer",
-            "textEs": "Uso de químicos — cómo usar correctamente cada químico según lo indique el fabricante"
-          },
-          {
-            "order": 3,
-            "textEn": "A customer discount system",
-            "textEs": "Un sistema de descuentos para clientes"
-          },
-          {
-            "order": 4,
-            "textEn": "Daily quality scores for each technician",
-            "textEs": "Puntuaciones diarias de calidad para cada técnico"
           }
         ]
       }
