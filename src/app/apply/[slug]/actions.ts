@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { scorePrescreenAnswers } from "@/lib/recruiting";
+import { scorePrescreenAnswers, notifyNewApplicant } from "@/lib/recruiting";
 
 export async function submitApplicationAction(slug: string, formData: FormData) {
   const posting = await prisma.jobPosting.findUnique({
@@ -48,6 +48,8 @@ export async function submitApplicationAction(slug: string, formData: FormData) 
       answers: { create: answers },
     },
   });
+
+  await notifyNewApplicant(applicant, posting.titleEn);
 
   redirect(`/apply/${slug}/thank-you?applied=${applicant.id}`);
 }

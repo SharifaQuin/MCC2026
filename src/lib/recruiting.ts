@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { ApplicantStage } from "@prisma/client";
+import { sendEmail } from "@/lib/email";
 
 // Auto-scores an applicant's prescreen answers against the question bank's
 // point values and returns whether they cleared the posting's threshold.
@@ -26,6 +27,37 @@ export async function scorePrescreenAnswers(
   const passed = scorePct >= posting.passThresholdPct;
 
   return { score, maxScore, scorePct, passed };
+}
+
+// Pings the recruiting inbox whenever a new applicant lands in the pipeline —
+// from the careers page, Indeed/ZipRecruiter (once those postings point at
+// the shared /apply/[slug] link), or a manual entry — so nobody has to keep
+// refreshing the pipeline board to notice. Best-effort: never blocks or
+// throws, since a missed notification shouldn't fail the application itself.
+export async function notifyNewApplicant(
+  applicant: { id: string; firstName: string; lastName: string; email: string; phone: string },
+  jobPostingTitle: string
+) {
+  const notifyEmail = process.env.RECRUITING_NOTIFY_EMAIL || process.env.MS_GRAPH_SENDER_EMAIL;
+  if (!notifyEmail) return;
+
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+    await sendEmail({
+      to: notifyEmail,
+      subject: `New applicant: ${applicant.firstName} ${applicant.lastName} — ${jobPostingTitle}`,
+      body: [
+        `${applicant.firstName} ${applicant.lastName} just applied for ${jobPostingTitle}.`,
+        "",
+        `Email: ${applicant.email}`,
+        `Phone: ${applicant.phone}`,
+        "",
+        `View their profile: ${appUrl}/recruiting/applicants/${applicant.id}`,
+      ].join("\n"),
+    });
+  } catch {
+    // Swallow — a notification failure should never break the apply flow.
+  }
 }
 
 // KPIs for the HR overview page and the top of the recruiting pipeline board.
