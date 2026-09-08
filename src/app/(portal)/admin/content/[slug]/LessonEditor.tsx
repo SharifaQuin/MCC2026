@@ -15,6 +15,7 @@ interface Lesson {
   videoDurationSeconds: number | null;
   imageUrl: string | null;
   estimatedMinutes: number | null;
+  published: boolean;
 }
 
 function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
@@ -30,8 +31,13 @@ function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center justify-between text-left"
       >
-        <span className="font-medium">
+        <span className="flex items-center gap-2 font-medium">
           {lesson.order}. {lesson.titleEn}
+          {!lesson.published && (
+            <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-xs font-medium text-neutral-600">
+              Unpublished
+            </span>
+          )}
         </span>
         <span className="text-xs text-neutral-400">{open ? "Hide" : "Edit"}</span>
       </button>
@@ -162,6 +168,15 @@ function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
               Shown above the lesson text (below the video, if this lesson has one).
             </p>
           </div>
+          <label className="flex items-center gap-2 text-sm text-neutral-700">
+            <input
+              type="checkbox"
+              name="published"
+              defaultChecked={lesson.published}
+              className="h-4 w-4"
+            />
+            Published (visible to trainees)
+          </label>
           <div className="flex items-center gap-3">
             <button
               type="submit"

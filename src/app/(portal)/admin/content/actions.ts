@@ -99,6 +99,7 @@ export async function updateLessonAction(lessonId: string, slug: string, formDat
       imageUrl: String(formData.get("imageUrl") ?? "") || null,
       estimatedMinutes:
         estimatedMinutes !== null && Number.isFinite(estimatedMinutes) ? estimatedMinutes : null,
+      published: formData.get("published") === "on",
     },
   });
   revalidatePath(`/admin/content/${slug}`);

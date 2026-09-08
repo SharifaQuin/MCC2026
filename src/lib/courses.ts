@@ -6,7 +6,7 @@ export async function getModuleListForUser(userId: string) {
     orderBy: { order: "asc" },
     include: {
       progress: { where: { userId } },
-      lessons: { select: { estimatedMinutes: true } },
+      lessons: { where: { published: true }, select: { estimatedMinutes: true } },
     },
   });
 
@@ -55,6 +55,7 @@ export async function getModuleOverview(slug: string, userId: string) {
     where: { slug },
     include: {
       lessons: {
+        where: { published: true },
         orderBy: { order: "asc" },
         select: { id: true, order: true, titleEn: true, titleEs: true, estimatedMinutes: true },
       },
@@ -95,7 +96,7 @@ export async function getModuleOverview(slug: string, userId: string) {
 export async function getLessonDetail(slug: string, order: number, userId: string) {
   const module = await prisma.module.findUnique({
     where: { slug },
-    include: { lessons: { orderBy: { order: "asc" } } },
+    include: { lessons: { where: { published: true }, orderBy: { order: "asc" } } },
   });
   if (!module) return null;
 

@@ -163,6 +163,11 @@ model Lesson {
   // far longer than the default varchar limit.
   imageUrl   String? @db.Text
   estimatedMinutes Int?
+  // Lets an admin hide a single lesson from trainees (e.g. still being
+  // written, or pulled from the curriculum) without deleting it or
+  // unpublishing the whole module. Defaults to true so existing/new
+  // lessons stay visible unless explicitly hidden.
+  published  Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
