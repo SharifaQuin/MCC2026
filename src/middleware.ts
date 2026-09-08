@@ -12,6 +12,7 @@ function getSecret() {
 const PUBLIC_PATHS = [
   "/login",
   "/invite",
+  "/apply",
   "/manifest.webmanifest",
   "/icon.svg",
   "/apple-icon.png",
@@ -55,7 +56,7 @@ export async function middleware(req: NextRequest) {
   }
 
   if (
-    pathname.startsWith("/admin") &&
+    (pathname.startsWith("/admin") || pathname.startsWith("/recruiting")) &&
     payload.role !== "ADMIN" &&
     payload.role !== "SERVICE_MANAGER"
   ) {

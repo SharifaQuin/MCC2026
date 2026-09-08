@@ -35,6 +35,25 @@ enum ProgressStatus {
   COMPLETED
 }
 
+// The recruiting pipeline: Applied -> auto-scored prescreen -> phone/Zoom
+// interview -> in-person interview -> offer (sent manually via Gusto) ->
+// Hired. REJECTED and BENCH are manager-confirmed off-ramps from any stage.
+enum ApplicantStage {
+  NEW
+  PRESCREEN_FAILED
+  PRESCREEN_PASSED
+  PHONE_INTERVIEW_SCHEDULED
+  PHONE_INTERVIEW_PASSED
+  PHONE_INTERVIEW_FAILED
+  IN_PERSON_SCHEDULED
+  IN_PERSON_PASSED
+  IN_PERSON_FAILED
+  OFFER_SENT
+  HIRED
+  REJECTED
+  BENCH
+}
+
 // Tracks an employee's path from Trainee to certified Technician: a Trainer
 // recommends once the 3-day field training is done, then a Manager/Admin
 // makes the final call.
@@ -246,4 +265,93 @@ model FieldEvalCategoryScore {
   notes        String?         @db.Text
 
   @@index([evaluationId])
+}
+
+// A single open position, e.g. a specific Indeed/ZipRecruiter ad. The
+// public application form lives at /apply/[slug].
+model JobPosting {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  titleEn      String
+  positionType String?
+  descriptionEn String  @db.Text
+  // Percentage of the max possible prescreen score an applicant needs to
+  // auto-pass and move on to scheduling a phone/Zoom interview.
+  passThresholdPct Int  @default(70)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  prescreenQuestions PrescreenQuestion[]
+  applicants         Applicant[]
+}
+
+model PrescreenQuestion {
+  id           String     @id @default(cuid())
+  jobPostingId String
+  jobPosting   JobPosting @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+  order        Int
+  textEn       String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  options PrescreenOption[]
+  answers PrescreenAnswer[]
+
+  @@index([jobPostingId, order])
+}
+
+model PrescreenOption {
+  id         String            @id @default(cuid())
+  questionId String
+  question   PrescreenQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  order      Int
+  textEn     String
+  // Point value toward the applicant's auto-calculated compatibility score.
+  points     Int               @default(0)
+
+  answers PrescreenAnswer[]
+
+  @@index([questionId, order])
+}
+
+// An applicant who applied to a JobPosting. Resume is stored the same way
+// lesson photos are (a base64 data URI directly on the row) since the app
+// has no separate file/blob storage.
+model Applicant {
+  id             String         @id @default(cuid())
+  jobPostingId   String
+  jobPosting     JobPosting     @relation(fields: [jobPostingId], references: [id])
+  firstName      String
+  lastName       String
+  email          String
+  phone          String
+  resumeDataUrl  String?        @db.Text
+  resumeFileName String?
+  stage          ApplicantStage @default(NEW)
+  prescreenScore    Int?
+  prescreenMaxScore Int?
+  prescreenPassed   Boolean?
+  notes          String?        @db.Text
+  rejectedAt     DateTime?
+  benchedAt      DateTime?
+  hiredAt        DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  answers PrescreenAnswer[]
+
+  @@index([jobPostingId, stage])
+}
+
+model PrescreenAnswer {
+  id          String            @id @default(cuid())
+  applicantId String
+  applicant   Applicant         @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  questionId  String
+  question    PrescreenQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  optionId    String
+  option      PrescreenOption   @relation(fields: [optionId], references: [id])
+
+  @@unique([applicantId, questionId])
 }

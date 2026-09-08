@@ -72,6 +72,9 @@ export default function Nav({
                 <Link href="/admin/invite" className="hover:underline">
                   {labels.invite}
                 </Link>
+                <Link href="/recruiting" className="hover:underline">
+                  {labels.recruiting}
+                </Link>
               </>
             )}
             {session.role === "TRAINER" && (
