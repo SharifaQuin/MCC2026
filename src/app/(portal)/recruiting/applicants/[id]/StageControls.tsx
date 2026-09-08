@@ -1,12 +1,12 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import type { ApplicantStage } from "@prisma/client";
 import { setApplicantStageAction } from "../actions";
-import { STAGE_LABELS } from "@/lib/recruiting";
+import { STAGE_LABELS, SCHEDULING_STAGES } from "@/lib/recruiting";
 
-// Phase 1: manual stage moves only, grouped by what makes sense from the
-// applicant's *current* stage. Automated scheduling/messaging on these
+// Phase 1 keeps stage changes manual — a manager reviews and moves the
+// applicant forward themselves. Automated scheduling/messaging on these
 // transitions comes in a later phase.
 const NEXT_STAGES: Record<string, ApplicantStage[]> = {
   NEW: ["PRESCREEN_PASSED", "PRESCREEN_FAILED"],
@@ -32,29 +32,78 @@ export default function StageControls({
   stage: ApplicantStage;
 }) {
   const [pending, startTransition] = useTransition();
+  const [scheduling, setScheduling] = useState<ApplicantStage | null>(null);
   const options = NEXT_STAGES[stage] ?? [];
 
   if (options.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {options.map((next) => (
-        <button
-          key={next}
-          type="button"
-          disabled={pending}
-          onClick={() => startTransition(() => setApplicantStageAction(applicantId, next))}
-          className={`rounded-md px-3 py-2 text-sm font-medium disabled:opacity-60 ${
-            next === "REJECTED"
-              ? "border border-red-300 text-red-700 hover:bg-red-50"
-              : next === "BENCH"
-                ? "border border-neutral-300 text-neutral-700 hover:bg-neutral-50"
-                : "bg-brand-600 text-white hover:bg-brand-700"
-          }`}
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        {options.map((next) => (
+          <button
+            key={next}
+            type="button"
+            disabled={pending}
+            onClick={() => {
+              if ((SCHEDULING_STAGES as string[]).includes(next)) {
+                setScheduling(next);
+              } else {
+                startTransition(() => setApplicantStageAction(applicantId, next));
+              }
+            }}
+            className={`rounded-md px-3 py-2 text-sm font-medium disabled:opacity-60 ${
+              next === "REJECTED"
+                ? "border border-red-300 text-red-700 hover:bg-red-50"
+                : next === "BENCH"
+                  ? "border border-neutral-300 text-neutral-700 hover:bg-neutral-50"
+                  : "bg-brand-600 text-white hover:bg-brand-700"
+            }`}
+          >
+            Move to: {STAGE_LABELS[next]}
+          </button>
+        ))}
+      </div>
+
+      {scheduling && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const scheduledAt = new FormData(e.currentTarget).get("scheduledAt");
+            startTransition(async () => {
+              await setApplicantStageAction(applicantId, scheduling, String(scheduledAt));
+              setScheduling(null);
+            });
+          }}
+          className="flex flex-wrap items-end gap-2 rounded-md border border-neutral-200 bg-neutral-50 p-3"
         >
-          Move to: {STAGE_LABELS[next]}
-        </button>
-      ))}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-neutral-700">
+              When is the {STAGE_LABELS[scheduling]}?
+            </label>
+            <input
+              type="datetime-local"
+              name="scheduledAt"
+              required
+              className="rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+          >
+            {pending ? "Saving..." : "Confirm"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setScheduling(null)}
+            className="rounded-md border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Cancel
+          </button>
+        </form>
+      )}
     </div>
   );
 }

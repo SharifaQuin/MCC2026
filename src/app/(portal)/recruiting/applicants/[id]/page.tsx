@@ -1,18 +1,25 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
-import { STAGE_LABELS } from "@/lib/recruiting";
+import { STAGE_LABELS, SCHEDULING_STAGES } from "@/lib/recruiting";
 import { saveApplicantNotesAction } from "../actions";
 import StageControls from "./StageControls";
 import CommunicationPanel from "./CommunicationPanel";
 
-export default async function ApplicantDetailPage({ params }: { params: { id: string } }) {
+export default async function ApplicantDetailPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams: { duplicate?: string };
+}) {
   await requireRecruitingAccess();
 
   const applicant = await prisma.applicant.findUnique({
     where: { id: params.id },
     include: {
       jobPosting: { select: { titleEn: true } },
+      hiredUser: { select: { id: true, name: true } },
       answers: {
         include: { question: true, option: true },
       },
@@ -44,6 +51,31 @@ export default async function ApplicantDetailPage({ params }: { params: { id: st
       <Link href="/recruiting/applicants" className="text-sm text-brand-700 hover:underline">
         ← Back to Applicants
       </Link>
+
+      {searchParams.duplicate === "1" && (
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          An applicant with this email was already on file for this posting, so we brought you
+          to their existing profile instead of creating a duplicate.
+        </div>
+      )}
+
+      {applicant.hiredUser && (
+        <div className="mt-3 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+          Hired — training account created.{" "}
+          <Link
+            href={`/admin/employees/${applicant.hiredUser.id}`}
+            className="font-medium hover:underline"
+          >
+            View {applicant.hiredUser.name}&apos;s employee profile →
+          </Link>
+        </div>
+      )}
+
+      {applicant.scheduledAt && (SCHEDULING_STAGES as string[]).includes(applicant.stage) && (
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          {STAGE_LABELS[applicant.stage]}: {applicant.scheduledAt.toLocaleString()}
+        </div>
+      )}
 
       <div className="mb-6 mt-2 flex items-start justify-between">
         <div>

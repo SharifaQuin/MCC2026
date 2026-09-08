@@ -6,6 +6,8 @@ import { submitApplicationAction } from "./actions";
 const ERROR_MESSAGES: Record<string, string> = {
   closed: "This position is no longer accepting applications.",
   incomplete: "Please fill out every field, attach your resume, and answer every question.",
+  duplicate:
+    "It looks like we already have an application on file from this email address for this position — we'll be in touch soon!",
 };
 
 export default async function ApplyPage({

@@ -104,6 +104,7 @@ model User {
 
   departmentAccess DepartmentAccess[]
   sentCommunications CommunicationLog[]
+  hiredFromApplicant Applicant? @relation("ApplicantHiredUser")
 
   @@index([role])
 }
@@ -339,9 +340,12 @@ model Applicant {
   prescreenMaxScore Int?
   prescreenPassed   Boolean?
   notes          String?        @db.Text
+  scheduledAt    DateTime?
   rejectedAt     DateTime?
   benchedAt      DateTime?
   hiredAt        DateTime?
+  hiredUserId    String?        @unique
+  hiredUser      User?          @relation("ApplicantHiredUser", fields: [hiredUserId], references: [id])
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 

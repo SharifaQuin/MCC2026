@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { ApplicantStage } from "@prisma/client";
 import { sendEmail } from "@/lib/email";
+import { generateInviteToken } from "@/lib/tokens";
 
 // Auto-scores an applicant's prescreen answers against the question bank's
 // point values and returns whether they cleared the posting's threshold.
@@ -57,6 +58,76 @@ export async function notifyNewApplicant(
     });
   } catch {
     // Swallow — a notification failure should never break the apply flow.
+  }
+}
+
+// The two stages that represent an actual scheduled meeting rather than just
+// a pipeline state — moving into either of these should capture a real date
+// and time instead of just flipping a label.
+export const SCHEDULING_STAGES: ApplicantStage[] = [
+  "PHONE_INTERVIEW_SCHEDULED",
+  "IN_PERSON_SCHEDULED",
+];
+
+// When an applicant is marked Hired, automatically create their training
+// account and email them an invite — closes the loop between Recruiting and
+// Training instead of leaving HR to separately invite them by hand. Safe to
+// call more than once: does nothing once hiredUserId is already set.
+export async function createEmployeeAccountForHiredApplicant(
+  applicant: {
+    id: string;
+    hiredUserId: string | null;
+    firstName: string;
+    lastName: string;
+    email: string;
+  },
+  invitedBy: string
+) {
+  if (applicant.hiredUserId) return;
+
+  const existingUser = await prisma.user.findUnique({ where: { email: applicant.email } });
+  if (existingUser) {
+    await prisma.applicant.update({
+      where: { id: applicant.id },
+      data: { hiredUserId: existingUser.id },
+    });
+    return;
+  }
+
+  const inviteToken = generateInviteToken();
+  const user = await prisma.user.create({
+    data: {
+      email: applicant.email,
+      name: `${applicant.firstName} ${applicant.lastName}`,
+      role: "TRAINEE",
+      inviteToken,
+      inviteExpiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
+      invitedBy,
+    },
+  });
+
+  await prisma.applicant.update({
+    where: { id: applicant.id },
+    data: { hiredUserId: user.id },
+  });
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+  try {
+    await sendEmail({
+      to: applicant.email,
+      subject: "Welcome to Mama's Cleaning Crew — set up your training account",
+      body: [
+        `Hi ${applicant.firstName},`,
+        "",
+        "Congratulations, and welcome to the team! To get started with your onboarding training, set up your account here:",
+        "",
+        `${appUrl}/invite/${inviteToken}`,
+        "",
+        "This link expires in 7 days — reach out if you need a new one.",
+      ].join("\n"),
+    });
+  } catch {
+    // Swallow — the account is created either way; the email is a convenience.
   }
 }
 

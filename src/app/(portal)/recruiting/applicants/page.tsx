@@ -7,14 +7,25 @@ import type { ApplicantStage } from "@prisma/client";
 export default async function ApplicantsPage({
   searchParams,
 }: {
-  searchParams: { postingId?: string; stage?: string };
+  searchParams: { postingId?: string; stage?: string; q?: string };
 }) {
   await requireRecruitingAccess();
+
+  const q = searchParams.q?.trim();
 
   const applicants = await prisma.applicant.findMany({
     where: {
       ...(searchParams.postingId ? { jobPostingId: searchParams.postingId } : {}),
       ...(searchParams.stage ? { stage: searchParams.stage as ApplicantStage } : {}),
+      ...(q
+        ? {
+            OR: [
+              { firstName: { contains: q, mode: "insensitive" } },
+              { lastName: { contains: q, mode: "insensitive" } },
+              { email: { contains: q, mode: "insensitive" } },
+            ],
+          }
+        : {}),
     },
     include: { jobPosting: { select: { titleEn: true } } },
     orderBy: { createdAt: "desc" },
@@ -38,6 +49,40 @@ export default async function ApplicantsPage({
           </Link>
         </div>
       </div>
+
+      <form className="mb-4 flex gap-2" method="GET">
+        {searchParams.postingId && (
+          <input type="hidden" name="postingId" value={searchParams.postingId} />
+        )}
+        {searchParams.stage && <input type="hidden" name="stage" value={searchParams.stage} />}
+        <input
+          type="search"
+          name="q"
+          placeholder="Search by name or email"
+          defaultValue={q ?? ""}
+          className="w-full max-w-xs rounded-md border border-neutral-300 px-3 py-2 text-sm"
+        />
+        <button
+          type="submit"
+          className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+        >
+          Search
+        </button>
+        {q && (
+          <Link
+            href={{
+              pathname: "/recruiting/applicants",
+              query: {
+                ...(searchParams.postingId ? { postingId: searchParams.postingId } : {}),
+                ...(searchParams.stage ? { stage: searchParams.stage } : {}),
+              },
+            }}
+            className="rounded-md px-4 py-2 text-sm font-medium text-neutral-500 hover:underline"
+          >
+            Clear
+          </Link>
+        )}
+      </form>
 
       {applicants.length === 0 ? (
         <p className="text-neutral-500">No applicants here.</p>

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession, isAdminOrServiceManager } from "@/lib/session";
-import { generateInviteToken } from "@/lib/password";
+import { generateInviteToken } from "@/lib/tokens";
 
 async function requireAdminOrServiceManager() {
   const session = await getSession();

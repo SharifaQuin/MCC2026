@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useTransition } from "react";
 import { setApplicantStageAction } from "./applicants/actions";
-import { PRIMARY_NEXT_STAGE } from "@/lib/recruiting";
+import { PRIMARY_NEXT_STAGE, SCHEDULING_STAGES } from "@/lib/recruiting";
 import type { ApplicantStage } from "@prisma/client";
 
 interface Card {
@@ -14,11 +14,13 @@ interface Card {
   prescreenScore: number | null;
   prescreenMaxScore: number | null;
   stage: ApplicantStage;
+  scheduledAt: string | null;
 }
 
 function ApplicantCard({ applicant }: { applicant: Card }) {
   const [pending, startTransition] = useTransition();
   const primary = PRIMARY_NEXT_STAGE[applicant.stage];
+  const needsSchedule = primary && (SCHEDULING_STAGES as string[]).includes(primary.stage);
 
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-3 shadow-sm">
@@ -34,20 +36,33 @@ function ApplicantCard({ applicant }: { applicant: Card }) {
           Score: {applicant.prescreenScore}/{applicant.prescreenMaxScore}
         </p>
       )}
-      {primary && (
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() =>
-            startTransition(() =>
-              setApplicantStageAction(applicant.id, primary.stage as ApplicantStage)
-            )
-          }
-          className="mt-2 w-full rounded-md bg-brand-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
-        >
-          {pending ? "Moving..." : `→ ${primary.label}`}
-        </button>
+      {applicant.scheduledAt && (SCHEDULING_STAGES as string[]).includes(applicant.stage) && (
+        <p className="mt-1 text-xs text-amber-700">
+          {new Date(applicant.scheduledAt).toLocaleString()}
+        </p>
       )}
+      {primary &&
+        (needsSchedule ? (
+          <Link
+            href={`/recruiting/applicants/${applicant.id}`}
+            className="mt-2 block w-full rounded-md bg-brand-600 px-2 py-1.5 text-center text-xs font-medium text-white hover:bg-brand-700"
+          >
+            → {primary.label}
+          </Link>
+        ) : (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() =>
+              startTransition(() =>
+                setApplicantStageAction(applicant.id, primary.stage as ApplicantStage)
+              )
+            }
+            className="mt-2 w-full rounded-md bg-brand-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+          >
+            {pending ? "Moving..." : `→ ${primary.label}`}
+          </button>
+        ))}
     </div>
   );
 }

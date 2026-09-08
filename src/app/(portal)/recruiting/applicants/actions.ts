@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
 import { sendEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
+import { SCHEDULING_STAGES, createEmployeeAccountForHiredApplicant } from "@/lib/recruiting";
 import type { ApplicantStage } from "@prisma/client";
 
 const STAGE_TIMESTAMP_FIELD: Partial<Record<ApplicantStage, "rejectedAt" | "benchedAt" | "hiredAt">> = {
@@ -17,20 +18,32 @@ const STAGE_TIMESTAMP_FIELD: Partial<Record<ApplicantStage, "rejectedAt" | "benc
 // Phase 1 keeps stage changes manual — a manager reviews and moves the
 // applicant forward themselves. Later phases will auto-advance most of
 // this and only ask for a confirm click on reject/bench.
-export async function setApplicantStageAction(applicantId: string, stage: ApplicantStage) {
-  await requireRecruitingAccess();
+export async function setApplicantStageAction(
+  applicantId: string,
+  stage: ApplicantStage,
+  scheduledAt?: string
+) {
+  const { session } = await requireRecruitingAccess();
   const timestampField = STAGE_TIMESTAMP_FIELD[stage];
 
-  await prisma.applicant.update({
+  const applicant = await prisma.applicant.update({
     where: { id: applicantId },
     data: {
       stage,
       ...(timestampField ? { [timestampField]: new Date() } : {}),
+      ...(SCHEDULING_STAGES.includes(stage) && scheduledAt
+        ? { scheduledAt: new Date(scheduledAt) }
+        : {}),
     },
   });
 
+  if (stage === "HIRED") {
+    await createEmployeeAccountForHiredApplicant(applicant, session.sub);
+  }
+
   revalidatePath(`/recruiting/applicants/${applicantId}`);
   revalidatePath("/recruiting/applicants");
+  revalidatePath("/recruiting");
 }
 
 // For walk-ins, referrals, or anyone recruited outside the public
@@ -49,6 +62,13 @@ export async function createManualApplicantAction(formData: FormData) {
   const notes = String(formData.get("notes") ?? "").trim() || null;
 
   if (!jobPostingId || !firstName || !lastName || !email || !phone) return;
+
+  const existing = await prisma.applicant.findFirst({
+    where: { jobPostingId, email: { equals: email, mode: "insensitive" } },
+  });
+  if (existing) {
+    redirect(`/recruiting/applicants/${existing.id}?duplicate=1`);
+  }
 
   const applicant = await prisma.applicant.create({
     data: {

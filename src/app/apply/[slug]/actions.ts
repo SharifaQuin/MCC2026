@@ -30,6 +30,13 @@ export async function submitApplicationAction(slug: string, formData: FormData) 
     redirect(`/apply/${slug}?error=incomplete`);
   }
 
+  const existing = await prisma.applicant.findFirst({
+    where: { jobPostingId: posting.id, email: { equals: email, mode: "insensitive" } },
+  });
+  if (existing) {
+    redirect(`/apply/${slug}?error=duplicate`);
+  }
+
   const { score, maxScore, passed } = await scorePrescreenAnswers(posting.id, answers);
 
   const applicant = await prisma.applicant.create({
