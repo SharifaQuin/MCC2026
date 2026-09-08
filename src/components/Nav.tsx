@@ -18,28 +18,26 @@ export default function Nav({
 
   return (
     <header className="border-b-2 border-gold-500 bg-white print:hidden">
-      {departments.length > 1 && (
-        <div className="border-b border-neutral-100 bg-neutral-50">
-          <div className="mx-auto flex max-w-5xl gap-1 px-4 py-1.5 text-xs">
-            {departments.map(({ department }) => (
-              <Link
-                key={department}
-                href={DEPARTMENT_INFO[department].href}
-                className="rounded px-2 py-1 font-medium text-neutral-600 hover:bg-white hover:text-brand-700"
-              >
-                {session.language === "ES"
-                  ? DEPARTMENT_INFO[department].labelEs
-                  : DEPARTMENT_INFO[department].labelEn}
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
       <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
           <Link href="/">
             <Logo />
           </Link>
+          {departments.length > 1 && (
+            <div className="flex flex-wrap gap-1 text-xs">
+              {departments.map(({ department }) => (
+                <Link
+                  key={department}
+                  href={DEPARTMENT_INFO[department].href}
+                  className="rounded bg-neutral-50 px-2 py-1 font-medium text-neutral-600 hover:bg-neutral-100 hover:text-brand-700"
+                >
+                  {session.language === "ES"
+                    ? DEPARTMENT_INFO[department].labelEs
+                    : DEPARTMENT_INFO[department].labelEn}
+                </Link>
+              ))}
+            </div>
+          )}
           <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             {session.role === "TRAINEE" && (
               <>
