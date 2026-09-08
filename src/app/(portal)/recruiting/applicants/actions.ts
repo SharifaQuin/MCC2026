@@ -101,6 +101,33 @@ export async function sendApplicantEmailAction(applicantId: string, formData: Fo
   revalidatePath(`/recruiting/applicants/${applicantId}`);
 }
 
+// Applicant replies land in the staff member's own inbox/phone, not in our
+// system — this lets them manually record what was said so it shows up
+// alongside the outbound history instead of living only in Outlook/RingCentral.
+export async function logApplicantReplyAction(
+  applicantId: string,
+  channel: "EMAIL" | "SMS",
+  formData: FormData
+) {
+  const { session } = await requireRecruitingAccess();
+  const subject = channel === "EMAIL" ? String(formData.get("subject") ?? "").trim() || null : null;
+  const body = String(formData.get("body") ?? "").trim();
+  if (!body) return;
+
+  await prisma.communicationLog.create({
+    data: {
+      applicantId,
+      channel,
+      direction: "INBOUND",
+      subject,
+      body,
+      sentById: session.sub,
+    },
+  });
+
+  revalidatePath(`/recruiting/applicants/${applicantId}`);
+}
+
 export async function sendApplicantTextAction(applicantId: string, formData: FormData) {
   const { session } = await requireRecruitingAccess();
   const body = String(formData.get("body") ?? "").trim();
