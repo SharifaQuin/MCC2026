@@ -1,10 +1,14 @@
 import { getGraphAccessToken } from "@/lib/msGraph";
 
-// Creates an event on the shared Outlook calendar via Microsoft Graph, using
-// the same app registration as email sending — requires the app to also
-// have the Calendars.ReadWrite application permission granted (in addition
-// to Mail.Send) in the Entra ID app registration.
+// Creates an event on a real (licensed, non-shared) mailbox's Outlook
+// calendar via Microsoft Graph, using the same app registration as email
+// sending — requires the app to also have the Calendars.ReadWrite
+// application permission granted (in addition to Mail.Send) in the Entra ID
+// app registration. The mailbox is independent of the email-sending
+// mailbox, since a shared mailbox (like the one email sends from) has no
+// calendar of its own.
 export async function createCalendarEvent({
+  mailbox,
   subject,
   startsAt,
   durationMinutes = 30,
@@ -12,6 +16,7 @@ export async function createCalendarEvent({
   attendeeEmail,
   attendeeName,
 }: {
+  mailbox: string;
   subject: string;
   startsAt: Date;
   durationMinutes?: number;
@@ -25,7 +30,7 @@ export async function createCalendarEvent({
   const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
 
   const res = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(token.senderEmail)}/events`,
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/events`,
     {
       method: "POST",
       headers: {

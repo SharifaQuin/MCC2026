@@ -80,6 +80,9 @@ export async function scheduleInterviewCalendarEvent(
   stageLabel: string,
   scheduledAt: Date
 ) {
+  const calendarMailbox = process.env.RECRUITING_CALENDAR_MAILBOX;
+  if (!calendarMailbox) return;
+
   const zoomLink = process.env.RECRUITING_ZOOM_LINK;
   const bodyLines = [
     `Interview with ${applicant.firstName} ${applicant.lastName} for ${jobPostingTitle}.`,
@@ -93,6 +96,7 @@ export async function scheduleInterviewCalendarEvent(
 
   try {
     await createCalendarEvent({
+      mailbox: calendarMailbox,
       subject: `${stageLabel} — ${applicant.firstName} ${applicant.lastName}`,
       startsAt: scheduledAt,
       body: bodyLines.join("\n"),
