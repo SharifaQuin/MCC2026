@@ -13,6 +13,7 @@ const PUBLIC_PATHS = [
   "/login",
   "/invite",
   "/apply",
+  "/careers",
   "/manifest.webmanifest",
   "/icon.svg",
   "/apple-icon.png",
