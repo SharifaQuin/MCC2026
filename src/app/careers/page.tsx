@@ -2,6 +2,11 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import Logo from "@/components/Logo";
 
+// Job postings change over time, so this needs a live DB query on every
+// request rather than being frozen at build time — and the build step
+// doesn't have a database to query anyway.
+export const dynamic = "force-dynamic";
+
 const VALUES = [
   { label: "Hospitality First" },
   { label: "Trusted & Reliable" },
