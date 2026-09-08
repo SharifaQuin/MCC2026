@@ -41,7 +41,7 @@ export default function Nav({
             <Logo />
           </Link>
           <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            {!staffOnly && (
+            {session.role === "TRAINEE" && (
               <>
                 <Link href="/modules" className="hover:underline">
                   {labels.modules}
@@ -51,16 +51,6 @@ export default function Nav({
                 </Link>
                 <Link href="/glossary" className="hover:underline">
                   {labels.glossary}
-                </Link>
-              </>
-            )}
-            {(session.role === "ADMIN" || session.role === "SERVICE_MANAGER") && (
-              <>
-                <Link href="/admin" className="hover:underline">
-                  {labels.training}
-                </Link>
-                <Link href="/recruiting" className="hover:underline">
-                  {labels.recruiting}
                 </Link>
               </>
             )}
