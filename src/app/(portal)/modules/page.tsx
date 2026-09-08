@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { getModuleListForUser } from "@/lib/courses";
 import { t } from "@/lib/i18n";
+import BackToTraining from "@/components/BackToTraining";
 
 const statusStyles: Record<string, string> = {
   NOT_STARTED: "bg-neutral-100 text-neutral-600",
@@ -19,6 +20,7 @@ export default async function ModulesPage() {
 
   return (
     <div>
+      {session.role !== "TRAINEE" && <BackToTraining />}
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{labels.modules}</h1>
         {nextModule && (

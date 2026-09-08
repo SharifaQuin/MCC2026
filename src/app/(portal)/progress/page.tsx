@@ -4,6 +4,7 @@ import { getSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { t } from "@/lib/i18n";
 import { loadFieldEvaluationSummaryForTrainee } from "@/lib/fieldEvalData";
+import BackToTraining from "@/components/BackToTraining";
 
 export default async function ProgressPage() {
   const session = await getSession();
@@ -31,6 +32,7 @@ export default async function ProgressPage() {
 
   return (
     <div>
+      {session.role !== "TRAINEE" && <BackToTraining />}
       <h1 className="mb-2 text-2xl font-semibold">{labels.progress}</h1>
       <p className="mb-6 text-sm text-neutral-500">
         {completed} / {total} modules completed

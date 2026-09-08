@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import PermissionsTable, { type PermissionUserRow } from "./PermissionsTable";
 import type { AccessLevel } from "./actions";
+import BackToTraining from "@/components/BackToTraining";
 
 export default async function PermissionsPage() {
   const users = await prisma.user.findMany({
@@ -37,6 +38,7 @@ export default async function PermissionsPage() {
 
   return (
     <div className="space-y-6">
+      <BackToTraining />
       <div>
         <h1 className="text-2xl font-semibold">Permissions</h1>
         <p className="mt-1 text-sm text-neutral-500">

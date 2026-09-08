@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { loadEmployeeSummaries } from "@/components/EmployeeList";
 import { EmployeeListView } from "@/components/EmployeeListView";
+import BackToTraining from "@/components/BackToTraining";
 
 export default async function AdminEmployeesPage() {
   const data = await loadEmployeeSummaries();
   return (
     <div>
+      <BackToTraining />
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Employees</h1>
         <div className="flex gap-3">

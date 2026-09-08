@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import AddModuleForm from "./AddModuleForm";
+import BackToTraining from "@/components/BackToTraining";
 
 export default async function AdminContentPage() {
   const modules = await prisma.module.findMany({
@@ -10,6 +11,7 @@ export default async function AdminContentPage() {
 
   return (
     <div>
+      <BackToTraining />
       <h1 className="mb-6 text-2xl font-semibold">Content Editor</h1>
 
       <div className="mb-6 space-y-3">
