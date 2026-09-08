@@ -6,7 +6,13 @@ import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
 import { sendEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
-import { SCHEDULING_STAGES, createEmployeeAccountForHiredApplicant } from "@/lib/recruiting";
+import {
+  SCHEDULING_STAGES,
+  STAGE_LABELS,
+  createEmployeeAccountForHiredApplicant,
+  scheduleInterviewCalendarEvent,
+} from "@/lib/recruiting";
+import { zonedTimeToUtc } from "@/lib/timezone";
 import type { ApplicantStage } from "@prisma/client";
 
 const STAGE_TIMESTAMP_FIELD: Partial<Record<ApplicantStage, "rejectedAt" | "benchedAt" | "hiredAt">> = {
@@ -25,20 +31,30 @@ export async function setApplicantStageAction(
 ) {
   const { session } = await requireRecruitingAccess();
   const timestampField = STAGE_TIMESTAMP_FIELD[stage];
+  const scheduledAtDate =
+    SCHEDULING_STAGES.includes(stage) && scheduledAt ? zonedTimeToUtc(scheduledAt) : undefined;
 
   const applicant = await prisma.applicant.update({
     where: { id: applicantId },
     data: {
       stage,
       ...(timestampField ? { [timestampField]: new Date() } : {}),
-      ...(SCHEDULING_STAGES.includes(stage) && scheduledAt
-        ? { scheduledAt: new Date(scheduledAt) }
-        : {}),
+      ...(scheduledAtDate ? { scheduledAt: scheduledAtDate } : {}),
     },
+    include: { jobPosting: { select: { titleEn: true } } },
   });
 
   if (stage === "HIRED") {
     await createEmployeeAccountForHiredApplicant(applicant, session.sub);
+  }
+
+  if (scheduledAtDate) {
+    await scheduleInterviewCalendarEvent(
+      applicant,
+      applicant.jobPosting.titleEn,
+      STAGE_LABELS[stage],
+      scheduledAtDate
+    );
   }
 
   revalidatePath(`/recruiting/applicants/${applicantId}`);

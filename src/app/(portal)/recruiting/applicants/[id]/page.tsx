@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
 import { STAGE_LABELS, SCHEDULING_STAGES } from "@/lib/recruiting";
+import { formatInBusinessTimezone } from "@/lib/timezone";
 import { saveApplicantNotesAction } from "../actions";
 import StageControls from "./StageControls";
 import CommunicationPanel from "./CommunicationPanel";
@@ -73,7 +74,7 @@ export default async function ApplicantDetailPage({
 
       {applicant.scheduledAt && (SCHEDULING_STAGES as string[]).includes(applicant.stage) && (
         <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          {STAGE_LABELS[applicant.stage]}: {applicant.scheduledAt.toLocaleString()}
+          {STAGE_LABELS[applicant.stage]}: {formatInBusinessTimezone(applicant.scheduledAt)}
         </div>
       )}
 

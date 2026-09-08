@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { ApplicantStage } from "@prisma/client";
 import { sendEmail } from "@/lib/email";
 import { generateInviteToken } from "@/lib/tokens";
+import { createCalendarEvent } from "@/lib/calendar";
 
 // Auto-scores an applicant's prescreen answers against the question bank's
 // point values and returns whether they cleared the posting's threshold.
@@ -68,6 +69,40 @@ export const SCHEDULING_STAGES: ApplicantStage[] = [
   "PHONE_INTERVIEW_SCHEDULED",
   "IN_PERSON_SCHEDULED",
 ];
+
+// Puts the interview on the shared Outlook calendar and emails the applicant
+// a calendar invite, so the interview shows up automatically instead of
+// someone having to re-enter it by hand. Best-effort: never blocks or
+// throws, since a calendar failure shouldn't undo the stage move.
+export async function scheduleInterviewCalendarEvent(
+  applicant: { firstName: string; lastName: string; email: string; phone: string },
+  jobPostingTitle: string,
+  stageLabel: string,
+  scheduledAt: Date
+) {
+  const zoomLink = process.env.RECRUITING_ZOOM_LINK;
+  const bodyLines = [
+    `Interview with ${applicant.firstName} ${applicant.lastName} for ${jobPostingTitle}.`,
+    "",
+    `Phone: ${applicant.phone}`,
+    `Email: ${applicant.email}`,
+  ];
+  if (zoomLink) {
+    bodyLines.push("", `Join Zoom: ${zoomLink}`);
+  }
+
+  try {
+    await createCalendarEvent({
+      subject: `${stageLabel} — ${applicant.firstName} ${applicant.lastName}`,
+      startsAt: scheduledAt,
+      body: bodyLines.join("\n"),
+      attendeeEmail: applicant.email,
+      attendeeName: `${applicant.firstName} ${applicant.lastName}`,
+    });
+  } catch {
+    // Swallow — a calendar failure shouldn't block the stage move.
+  }
+}
 
 // When an applicant is marked Hired, automatically create their training
 // account and email them an invite — closes the loop between Recruiting and
