@@ -46,6 +46,9 @@ export default function CommunicationPanel({
   const [tab, setTab] = useState<"none" | "email" | "sms">("none");
   const [pending, startTransition] = useTransition();
 
+  const emailHistory = history.filter((entry) => entry.channel === "EMAIL");
+  const smsHistory = history.filter((entry) => entry.channel === "SMS");
+
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-4">
       <div className="mb-3 flex items-center justify-between">
@@ -131,10 +134,36 @@ export default function CommunicationPanel({
       {history.length === 0 ? (
         <p className="text-sm text-neutral-400">No emails or texts yet.</p>
       ) : (
-        <div className="space-y-2">
-          {history.map((entry) => (
-            <CommRow key={entry.id} entry={entry} />
-          ))}
+        <div className="space-y-5">
+          <div>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Email
+            </h3>
+            {emailHistory.length === 0 ? (
+              <p className="text-sm text-neutral-400">No emails yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {emailHistory.map((entry) => (
+                  <CommRow key={entry.id} entry={entry} />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Text
+            </h3>
+            {smsHistory.length === 0 ? (
+              <p className="text-sm text-neutral-400">No texts yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {smsHistory.map((entry) => (
+                  <CommRow key={entry.id} entry={entry} />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
