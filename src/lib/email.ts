@@ -1,3 +1,31 @@
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Wraps a plain-text message body in branded HTML with a signature, so every
+// outbound email — applicant correspondence and internal notifications
+// alike — looks like it actually came from a company, not an unformatted
+// automated script.
+function toHtmlBody(text: string): string {
+  const paragraphs = escapeHtml(text)
+    .split(/\n{2,}/)
+    .map((p) => `<p style="margin:0 0 12px;">${p.replace(/\n/g, "<br>")}</p>`)
+    .join("");
+
+  return `
+    <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#14213A;line-height:1.5;">
+      ${paragraphs}
+      <div style="margin-top:24px;padding-top:16px;border-top:2px solid #C9A227;">
+        <p style="margin:0;font-weight:bold;font-size:15px;color:#14213A;">Mama&rsquo;s Cleaning Crew</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#4F6B96;">Great People. Premium Service. Real Impact.</p>
+        <p style="margin:8px 0 0;font-size:12px;">
+          <a href="https://mamascleaningcrew.com" style="color:#1B2A4A;">mamascleaningcrew.com</a>
+        </p>
+      </div>
+    </div>
+  `;
+}
+
 // Sends email via Microsoft Graph (Outlook/Microsoft 365), using an Entra ID
 // app registration with the Mail.Send application permission. Requires
 // MS_GRAPH_TENANT_ID, MS_GRAPH_CLIENT_ID, MS_GRAPH_CLIENT_SECRET, and
@@ -54,7 +82,7 @@ export async function sendEmail({
       body: JSON.stringify({
         message: {
           subject,
-          body: { contentType: "Text", content: body },
+          body: { contentType: "HTML", content: toHtmlBody(body) },
           toRecipients: [{ emailAddress: { address: to } }],
         },
       }),
