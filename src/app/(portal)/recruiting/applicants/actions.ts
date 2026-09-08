@@ -1,5 +1,6 @@
 "use server";
 
+import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
@@ -30,6 +31,42 @@ export async function setApplicantStageAction(applicantId: string, stage: Applic
 
   revalidatePath(`/recruiting/applicants/${applicantId}`);
   revalidatePath("/recruiting/applicants");
+}
+
+// For walk-ins, referrals, or anyone recruited outside the public
+// application form (a call, an in-person conversation) — added directly
+// by a manager, skipping the prescreen questions since none were asked.
+export async function createManualApplicantAction(formData: FormData) {
+  await requireRecruitingAccess();
+
+  const jobPostingId = String(formData.get("jobPostingId") ?? "");
+  const firstName = String(formData.get("firstName") ?? "").trim();
+  const lastName = String(formData.get("lastName") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim();
+  const phone = String(formData.get("phone") ?? "").trim();
+  const resumeDataUrl = String(formData.get("resumeDataUrl") ?? "") || null;
+  const resumeFileName = String(formData.get("resumeFileName") ?? "") || null;
+  const notes = String(formData.get("notes") ?? "").trim() || null;
+
+  if (!jobPostingId || !firstName || !lastName || !email || !phone) return;
+
+  const applicant = await prisma.applicant.create({
+    data: {
+      jobPostingId,
+      firstName,
+      lastName,
+      email,
+      phone,
+      resumeDataUrl,
+      resumeFileName,
+      notes,
+      stage: "NEW",
+    },
+  });
+
+  revalidatePath("/recruiting");
+  revalidatePath("/recruiting/applicants");
+  redirect(`/recruiting/applicants/${applicant.id}`);
 }
 
 export async function saveApplicantNotesAction(applicantId: string, formData: FormData) {

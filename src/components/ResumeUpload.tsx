@@ -17,7 +17,7 @@ function fileToDataUrl(file: File): Promise<string> {
 
 const MAX_BYTES = 8 * 1024 * 1024; // 8MB
 
-export default function ResumeUpload() {
+export default function ResumeUpload({ required = true }: { required?: boolean }) {
   const [fileName, setFileName] = useState("");
   const [dataUrl, setDataUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -25,14 +25,14 @@ export default function ResumeUpload() {
   return (
     <div>
       <label className="mb-1 block text-sm font-medium text-neutral-700">
-        Resume (PDF or Word doc) *
+        Resume (PDF or Word doc) {required && "*"}
       </label>
       <input type="hidden" name="resumeDataUrl" value={dataUrl} />
       <input type="hidden" name="resumeFileName" value={fileName} />
       <input
         type="file"
         accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        required={!dataUrl}
+        required={required && !dataUrl}
         onChange={async (e) => {
           const file = e.target.files?.[0];
           if (!file) return;

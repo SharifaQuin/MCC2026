@@ -61,6 +61,12 @@ export default async function RecruitingPage() {
         </div>
         <div className="flex gap-3">
           <Link
+            href="/recruiting/applicants/new"
+            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            + Add Applicant
+          </Link>
+          <Link
             href="/recruiting/applicants"
             className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
           >

@@ -26,9 +26,17 @@ export default async function ApplicantsPage({
         <h1 className="text-2xl font-semibold">
           Applicants{searchParams.stage ? `: ${STAGE_LABELS[searchParams.stage]}` : ""}
         </h1>
-        <Link href="/recruiting" className="text-sm text-brand-700 hover:underline">
-          ← Back to Pipeline
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/recruiting/applicants/new"
+            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            + Add Applicant Manually
+          </Link>
+          <Link href="/recruiting" className="text-sm text-brand-700 hover:underline">
+            ← Back to Pipeline
+          </Link>
+        </div>
       </div>
 
       {applicants.length === 0 ? (
