@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
+import { sendEmail } from "@/lib/email";
+import { sendSms } from "@/lib/sms";
 import type { ApplicantStage } from "@prisma/client";
 
 const STAGE_TIMESTAMP_FIELD: Partial<Record<ApplicantStage, "rejectedAt" | "benchedAt" | "hiredAt">> = {
@@ -34,5 +36,53 @@ export async function saveApplicantNotesAction(applicantId: string, formData: Fo
   await requireRecruitingAccess();
   const notes = String(formData.get("notes") ?? "");
   await prisma.applicant.update({ where: { id: applicantId }, data: { notes } });
+  revalidatePath(`/recruiting/applicants/${applicantId}`);
+}
+
+export async function sendApplicantEmailAction(applicantId: string, formData: FormData) {
+  const { session } = await requireRecruitingAccess();
+  const subject = String(formData.get("subject") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim();
+  if (!subject || !body) return;
+
+  const applicant = await prisma.applicant.findUniqueOrThrow({ where: { id: applicantId } });
+  const result = await sendEmail({ to: applicant.email, subject, body });
+
+  await prisma.communicationLog.create({
+    data: {
+      applicantId,
+      channel: "EMAIL",
+      direction: "OUTBOUND",
+      subject,
+      body,
+      status: result.ok ? "SENT" : "FAILED",
+      errorMessage: result.ok ? null : result.error,
+      sentById: session.sub,
+    },
+  });
+
+  revalidatePath(`/recruiting/applicants/${applicantId}`);
+}
+
+export async function sendApplicantTextAction(applicantId: string, formData: FormData) {
+  const { session } = await requireRecruitingAccess();
+  const body = String(formData.get("body") ?? "").trim();
+  if (!body) return;
+
+  const applicant = await prisma.applicant.findUniqueOrThrow({ where: { id: applicantId } });
+  const result = await sendSms({ to: applicant.phone, text: body });
+
+  await prisma.communicationLog.create({
+    data: {
+      applicantId,
+      channel: "SMS",
+      direction: "OUTBOUND",
+      body,
+      status: result.ok ? "SENT" : "FAILED",
+      errorMessage: result.ok ? null : result.error,
+      sentById: session.sub,
+    },
+  });
+
   revalidatePath(`/recruiting/applicants/${applicantId}`);
 }

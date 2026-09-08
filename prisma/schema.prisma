@@ -103,6 +103,7 @@ model User {
   certDecisionsMade  User[]    @relation("CertDecidedBy")
 
   departmentAccess DepartmentAccess[]
+  sentCommunications CommunicationLog[]
 
   @@index([role])
 }
@@ -340,6 +341,7 @@ model Applicant {
   updatedAt      DateTime       @updatedAt
 
   answers PrescreenAnswer[]
+  communications CommunicationLog[]
 
   @@index([jobPostingId, stage])
 }
@@ -354,4 +356,39 @@ model PrescreenAnswer {
   option      PrescreenOption   @relation(fields: [optionId], references: [id])
 
   @@unique([applicantId, questionId])
+}
+
+enum CommChannel {
+  EMAIL
+  SMS
+}
+
+enum CommDirection {
+  OUTBOUND
+  INBOUND
+}
+
+enum CommStatus {
+  SENT
+  FAILED
+}
+
+// Every email/text tied to an applicant, regardless of which manager sent
+// it — shown together on the applicant's profile so nobody has to ask
+// "did anyone already reach out to this person."
+model CommunicationLog {
+  id           String        @id @default(cuid())
+  applicantId  String
+  applicant    Applicant     @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  channel      CommChannel
+  direction    CommDirection @default(OUTBOUND)
+  subject      String?
+  body         String        @db.Text
+  status       CommStatus    @default(SENT)
+  errorMessage String?       @db.Text
+  sentById     String?
+  sentBy       User?         @relation(fields: [sentById], references: [id])
+  createdAt    DateTime      @default(now())
+
+  @@index([applicantId, createdAt])
 }

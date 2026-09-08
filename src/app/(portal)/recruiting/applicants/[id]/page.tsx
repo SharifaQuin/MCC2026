@@ -4,6 +4,7 @@ import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
 import { STAGE_LABELS } from "@/lib/recruiting";
 import { saveApplicantNotesAction } from "../actions";
 import StageControls from "./StageControls";
+import CommunicationPanel from "./CommunicationPanel";
 
 export default async function ApplicantDetailPage({ params }: { params: { id: string } }) {
   await requireRecruitingAccess();
@@ -15,12 +16,28 @@ export default async function ApplicantDetailPage({ params }: { params: { id: st
       answers: {
         include: { question: true, option: true },
       },
+      communications: {
+        orderBy: { createdAt: "desc" },
+        include: { sentBy: { select: { name: true } } },
+      },
     },
   });
 
   if (!applicant) {
     return <p className="text-neutral-500">Applicant not found.</p>;
   }
+
+  const commHistory = applicant.communications.map((c) => ({
+    id: c.id,
+    channel: c.channel,
+    direction: c.direction,
+    subject: c.subject,
+    body: c.body,
+    status: c.status,
+    errorMessage: c.errorMessage,
+    createdAt: c.createdAt.toISOString(),
+    sentByName: c.sentBy?.name ?? null,
+  }));
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -69,6 +86,10 @@ export default async function ApplicantDetailPage({ params }: { params: { id: st
             </div>
           )}
         </dl>
+      </div>
+
+      <div className="mb-6">
+        <CommunicationPanel applicantId={applicant.id} history={commHistory} />
       </div>
 
       {applicant.prescreenScore !== null && (
