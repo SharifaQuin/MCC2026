@@ -23,8 +23,8 @@ export default async function JobPostingDetailPage({ params }: { params: { id: s
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/recruiting" className="text-sm text-brand-700 hover:underline">
-        ← Back to Recruiting
+      <Link href="/recruiting/postings" className="text-sm text-brand-700 hover:underline">
+        ← Back to Job Postings
       </Link>
       <div className="mb-6 mt-2 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{posting.titleEn}</h1>

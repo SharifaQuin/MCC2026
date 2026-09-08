@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import type { ApplicantStage } from "@prisma/client";
 
 // Auto-scores an applicant's prescreen answers against the question bank's
 // point values and returns whether they cleared the posting's threshold.
@@ -27,6 +28,31 @@ export async function scorePrescreenAnswers(
   return { score, maxScore, scorePct, passed };
 }
 
+// KPIs for the HR overview page and the top of the recruiting pipeline board.
+export async function loadRecruitingDashboard() {
+  const byStage = await prisma.applicant.groupBy({ by: ["stage"], _count: true });
+  const counts = Object.fromEntries(byStage.map((s) => [s.stage, s._count])) as Record<
+    string,
+    number
+  >;
+  const total = byStage.reduce((sum, s) => sum + s._count, 0);
+  const hired = counts.HIRED ?? 0;
+  const rejected = counts.REJECTED ?? 0;
+  const benched = counts.BENCH ?? 0;
+
+  return {
+    total,
+    active: total - hired - rejected - benched,
+    awaitingScheduling: counts.PRESCREEN_PASSED ?? 0,
+    scheduledInterviews: (counts.PHONE_INTERVIEW_SCHEDULED ?? 0) + (counts.IN_PERSON_SCHEDULED ?? 0),
+    offersOut: counts.OFFER_SENT ?? 0,
+    hired,
+    rejected,
+    benched,
+    counts,
+  };
+}
+
 export const STAGE_LABELS: Record<string, string> = {
   NEW: "New Applicant",
   PRESCREEN_FAILED: "Prescreen — Not a Fit",
@@ -41,4 +67,54 @@ export const STAGE_LABELS: Record<string, string> = {
   HIRED: "Hired",
   REJECTED: "Rejected",
   BENCH: "Benched for Future Openings",
+};
+
+export const STAGE_TONE: Record<string, string> = {
+  NEW: "bg-neutral-100 text-neutral-600",
+  PRESCREEN_FAILED: "bg-red-100 text-red-700",
+  PRESCREEN_PASSED: "bg-green-100 text-green-700",
+  PHONE_INTERVIEW_SCHEDULED: "bg-amber-100 text-amber-700",
+  PHONE_INTERVIEW_PASSED: "bg-green-100 text-green-700",
+  PHONE_INTERVIEW_FAILED: "bg-red-100 text-red-700",
+  IN_PERSON_SCHEDULED: "bg-amber-100 text-amber-700",
+  IN_PERSON_PASSED: "bg-green-100 text-green-700",
+  IN_PERSON_FAILED: "bg-red-100 text-red-700",
+  OFFER_SENT: "bg-brand-100 text-brand-700",
+  HIRED: "bg-green-100 text-green-700",
+  REJECTED: "bg-red-100 text-red-700",
+  BENCH: "bg-neutral-100 text-neutral-600",
+};
+
+// The main forward-moving columns for the pipeline board. REJECTED/BENCH/
+// *_FAILED are shown in a separate "Needs a Decision" strip instead of as
+// board columns, since they're off-ramps rather than the happy path.
+export const PIPELINE_COLUMNS: { stage: string; label: string }[] = [
+  { stage: "NEW", label: "New" },
+  { stage: "PRESCREEN_PASSED", label: "Prescreen Passed" },
+  { stage: "PHONE_INTERVIEW_SCHEDULED", label: "Phone/Zoom Scheduled" },
+  { stage: "PHONE_INTERVIEW_PASSED", label: "Phone/Zoom Passed" },
+  { stage: "IN_PERSON_SCHEDULED", label: "In-Person Scheduled" },
+  { stage: "IN_PERSON_PASSED", label: "In-Person Passed" },
+  { stage: "OFFER_SENT", label: "Offer Sent" },
+  { stage: "HIRED", label: "Hired" },
+];
+
+export const NEEDS_DECISION_STAGES: ApplicantStage[] = [
+  "PRESCREEN_FAILED",
+  "PHONE_INTERVIEW_FAILED",
+  "IN_PERSON_FAILED",
+];
+export const ARCHIVED_STAGES: ApplicantStage[] = ["REJECTED", "BENCH"];
+
+// The one obvious "move it forward" action for each pipeline-board column,
+// shown as a single quick-action button on each card. Anything else (fail,
+// reject, bench) still lives on the applicant's own detail page.
+export const PRIMARY_NEXT_STAGE: Record<string, { stage: string; label: string } | undefined> = {
+  NEW: { stage: "PRESCREEN_PASSED", label: "Pass Prescreen" },
+  PRESCREEN_PASSED: { stage: "PHONE_INTERVIEW_SCHEDULED", label: "Schedule Phone/Zoom" },
+  PHONE_INTERVIEW_SCHEDULED: { stage: "PHONE_INTERVIEW_PASSED", label: "Mark Passed" },
+  PHONE_INTERVIEW_PASSED: { stage: "IN_PERSON_SCHEDULED", label: "Schedule In-Person" },
+  IN_PERSON_SCHEDULED: { stage: "IN_PERSON_PASSED", label: "Mark Passed" },
+  IN_PERSON_PASSED: { stage: "OFFER_SENT", label: "Send Offer (Gusto)" },
+  OFFER_SENT: { stage: "HIRED", label: "Mark Hired" },
 };

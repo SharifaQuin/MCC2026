@@ -56,21 +56,8 @@ export default function Nav({
             )}
             {(session.role === "ADMIN" || session.role === "SERVICE_MANAGER") && (
               <>
-                <Link href="/admin/employees" className="hover:underline">
-                  {labels.employees}
-                </Link>
-                {session.role === "ADMIN" && (
-                  <>
-                    <Link href="/admin/content" className="hover:underline">
-                      {labels.content}
-                    </Link>
-                    <Link href="/admin/permissions" className="hover:underline">
-                      {labels.permissions}
-                    </Link>
-                  </>
-                )}
-                <Link href="/admin/invite" className="hover:underline">
-                  {labels.invite}
+                <Link href="/admin" className="hover:underline">
+                  {labels.training}
                 </Link>
                 <Link href="/recruiting" className="hover:underline">
                   {labels.recruiting}

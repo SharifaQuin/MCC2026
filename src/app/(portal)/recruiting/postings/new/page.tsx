@@ -7,8 +7,8 @@ export default async function NewJobPostingPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href="/recruiting" className="text-sm text-brand-700 hover:underline">
-        ← Back to Recruiting
+      <Link href="/recruiting/postings" className="text-sm text-brand-700 hover:underline">
+        ← Back to Job Postings
       </Link>
       <h1 className="mb-6 mt-2 text-2xl font-semibold">New Job Posting</h1>
 
