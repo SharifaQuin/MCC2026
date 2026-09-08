@@ -8,7 +8,6 @@ import { sendEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
 import {
   SCHEDULING_STAGES,
-  STAGE_LABELS,
   createEmployeeAccountForHiredApplicant,
   scheduleInterviewCalendarEvent,
 } from "@/lib/recruiting";
@@ -49,12 +48,7 @@ export async function setApplicantStageAction(
   }
 
   if (scheduledAtDate) {
-    await scheduleInterviewCalendarEvent(
-      applicant,
-      applicant.jobPosting.titleEn,
-      STAGE_LABELS[stage],
-      scheduledAtDate
-    );
+    await scheduleInterviewCalendarEvent(applicant, applicant.jobPosting.titleEn, stage, scheduledAtDate);
   }
 
   revalidatePath(`/recruiting/applicants/${applicantId}`);

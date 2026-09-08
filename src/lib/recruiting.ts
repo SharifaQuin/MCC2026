@@ -77,27 +77,34 @@ export const SCHEDULING_STAGES: ApplicantStage[] = [
 export async function scheduleInterviewCalendarEvent(
   applicant: { firstName: string; lastName: string; email: string; phone: string },
   jobPostingTitle: string,
-  stageLabel: string,
+  stage: ApplicantStage,
   scheduledAt: Date
 ) {
   const calendarMailbox = process.env.RECRUITING_CALENDAR_MAILBOX;
   if (!calendarMailbox) return;
 
-  const zoomLink = process.env.RECRUITING_ZOOM_LINK;
   const bodyLines = [
     `Interview with ${applicant.firstName} ${applicant.lastName} for ${jobPostingTitle}.`,
     "",
     `Phone: ${applicant.phone}`,
     `Email: ${applicant.email}`,
   ];
-  if (zoomLink) {
-    bodyLines.push("", `Join Zoom: ${zoomLink}`);
+
+  // Zoom only makes sense for the phone/video stage, not an in-person one.
+  if (stage === "PHONE_INTERVIEW_SCHEDULED") {
+    const zoomPmi = process.env.RECRUITING_ZOOM_PMI;
+    const zoomLink = zoomPmi
+      ? `https://zoom.us/j/${zoomPmi.replace(/\D/g, "")}`
+      : process.env.RECRUITING_ZOOM_LINK;
+    if (zoomLink) {
+      bodyLines.push("", `Join Zoom: ${zoomLink}`);
+    }
   }
 
   try {
     await createCalendarEvent({
       mailbox: calendarMailbox,
-      subject: `${stageLabel} — ${applicant.firstName} ${applicant.lastName}`,
+      subject: `${STAGE_LABELS[stage]} — ${applicant.firstName} ${applicant.lastName}`,
       startsAt: scheduledAt,
       body: bodyLines.join("\n"),
       attendeeEmail: applicant.email,
