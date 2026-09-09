@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
 import { loadSalesDashboard } from "@/lib/salesDashboard";
-import { setSalesGoalAction } from "@/app/(portal)/sales/actions";
+import { setSalesGoalAction, setSalesActualsAction } from "@/app/(portal)/sales/actions";
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
@@ -18,7 +18,7 @@ export default async function SalesPage() {
   const { canEdit } = await requireDepartmentAccess("SALES");
   const dash = await loadSalesDashboard();
 
-  const goalHit = dash.goal > 0 && dash.wonRevenueThisMonth >= dash.goal;
+  const goalHit = dash.goal > 0 && dash.revenueTowardGoal >= dash.goal;
 
   return (
     <div>
@@ -39,7 +39,11 @@ export default async function SalesPage() {
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Stat label="Won This Month" value={money(dash.wonRevenueThisMonth)} accent />
+          <Stat
+            label={dash.actuals.entered ? "Actual Revenue" : "Won This Month (from quotes)"}
+            value={money(dash.revenueTowardGoal)}
+            accent
+          />
           <Stat label="Monthly Goal" value={dash.goal > 0 ? money(dash.goal) : "Not set"} />
           <Stat
             label="Cleanings Needed"
@@ -86,6 +90,67 @@ export default async function SalesPage() {
             </button>
           </form>
         )}
+
+        <div className="mt-6 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+          <p className="text-sm font-medium text-neutral-900">Actuals This Month</p>
+          <p className="mt-1 text-xs text-neutral-500">
+            Enter your real revenue and labor cost so far this month — once entered, this
+            replaces the quote-based estimate above for goal tracking.
+          </p>
+
+          <div className="mt-3 grid grid-cols-3 gap-3">
+            <Stat label="Actual Revenue" value={money(dash.actuals.revenue)} />
+            <Stat label="Actual Labor" value={money(dash.actuals.labor)} />
+            <Stat label="Profit So Far" value={money(dash.actuals.profit)} accent />
+          </div>
+
+          {canEdit && (
+            <form action={setSalesActualsAction} className="mt-4 flex flex-wrap items-end gap-3">
+              <div>
+                <label htmlFor="actualRevenue" className="block text-xs font-medium text-neutral-500">
+                  Revenue so far
+                </label>
+                <div className="mt-1 flex items-center gap-1">
+                  <span className="text-neutral-500">$</span>
+                  <input
+                    type="number"
+                    id="actualRevenue"
+                    name="actualRevenue"
+                    min={0}
+                    step={10}
+                    defaultValue={dash.actuals.revenue || ""}
+                    placeholder="0"
+                    className="w-28 rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="actualLabor" className="block text-xs font-medium text-neutral-500">
+                  Labor cost so far
+                </label>
+                <div className="mt-1 flex items-center gap-1">
+                  <span className="text-neutral-500">$</span>
+                  <input
+                    type="number"
+                    id="actualLabor"
+                    name="actualLabor"
+                    min={0}
+                    step={10}
+                    defaultValue={dash.actuals.labor || ""}
+                    placeholder="0"
+                    className="w-28 rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+              >
+                Save Actuals
+              </button>
+            </form>
+          )}
+        </div>
 
         {dash.goal > 0 && !goalHit && dash.topOpportunities.length > 0 && (
           <div className="mt-6 rounded-md border border-neutral-200 bg-neutral-50 p-4">

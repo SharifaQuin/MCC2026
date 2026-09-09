@@ -46,28 +46,32 @@ export default async function HROverviewPage() {
             {sales.goal > 0 && (
               <span
                 className={`rounded-full px-3 py-1 text-xs font-medium ${
-                  sales.wonRevenueThisMonth >= sales.goal
+                  sales.revenueTowardGoal >= sales.goal
                     ? "bg-green-100 text-green-800"
                     : "bg-amber-100 text-amber-800"
                 }`}
               >
-                {sales.wonRevenueThisMonth >= sales.goal
+                {sales.revenueTowardGoal >= sales.goal
                   ? "Goal hit this month! 🎉"
                   : `${money(sales.revenueRemaining)} to hit this month's goal`}
               </span>
             )}
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
-            <Stat label="Won This Month" value={money(sales.wonRevenueThisMonth)} />
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-6">
+            <Stat
+              label={sales.actuals.entered ? "Actual Revenue" : "Won This Month"}
+              value={money(sales.revenueTowardGoal)}
+            />
             <Stat label="Monthly Goal" value={sales.goal > 0 ? money(sales.goal) : "Not set"} />
             <Stat
               label="Cleanings Needed"
               value={
-                sales.goal > 0 && sales.wonRevenueThisMonth < sales.goal
+                sales.goal > 0 && sales.revenueTowardGoal < sales.goal
                   ? String(sales.cleaningsNeeded)
                   : "0"
               }
             />
+            <Stat label="Profit So Far" value={sales.actuals.entered ? money(sales.actuals.profit) : "—"} />
             <Stat label="Pending Quotes" value={sales.pendingCount} />
             <Stat
               label="Win Rate"

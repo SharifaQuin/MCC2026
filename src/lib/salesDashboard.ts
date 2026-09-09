@@ -29,6 +29,13 @@ export interface SalesOpportunity {
   value: number;
 }
 
+export interface SalesActuals {
+  revenue: number;
+  labor: number;
+  profit: number;
+  entered: boolean; // false until she's actually entered a figure this month
+}
+
 export interface SalesDashboard {
   goal: number;
   totalQuotes: number;
@@ -39,12 +46,25 @@ export interface SalesDashboard {
   wonRevenueThisMonth: number;
   wonRevenueAllTime: number;
   averageJobValue: number | null;
+  actuals: SalesActuals;
+  // Revenue used for the goal tracker below: her manually-entered actual
+  // revenue once she's entered one this month, otherwise the quote-based
+  // estimate (wonRevenueThisMonth) so the tracker isn't blank early on.
+  revenueTowardGoal: number;
   revenueRemaining: number;
   cleaningsNeeded: number;
   topOpportunities: SalesOpportunity[];
 }
 
 const GOAL_KEY = "sales:goal";
+
+function currentMonthKey(now: Date = new Date()): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function actualsKey(monthKey: string): string {
+  return `sales:actuals:${monthKey}`;
+}
 
 export async function getSalesGoal(): Promise<number> {
   const row = await prisma.salesToolData.findUnique({ where: { key: GOAL_KEY } });
@@ -65,15 +85,41 @@ export async function setSalesGoal(revenueGoal: number): Promise<void> {
   });
 }
 
+export async function getSalesActuals(monthKey: string = currentMonthKey()): Promise<SalesActuals> {
+  const row = await prisma.salesToolData.findUnique({ where: { key: actualsKey(monthKey) } });
+  if (!row) return { revenue: 0, labor: 0, profit: 0, entered: false };
+  try {
+    const parsed = JSON.parse(row.value) as { revenue?: number; labor?: number };
+    const revenue = typeof parsed.revenue === "number" ? parsed.revenue : 0;
+    const labor = typeof parsed.labor === "number" ? parsed.labor : 0;
+    return { revenue, labor, profit: revenue - labor, entered: true };
+  } catch {
+    return { revenue: 0, labor: 0, profit: 0, entered: false };
+  }
+}
+
+export async function setSalesActuals(
+  revenue: number,
+  labor: number,
+  monthKey: string = currentMonthKey()
+): Promise<void> {
+  await prisma.salesToolData.upsert({
+    where: { key: actualsKey(monthKey) },
+    create: { key: actualsKey(monthKey), value: JSON.stringify({ revenue, labor }) },
+    update: { value: JSON.stringify({ revenue, labor }) },
+  });
+}
+
 function isSameMonth(isoDate: string, now: Date): boolean {
   const d = new Date(isoDate);
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 }
 
 export async function loadSalesDashboard(): Promise<SalesDashboard> {
-  const [rows, goal] = await Promise.all([
+  const [rows, goal, actuals] = await Promise.all([
     prisma.salesToolData.findMany({ where: { key: { startsWith: "quote:" } } }),
     getSalesGoal(),
+    getSalesActuals(),
   ]);
 
   const quotes: QuoteRecord[] = rows
@@ -107,7 +153,8 @@ export async function loadSalesDashboard(): Promise<SalesDashboard> {
     ? averageSource.reduce((sum, q) => sum + wonValue(q), 0) / averageSource.length
     : null;
 
-  const revenueRemaining = Math.max(goal - wonRevenueThisMonth, 0);
+  const revenueTowardGoal = actuals.entered ? actuals.revenue : wonRevenueThisMonth;
+  const revenueRemaining = Math.max(goal - revenueTowardGoal, 0);
   const cleaningsNeeded =
     revenueRemaining > 0 && averageJobValue ? Math.ceil(revenueRemaining / averageJobValue) : 0;
 
@@ -134,6 +181,8 @@ export async function loadSalesDashboard(): Promise<SalesDashboard> {
     wonRevenueThisMonth,
     wonRevenueAllTime,
     averageJobValue,
+    actuals,
+    revenueTowardGoal,
     revenueRemaining,
     cleaningsNeeded,
     topOpportunities,
