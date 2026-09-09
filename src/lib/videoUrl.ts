@@ -1,13 +1,20 @@
-// Best-effort fixup for the most common mistake with embedded lesson videos:
-// pasting the normal "watch/share" link instead of the actual embed link.
-// Those two links often look nearly identical, but the watch link gets
-// blocked when shown inside an iframe (the video site's own security
-// setting, not something this app can override) — a blank black box with
-// no error the app can detect. Recognized hosts get rewritten to their
-// embeddable form; anything else is left untouched.
+// Best-effort fixup for the two most common mistakes with embedded lesson
+// videos: (1) pasting the whole <iframe> embed snippet a video site gives
+// you (e.g. Synthesia's "Embed" tab hands you full HTML, not a bare link),
+// and (2) pasting the normal "watch/share" link instead of the actual embed
+// link. A watch/share link gets silently blocked when shown inside another
+// site's iframe (the video site's own security setting, not something this
+// app can override) — a blank black box with no error the app can detect.
+// Recognized hosts get rewritten to their embeddable form; anything else is
+// left untouched.
 export function normalizeVideoUrl(raw: string): string | null {
-  const url = raw.trim();
+  let url = raw.trim();
   if (!url) return null;
+
+  // If a full <iframe> embed snippet was pasted, pull the src="..." out of
+  // it and work with that instead of the surrounding HTML.
+  const iframeSrcMatch = url.match(/<iframe[^>]*\ssrc=["']([^"']+)["']/i);
+  if (iframeSrcMatch) url = iframeSrcMatch[1];
 
   try {
     const parsed = new URL(url);
@@ -23,10 +30,17 @@ export function normalizeVideoUrl(raw: string): string | null {
       if (id) return `https://www.youtube.com/embed/${id}`;
     }
 
-    // Synthesia: share.synthesia.io/<id> (no /embeds/ segment yet) -> /embeds/<id>
-    if (parsed.hostname === "share.synthesia.io" && !parsed.pathname.startsWith("/embeds/")) {
-      const id = parsed.pathname.replace(/^\/+/, "");
-      if (id) return `https://share.synthesia.io/embeds/${id}`;
+    // Synthesia's real embed form is share.synthesia.io/embeds/videos/<id>
+    // (confirmed against an actual embed snippet from Synthesia). Take
+    // whatever the last path segment is as the id and rebuild from there,
+    // so this handles the plain share link, a /videos/<id> share link, etc.
+    if (parsed.hostname === "share.synthesia.io") {
+      if (parsed.pathname.startsWith("/embeds/videos/")) {
+        return url; // already correct
+      }
+      const segments = parsed.pathname.split("/").filter(Boolean);
+      const id = segments[segments.length - 1];
+      if (id) return `https://share.synthesia.io/embeds/videos/${id}`;
     }
 
     // Vimeo: vimeo.com/<id> -> player.vimeo.com/video/<id>
@@ -37,8 +51,9 @@ export function normalizeVideoUrl(raw: string): string | null {
 
     return url;
   } catch {
-    // Not a valid URL at all — save whatever was typed as-is rather than
-    // silently dropping it, so the editor still shows what she entered.
+    // Not a valid URL at all (and no <iframe src> was found inside it) —
+    // save whatever was typed as-is rather than silently dropping it, so
+    // the editor still shows what she entered.
     return url;
   }
 }
