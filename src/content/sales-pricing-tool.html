@@ -546,6 +546,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
       </div>
       <div class="save-quote-row">
         <input type="email" id="save-client-email" placeholder="Client email (needed to send the quote)">
+        <input type="text" id="save-client-zip" placeholder="Zip code" maxlength="10">
       </div>
       <div class="save-quote-row">
         <select id="collected-via" onchange="setCollectedVia(this.value)">
@@ -1872,6 +1873,7 @@ async function loadQuoteForUpdate(){
     document.getElementById('save-client-address').value = data.address || '';
     document.getElementById('save-client-phone').value = data.phone || '';
     document.getElementById('save-client-email').value = data.clientEmail || '';
+    document.getElementById('save-client-zip').value = data.zip || '';
     document.getElementById('save-walkthrough-date').value = data.walkthroughDate || '';
     if(data.city) document.getElementById('city-select').value = data.city;
 
@@ -1950,6 +1952,7 @@ async function saveQuoteForClient(){
     clientName, id,
     phone: document.getElementById('save-client-phone').value.trim(),
     clientEmail: document.getElementById('save-client-email').value.trim(),
+    zip: document.getElementById('save-client-zip').value.trim(),
     city: document.getElementById('city-select').value,
     address: document.getElementById('save-client-address').value.trim(),
     walkthroughDate: document.getElementById('save-walkthrough-date').value,
@@ -1959,7 +1962,7 @@ async function saveQuoteForClient(){
     low: (r.lowPrice!=null ? r.lowPrice : r.price).toFixed(2),
     high: (r.lowPrice!=null ? r.highPrice : r.price).toFixed(2),
     suggested: r.price.toFixed(2),
-    time: timeStr, validUntil: '',
+    time: timeStr, timeLowHrs: cleanMin/60, timeHighHrs: bufferedMin/60, validUntil: '',
     addons, mailbox: senderDefaults.mailbox, sender: senderDefaults.sender,
     homeDetails: {
       bedrooms: state.bedrooms||0, fullBaths: state.fullBaths||0, halfBaths: state.halfBaths||0,
@@ -2116,6 +2119,34 @@ const BASE_INCLUDES = {
   housekeeping: ['A dedicated technician — the same trusted person every visit', 'Full home maintenance cleaning', 'Priority scheduling'],
   airbnb: ['Full turnover cleaning between guests', 'Interior of fridge, interior of oven & full linen change — included', 'Laundry, up to 2 loads — washed, dried & folded', 'Home reset and staged for your next guest'],
 };
+
+// Detailed line-by-line checklist used in the quote EMAIL (as opposed to the
+// short summary list on the Client Quote Page / buildIncludedList below).
+// Only Standard has this level of detail so far — give me the equivalent
+// checklists for the other services and I'll add them the same way.
+const EMAIL_DETAILED_INCLUDES = {
+  standard: [
+    'Ceiling fans & light fixtures (dusted)', 'Cobwebs removed', 'Blinds, window ledges, & lock ledges (dusted)',
+    'Moldings & woodwork (dusted)', 'Lamps & Lampshades (dusted)', 'Pictures & knick-knacks (dusted)',
+    'Furniture dusted & polished', 'Top of refrigerator cleaned', 'Outside of appliances',
+    'Stovetop & drip pans cleaned', 'Counter tops & backsplashes', 'All sinks cleaned',
+    'Mirrors cleaned', 'Tub/shower & tile cleaned', 'All bathroom counters & fixtures',
+    'Wastebaskets emptied/relined', 'Stairs vacuumed', 'Floors vacuumed &/or mopped',
+  ],
+};
+
+const EMAIL_POLICIES_TEXT = `Policies & Procedures
+
+Please take a moment to review our service policies before your scheduled cleaning. By confirming or proceeding with your scheduled cleaning service, you acknowledge that you have read, understood, and agree to Mama's Cleaning Crew's Terms & Conditions and all applicable company policies. Your booking serves as your acceptance of these terms, and no additional signature is required.
+
+Click here to view our Policies & Procedures: https://mamascleaningcrew.com/policies-guidelines/`;
+
+const EMAIL_CONTACT_TEXT = `Contact Us
+
+If you have any questions, need help modifying your quote, or would like to schedule your service, feel free to contact us anytime:
+Phone: 949-485-4440
+Email: support@mamascleaningcrew.com
+Office Hours of Operation: Monday-Friday 8am-5pm`;
 
 const ADDON_LABELS = {
   linens: 'Linen change', baseboards: 'Hand-wiped baseboards', laundry: 'Laundry (up to 2 loads — washed, dried & folded)',
@@ -2425,21 +2456,47 @@ async function sendQuoteToClient(){
   if(!currentQuote || !currentQuote.id) return;
   if(!currentQuote.clientEmail){ sendStatus.textContent = 'No client email on this quote.'; return; }
 
-  const low = parseFloat(currentQuote.low), high = parseFloat(currentQuote.high);
-  let priceText;
-  if(!isNaN(low) && !isNaN(high) && high>low){ priceText = `$${low.toFixed(0)}–$${high.toFixed(0)}`; }
-  else if(!isNaN(low)){ priceText = `$${low.toFixed(0)}`; }
-  else { priceText = 'Quote pending'; }
-  const included = buildIncludedList(currentQuote.service, currentQuote.addons||{});
+  const q = currentQuote;
+  const serviceLabel = SERVICE_LABELS[q.service] || q.service || '';
+  const cost = parseFloat(q.suggested);
+  const costText = !isNaN(cost) ? `$${cost.toFixed(2)}` : 'Quote pending';
 
-  const subject = `Your Quote from Mama's Cleaning Crew — ${currentQuote.clientName||'Valued Client'}`;
+  const lowHrs = q.timeLowHrs, highHrs = q.timeHighHrs;
+  let timeText;
+  if(typeof lowHrs === 'number' && typeof highHrs === 'number'){
+    timeText = lowHrs.toFixed(1) === highHrs.toFixed(1)
+      ? `${lowHrs.toFixed(1)} HRS`
+      : `${lowHrs.toFixed(1)}-${highHrs.toFixed(1)} HRS`;
+  } else {
+    timeText = q.time || '—';
+  }
+
+  const sqft = q.formState && q.formState.sqft;
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+
+  const included = EMAIL_DETAILED_INCLUDES[q.service] || buildIncludedList(q.service, q.addons||{});
+  const includesIntro = EMAIL_DETAILED_INCLUDES[q.service]
+    ? `Here's what you can expect from a ${serviceLabel} scheduled service:`
+    : `Here's what's included:`;
+
+  const subject = `Your Mama's Cleaning Crew Quote | ${q.clientName || 'Valued Client'}`;
   const bodyParagraphs = [
-    `Hi ${(currentQuote.clientName||'').split(' ')[0] || 'there'},`,
-    `Thank you for welcoming us into your home for your complimentary walkthrough${currentQuote.walkthroughDate ? ' on '+formatDate(currentQuote.walkthroughDate) : ''}. Here is the quote we put together for you:`,
-    `Service: ${SERVICE_LABELS[currentQuote.service]||currentQuote.service}\nFrequency: ${currentQuote.frequency||'One-Time'}\nEstimated time: ${currentQuote.time||'—'}\nLocation: ${[currentQuote.address, currentQuote.city].filter(Boolean).join(', ')||'—'}\nQuote: ${priceText}`,
-    `What's included:\n${included.map(i => '- '+i).join('\n')}`,
-    currentQuote.validUntil ? `This quote is valid through ${formatDate(currentQuote.validUntil)}.` : '',
-    `Just reply to this email to accept the quote or to ask any questions — we're happy to help.`,
+    `${greeting}, ${q.clientName || 'there'}`,
+    `Thank you for considering Mama's Cleaning Crew.\nHere's a summary of the information you provided:`,
+    [
+      `Service Requested: ${q.frequency || 'One-Time'} ${serviceLabel}`,
+      sqft ? `Property Size: ${sqft} sqft` : null,
+      q.zip ? `Zip Code: ${q.zip}` : null,
+      `Estimated Service Cost: ${costText}`,
+      `Approximate time of completion: ${timeText}`,
+      `Estimated start Date: TBD`,
+    ].filter(Boolean).map(l => '- '+l).join('\n'),
+    `What's Included in Your Cleaning:\nWe take pride in offering high-quality, detailed cleaning services using eco-friendly products that are safe for your family and pets.\n${includesIntro}`,
+    included.map(i => '- '+i).join('\n'),
+    `Thank you again for giving us the opportunity and allowing us into your home. We hope to see you in the near future and please do not hesitate to reach out if we can be of further assistance. If you would like to move forward with this quote simply respond to this email or give us a call.`,
+    EMAIL_POLICIES_TEXT,
+    EMAIL_CONTACT_TEXT,
   ].filter(Boolean).join('\n\n');
 
   sendBtn.disabled = true;
