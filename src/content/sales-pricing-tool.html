@@ -2122,17 +2122,53 @@ const BASE_INCLUDES = {
 
 // Detailed line-by-line checklist used in the quote EMAIL (as opposed to the
 // short summary list on the Client Quote Page / buildIncludedList below).
-// Only Standard has this level of detail so far — give me the equivalent
-// checklists for the other services and I'll add them the same way.
+// Each entry: items (the checklist itself), recurringExtra (optional — only
+// shown when the quote isn't One-Time), footnote (optional disclaimer shown
+// after the checklist). Deep Clean, Standard, and Move-In/Out have this
+// level of detail — give me the rest (A la Carte, Post Construction,
+// Housekeeping, Airbnb) and I'll add them the same way.
 const EMAIL_DETAILED_INCLUDES = {
-  standard: [
-    'Ceiling fans & light fixtures (dusted)', 'Cobwebs removed', 'Blinds, window ledges, & lock ledges (dusted)',
-    'Moldings & woodwork (dusted)', 'Lamps & Lampshades (dusted)', 'Pictures & knick-knacks (dusted)',
-    'Furniture dusted & polished', 'Top of refrigerator cleaned', 'Outside of appliances',
-    'Stovetop & drip pans cleaned', 'Counter tops & backsplashes', 'All sinks cleaned',
-    'Mirrors cleaned', 'Tub/shower & tile cleaned', 'All bathroom counters & fixtures',
-    'Wastebaskets emptied/relined', 'Stairs vacuumed', 'Floors vacuumed &/or mopped',
-  ],
+  standard: {
+    items: [
+      'Ceiling fans & light fixtures (dusted)', 'Cobwebs removed', 'Blinds, window sills, & lockledges (dusted)',
+      'Moldings & woodwork (dusted)', 'Baseboards (dusted)', 'Lamps & Lampshades (dusted)',
+      'Pictures & knick-knacks (dusted)', 'Furniture dusted & polished', 'Top of refrigerator cleaned',
+      'Outside of appliances (inside microwave)', 'Stovetop & drip pans cleaned', 'Counter tops & backsplashes',
+      'All sinks cleaned', 'Mirrors cleaned', 'Tub/shower & tile cleaned', 'All bathroom counters & fixtures',
+      'Wastebaskets emptied/relined', 'Beds made, 1 set of sheets changed', 'Stairs vacuumed', 'Floors vacuumed &/or mopped',
+    ],
+    recurringExtra: [
+      'All linens Changed', 'Baseboards on Rotation', 'Light Organization', 'Inside 1 extra appliance every quarter',
+    ],
+  },
+  deep: {
+    items: [
+      'Ceiling fan blades (hand washed or wiped) & light fixtures (hand washed in place/not removed)', 'Cobwebs removed',
+      'Blinds & shutters (vacuumed or wiped w/microfiber)', 'Moldings & woodwork, windowsills, & lock ledges (hand washed or wiped)',
+      'Baseboards (hand washed or wiped, reachable w/out moving furniture)', 'Lamps & lampshades (dusted or vacuumed w/ attachment)',
+      'Pictures & knick-knacks (hand wiped)', 'Furniture (polished, fronts, sides, legs)', 'Top of refrigerator (hand washed or wiped)',
+      'Outside of appliances cleaned / inside microwave', 'Stovetop & drip pans scrubbed', 'All Cabinet fronts (washed w/ Red Juice)',
+      'All Doors (washed)', 'Light switch plates (washed)', 'Counter tops & backsplashes (washed)', 'All sinks (scrubbed/disinfected)',
+      'Mirrors (Blue Juiced all way to top*)', 'Tub/shower & tiles (double scrubbed if build up)', 'All bathroom counters & fixtures (sanitized)',
+      'Wastebaskets (emptied/washed/relined)', 'Beds made; 1 set of sheets changed', 'Stairs (vacuumed, wood washed w/ Red Juice)',
+      'Floors (vacuumed &/or mopped)',
+    ],
+    footnote: `*We do not climb higher than a 2-step ladder. Higher items will only be dusted w/ an extension duster — we cannot move furniture, but we will try to reach any visible places either by hand or with an extension duster. Most homes have at least one chandelier or vaulted ceiling fan that we cannot reach by hand. We cannot guarantee the results of mini-blind cleaning. Excessive build up may require ultra-sonic mini-blind cleaning (available upon request). Please allow for some dust resettlement after we leave — we try to limit the dust in the air but cannot prevent this entirely.`,
+  },
+  movein: {
+    items: [
+      'Ceiling fan blades (hand washed or wiped) & light fixtures (hand washed in place/not removed)', 'Cobwebs removed',
+      'Blinds & shutters (vacuumed or wiped with microfiber)', 'Moldings & woodwork (hand washed or wiped)',
+      'Baseboards (hand washed or wiped)', 'Doors, door frames, & door handles (washed)', 'Light switch plates (washed)',
+      'Interior & exterior cabinet fronts (washed)', 'Interior shelving, drawers, & closets cleaned', 'Countertops & backsplashes (washed)',
+      'All sinks (scrubbed/disinfected)', 'Mirrors (cleaned and polished)', 'Tubs, showers, & tiles (scrubbed and sanitized)',
+      'Toilets (cleaned and disinfected)', 'All bathroom counters & fixtures (sanitized)', 'Inside & outside of appliances cleaned',
+      'Inside microwave cleaned', 'Refrigerator shelves & drawers cleaned (if empty)', 'Stovetop & drip pans scrubbed',
+      'Laundry room surfaces cleaned', 'Stair railings, banisters, & spindles wiped', 'Floors vacuumed and/or mopped throughout the home',
+      'Garage entry areas swept (if accessible)', 'Final quality inspection performed throughout the property',
+    ],
+    footnote: `Important Service Limitations: For safety and insurance compliance — we do not clean interior or exterior windows, window tracks, window sills, window frames, or screens; we do not remove hazardous materials, debris, or excessive trash; we do not provide junk hauling, mold remediation, or biohazard cleanup services; we do not move large furniture, appliances, or heavy objects; and we do not climb higher than a 2-step ladder. Utilities (water and electricity) must be active at the time of service. Please ensure all personal belongings, moving boxes, and hazardous materials have been removed prior to your scheduled appointment — excessive buildup, pet hair, or unsafe conditions may require additional time and additional charges.`,
+  },
 };
 
 const EMAIL_POLICIES_TEXT = `Policies & Procedures
@@ -2475,10 +2511,12 @@ async function sendQuoteToClient(){
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
 
-  const included = EMAIL_DETAILED_INCLUDES[q.service] || buildIncludedList(q.service, q.addons||{});
-  const includesIntro = EMAIL_DETAILED_INCLUDES[q.service]
+  const detailed = EMAIL_DETAILED_INCLUDES[q.service];
+  const included = detailed ? detailed.items : buildIncludedList(q.service, q.addons||{});
+  const includesIntro = detailed
     ? `Here's what you can expect from a ${serviceLabel} scheduled service:`
     : `Here's what's included:`;
+  const isRecurring = (q.frequency || 'One-Time') !== 'One-Time';
 
   const subject = `Your Mama's Cleaning Crew Quote | ${q.clientName || 'Valued Client'}`;
   const bodyParagraphs = [
@@ -2494,6 +2532,10 @@ async function sendQuoteToClient(){
     ].filter(Boolean).map(l => '- '+l).join('\n'),
     `What's Included in Your Cleaning:\nWe take pride in offering high-quality, detailed cleaning services using eco-friendly products that are safe for your family and pets.\n${includesIntro}`,
     included.map(i => '- '+i).join('\n'),
+    (isRecurring && detailed && detailed.recurringExtra)
+      ? `Routine Cleaning Additional Only:\n${detailed.recurringExtra.map(i => '- '+i).join('\n')}`
+      : '',
+    (detailed && detailed.footnote) ? detailed.footnote : '',
     `Thank you again for giving us the opportunity and allowing us into your home. We hope to see you in the near future and please do not hesitate to reach out if we can be of further assistance. If you would like to move forward with this quote simply respond to this email or give us a call.`,
     EMAIL_POLICIES_TEXT,
     EMAIL_CONTACT_TEXT,
