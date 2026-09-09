@@ -299,6 +299,22 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 .mailbox-warning{display:none;background:#FBEAEA;border:1px solid #D9534F;color:#A83232;font-family:'Lato',sans-serif;font-size:12px;line-height:1.5;border-radius:8px;padding:12px 16px;margin-bottom:16px;text-align:center;}
 .mailbox-warning.show{display:block;}
 
+.sales-controls{background:#fff;border:1.5px dashed var(--border);border-radius:10px;padding:18px 20px;margin-bottom:20px;}
+.sales-controls-title{font-family:'Lato',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--charcoal-lt);margin-bottom:12px;}
+.sc-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+.sc-row:last-child{margin-bottom:0;}
+.sc-status-badge{font-family:'Lato',sans-serif;font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:5px 12px;border-radius:20px;}
+.sc-status-badge.pending{background:var(--blush);color:#8A4A4A;}
+.sc-status-badge.won{background:var(--sage);color:var(--green-dark);}
+.sc-status-badge.lost{background:#EEE;color:#666;}
+.sc-btn{font-family:'Lato',sans-serif;font-size:12px;font-weight:700;border-radius:6px;padding:8px 14px;cursor:pointer;border:1.5px solid var(--navy);background:transparent;color:var(--navy);}
+.sc-btn:hover{background:var(--navy);color:#fff;}
+.sc-btn.primary{background:var(--green);border-color:var(--green);color:#fff;}
+.sc-btn.primary:hover{background:var(--green-dark);}
+.sc-btn:disabled{opacity:.5;cursor:not-allowed;}
+.sc-btn:disabled:hover{background:transparent;color:var(--navy);}
+.sc-note{font-family:'Lato',sans-serif;font-size:11.5px;color:var(--charcoal-lt);}
+
 .actions{display:flex;gap:12px;margin-bottom:8px;}
 .btn-accept, .btn-decline{flex:1;font-family:'Lato',sans-serif;font-size:13.5px;font-weight:700;letter-spacing:.02em;border-radius:8px;padding:15px 20px;text-align:center;cursor:pointer;text-decoration:none;display:block;transition:all .15s;}
 .btn-accept{background:var(--green);color:#fff;border:1.5px solid var(--green);}
@@ -529,6 +545,9 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
         <input type="text" id="save-client-address" placeholder="Service address (optional)">
       </div>
       <div class="save-quote-row">
+        <input type="email" id="save-client-email" placeholder="Client email (needed to send the quote)">
+      </div>
+      <div class="save-quote-row">
         <select id="collected-via" onchange="setCollectedVia(this.value)">
           <option value="calledin">Called-In</option>
           <option value="walkthrough">Walkthrough</option>
@@ -723,6 +742,20 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 
     <div class="validity" id="q-validity"></div>
     <div class="mailbox-warning" id="mailbox-warning"></div>
+
+    <div class="sales-controls">
+      <div class="sales-controls-title">Sales Tools — Internal Only</div>
+      <div class="sc-row">
+        <span class="sc-status-badge" id="sc-status-badge">Pending</span>
+        <button class="sc-btn" id="sc-mark-won" onclick="setQuoteStatus('won')">Mark Won</button>
+        <button class="sc-btn" id="sc-mark-lost" onclick="setQuoteStatus('lost')">Mark Lost</button>
+        <button class="sc-btn" id="sc-mark-pending" onclick="setQuoteStatus('pending')">Reset to Pending</button>
+      </div>
+      <div class="sc-row">
+        <button class="sc-btn primary" id="sc-send-btn" onclick="sendQuoteToClient()">Send Quote to Client →</button>
+        <span class="sc-note" id="sc-send-status"></span>
+      </div>
+    </div>
 
     <div class="actions">
       <a class="btn-accept" id="q-accept-btn" href="#">Accept This Quote</a>
@@ -1838,6 +1871,7 @@ async function loadQuoteForUpdate(){
     document.getElementById('save-client-id').value = data.id || id;
     document.getElementById('save-client-address').value = data.address || '';
     document.getElementById('save-client-phone').value = data.phone || '';
+    document.getElementById('save-client-email').value = data.clientEmail || '';
     document.getElementById('save-walkthrough-date').value = data.walkthroughDate || '';
     if(data.city) document.getElementById('city-select').value = data.city;
 
@@ -1878,10 +1912,11 @@ async function saveQuoteForClient(){
     }
   }
 
+  let existingData = null;
   try{
     const existing = await window.storage.get('quote:'+id, true);
     if(existing && existing.value){
-      const existingData = JSON.parse(existing.value);
+      existingData = JSON.parse(existing.value);
       if(existingData.clientName !== clientName){
         statusEl.textContent = `Quote ID "${id}" is already used by a different client (${existingData.clientName}). Please enter a unique Quote ID above and save again.`;
         return;
@@ -1914,6 +1949,7 @@ async function saveQuoteForClient(){
   const quoteData = {
     clientName, id,
     phone: document.getElementById('save-client-phone').value.trim(),
+    clientEmail: document.getElementById('save-client-email').value.trim(),
     city: document.getElementById('city-select').value,
     address: document.getElementById('save-client-address').value.trim(),
     walkthroughDate: document.getElementById('save-walkthrough-date').value,
@@ -1931,6 +1967,10 @@ async function saveQuoteForClient(){
     },
     formState: JSON.parse(JSON.stringify(state)),
     savedAt: new Date().toISOString(),
+    // Carried over from the existing record rather than reset on every re-save —
+    // status/sentAt track the deal, not this particular edit.
+    status: (existingData && existingData.status) || 'pending',
+    sentAt: (existingData && existingData.sentAt) || null,
   };
 
   if(typeof window.storage === 'undefined' || !window.storage){
@@ -2246,7 +2286,7 @@ function renderPreviousQuotesList(){
     const safeId = item.id.replace(/'/g, "\\'");
     return `
     <div class="prevquote-item" onclick="loadSavedQuoteFromList('${safeId}')">
-      <div class="prevquote-name">${d.clientName || '(no name)'}</div>
+      <div class="prevquote-name">${d.clientName || '(no name)'} <span class="sc-status-badge ${d.status||'pending'}" style="font-size:9px;padding:2px 8px;vertical-align:1px;">${d.status==='won'?'Won':d.status==='lost'?'Lost':'Pending'}</span></div>
       <div class="prevquote-meta">${item.id}${d.phone ? ' · '+d.phone : ''} · ${serviceLabel}${priceStr ? ' · '+priceStr : ''}${savedDateStr ? ' · '+savedDateStr : ''}</div>
     </div>`;
   }).join('');
@@ -2268,6 +2308,17 @@ async function loadSavedQuoteFromList(id){
 }
 
 document.addEventListener('DOMContentLoaded', refreshPreviousQuotesList);
+
+// Deep-link support: /api/sales/pricing-tool?quote=<id> (used by the Sales
+// "Quotes" list page) opens straight to that quote in the Client Quote tab.
+document.addEventListener('DOMContentLoaded', async function(){
+  const id = new URLSearchParams(window.location.search).get('quote');
+  if(!id) return;
+  if(typeof switchTab === 'function') switchTab('quote');
+  const loadIdEl = document.getElementById('load-id');
+  if(loadIdEl) loadIdEl.value = id;
+  if(typeof loadQuote === 'function') await loadQuote();
+});
 
 function formatDate(iso){
   if(!iso) return '';
@@ -2328,6 +2379,89 @@ function renderQuote(data){
   } else {
     mbWarn.classList.remove('show');
   }
+
+  updateSalesControlsUI(data);
+}
+
+// ── SALES TOOLS — status tracking + sending the quote by email ──
+function updateSalesControlsUI(data){
+  const badge = document.getElementById('sc-status-badge');
+  const status = data.status || 'pending';
+  badge.textContent = status === 'won' ? 'Won' : status === 'lost' ? 'Lost' : 'Pending';
+  badge.className = 'sc-status-badge ' + status;
+
+  document.getElementById('sc-mark-won').disabled = status === 'won';
+  document.getElementById('sc-mark-lost').disabled = status === 'lost';
+  document.getElementById('sc-mark-pending').disabled = status === 'pending';
+
+  const sendBtn = document.getElementById('sc-send-btn');
+  const sendStatus = document.getElementById('sc-send-status');
+  if(!data.clientEmail){
+    sendBtn.disabled = true;
+    sendStatus.textContent = 'Add a client email in the Pricing Calculator tab and save again to enable sending.';
+  } else {
+    sendBtn.disabled = false;
+    sendStatus.textContent = data.sentAt
+      ? `Last sent ${new Date(data.sentAt).toLocaleString('en-US', {dateStyle:'medium', timeStyle:'short'})}.`
+      : '';
+  }
+}
+
+async function setQuoteStatus(status){
+  if(!currentQuote || !currentQuote.id) return;
+  currentQuote.status = status;
+  try{
+    await window.storage.set('quote:'+currentQuote.id, JSON.stringify(currentQuote), true);
+    updateSalesControlsUI(currentQuote);
+    if(typeof refreshPreviousQuotesList === 'function') refreshPreviousQuotesList();
+  } catch(e){
+    document.getElementById('sc-send-status').textContent = 'Could not update status — try again.';
+  }
+}
+
+async function sendQuoteToClient(){
+  const sendBtn = document.getElementById('sc-send-btn');
+  const sendStatus = document.getElementById('sc-send-status');
+  if(!currentQuote || !currentQuote.id) return;
+  if(!currentQuote.clientEmail){ sendStatus.textContent = 'No client email on this quote.'; return; }
+
+  const low = parseFloat(currentQuote.low), high = parseFloat(currentQuote.high);
+  let priceText;
+  if(!isNaN(low) && !isNaN(high) && high>low){ priceText = `$${low.toFixed(0)}–$${high.toFixed(0)}`; }
+  else if(!isNaN(low)){ priceText = `$${low.toFixed(0)}`; }
+  else { priceText = 'Quote pending'; }
+  const included = buildIncludedList(currentQuote.service, currentQuote.addons||{});
+
+  const subject = `Your Quote from Mama's Cleaning Crew — ${currentQuote.clientName||'Valued Client'}`;
+  const bodyParagraphs = [
+    `Hi ${(currentQuote.clientName||'').split(' ')[0] || 'there'},`,
+    `Thank you for welcoming us into your home for your complimentary walkthrough${currentQuote.walkthroughDate ? ' on '+formatDate(currentQuote.walkthroughDate) : ''}. Here is the quote we put together for you:`,
+    `Service: ${SERVICE_LABELS[currentQuote.service]||currentQuote.service}\nFrequency: ${currentQuote.frequency||'One-Time'}\nEstimated time: ${currentQuote.time||'—'}\nLocation: ${[currentQuote.address, currentQuote.city].filter(Boolean).join(', ')||'—'}\nQuote: ${priceText}`,
+    `What's included:\n${included.map(i => '- '+i).join('\n')}`,
+    currentQuote.validUntil ? `This quote is valid through ${formatDate(currentQuote.validUntil)}.` : '',
+    `Just reply to this email to accept the quote or to ask any questions — we're happy to help.`,
+  ].filter(Boolean).join('\n\n');
+
+  sendBtn.disabled = true;
+  sendStatus.textContent = 'Sending...';
+  try{
+    const res = await fetch('/api/sales/send-quote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: currentQuote.id, subject, body: bodyParagraphs }),
+    });
+    const result = await res.json();
+    if(res.ok && result.ok){
+      currentQuote.sentAt = result.sentAt;
+      sendStatus.textContent = `Sent to ${currentQuote.clientEmail} just now.`;
+      if(typeof refreshPreviousQuotesList === 'function') refreshPreviousQuotesList();
+    } else {
+      sendStatus.textContent = 'Send failed: ' + (result.error || 'unknown error');
+    }
+  } catch(e){
+    sendStatus.textContent = 'Send failed — check your connection and try again.';
+  }
+  sendBtn.disabled = !currentQuote.clientEmail;
 }
 
 // ============================================================

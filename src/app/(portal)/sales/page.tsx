@@ -20,6 +20,19 @@ export default async function SalesPage() {
             Open Pricing &amp; Quotes Tool
           </Link>
         </section>
+
+        <section className="rounded-lg border border-neutral-200 bg-white p-6">
+          <h2 className="text-lg font-medium text-neutral-900">Quotes</h2>
+          <p className="mt-1 text-sm text-neutral-500">
+            See every saved quote in one place and track pending, won, and lost deals.
+          </p>
+          <Link
+            href="/sales/quotes"
+            className="mt-5 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            View Quotes
+          </Link>
+        </section>
       </div>
     </div>
   );

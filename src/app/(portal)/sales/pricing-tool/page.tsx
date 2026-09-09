@@ -1,8 +1,17 @@
 import Link from "next/link";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
 
-export default async function SalesPricingToolPage() {
+export default async function SalesPricingToolPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ quote?: string }>;
+}) {
   await requireDepartmentAccess("SALES");
+  const { quote } = await searchParams;
+
+  const src = quote
+    ? `/api/sales/pricing-tool?quote=${encodeURIComponent(quote)}`
+    : "/api/sales/pricing-tool";
 
   return (
     <div>
@@ -14,7 +23,7 @@ export default async function SalesPricingToolPage() {
           gets the full browser width instead of looking boxed in. */}
       <div className="relative mt-3 w-screen ml-[calc(-50vw+50%)]">
         <iframe
-          src="/api/sales/pricing-tool"
+          src={src}
           title="Pricing & Client Quotes"
           className="block h-[88vh] w-full border-0"
         />

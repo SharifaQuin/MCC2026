@@ -37,10 +37,12 @@ export async function sendEmail({
   to,
   subject,
   body,
+  replyTo,
 }: {
   to: string;
   subject: string;
   body: string;
+  replyTo?: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const token = await getGraphAccessToken();
   if (!token.ok) return token;
@@ -58,6 +60,7 @@ export async function sendEmail({
           subject,
           body: { contentType: "HTML", content: toHtmlBody(body) },
           toRecipients: [{ emailAddress: { address: to } }],
+          ...(replyTo ? { replyTo: [{ emailAddress: { address: replyTo } }] } : {}),
         },
       }),
     }
