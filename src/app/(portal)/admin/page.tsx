@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { loadAdminDashboard } from "@/lib/dashboard";
-import { getSession } from "@/lib/session";
 
 function StatCard({
   label,
@@ -27,66 +26,10 @@ function StatCard({
 }
 
 export default async function AdminDashboardPage() {
-  const [stats, session] = await Promise.all([loadAdminDashboard(), getSession()]);
+  const stats = await loadAdminDashboard();
 
   return (
     <div className="space-y-8">
-      <div>
-        <Link href="/hr" className="text-sm text-brand-700 hover:underline">
-          ← Back to HR
-        </Link>
-        <h1 className="mt-1 text-2xl font-semibold">Training</h1>
-      </div>
-
-      <div className="flex flex-wrap gap-3">
-        <Link
-          href="/admin/invite"
-          className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-        >
-          Invite Employee
-        </Link>
-        <Link
-          href="/admin/employees"
-          className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-        >
-          Employees
-        </Link>
-        <Link
-          href="/modules"
-          className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-        >
-          Modules
-        </Link>
-        <Link
-          href="/progress"
-          className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-        >
-          My Progress
-        </Link>
-        <Link
-          href="/glossary"
-          className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-        >
-          Glossary
-        </Link>
-        {session?.role === "ADMIN" && (
-          <>
-            <Link
-              href="/admin/content"
-              className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-            >
-              Content Editor
-            </Link>
-            <Link
-              href="/admin/permissions"
-              className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-            >
-              Permissions
-            </Link>
-          </>
-        )}
-      </div>
-
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard label="Total Employees" value={stats.totalEmployees} />
         <StatCard label="Invite Pending" value={stats.pendingInvites} tone="warn" />

@@ -1,11 +1,9 @@
 import InviteForm from "./InviteForm";
 import BulkInviteForm from "./BulkInviteForm";
-import BackToTraining from "@/components/BackToTraining";
 
 export default function AdminInvitePage() {
   return (
     <div className="space-y-10">
-      <BackToTraining />
       <div>
         <h1 className="mb-6 text-2xl font-semibold">Invite Employee</h1>
         <InviteForm />
