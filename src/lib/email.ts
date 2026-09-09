@@ -38,17 +38,27 @@ export async function sendEmail({
   subject,
   body,
   replyTo,
+  from,
+  bcc,
 }: {
   to: string;
   subject: string;
   body: string;
   replyTo?: string;
+  // Mailbox to send as — defaults to MS_GRAPH_SENDER_EMAIL. Sending as a
+  // different mailbox (e.g. sales@) requires the Graph app registration to
+  // have Mail.Send permission on that mailbox too.
+  from?: string;
+  bcc?: string | string[];
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const token = await getGraphAccessToken();
   if (!token.ok) return token;
 
+  const sendAsMailbox = from || token.senderEmail;
+  const bccList = bcc ? (Array.isArray(bcc) ? bcc : [bcc]) : [];
+
   const sendRes = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(token.senderEmail)}/sendMail`,
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sendAsMailbox)}/sendMail`,
     {
       method: "POST",
       headers: {
@@ -61,6 +71,7 @@ export async function sendEmail({
           body: { contentType: "HTML", content: toHtmlBody(body) },
           toRecipients: [{ emailAddress: { address: to } }],
           ...(replyTo ? { replyTo: [{ emailAddress: { address: replyTo } }] } : {}),
+          ...(bccList.length ? { bccRecipients: bccList.map((address) => ({ emailAddress: { address } })) } : {}),
         },
       }),
     }

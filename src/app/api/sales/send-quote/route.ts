@@ -7,7 +7,14 @@ import { sendEmail } from "@/lib/email";
 // recipient address and reply-to mailbox are read from the stored quote
 // record (not trusted from the request body) so the tool's client-side JS
 // can only ever send to the email address that was actually saved with it.
+//
+// Always sent as (and BCC'd to) the Sales team mailbox rather than the
+// shared MS_GRAPH_SENDER_EMAIL used elsewhere, so every quote email lands in
+// Sales' own Sent Items as a running thread. This mailbox needs Mail.Send
+// permission on the same Graph app registration as MS_GRAPH_SENDER_EMAIL.
 export const dynamic = "force-dynamic";
+
+const SALES_MAILBOX = process.env.SALES_SENDER_EMAIL || "sales@mamascleaningcrew.com";
 
 interface SendQuoteBody {
   id: string;
@@ -41,6 +48,8 @@ export async function POST(request: Request) {
     to: clientEmail,
     subject,
     body,
+    from: SALES_MAILBOX,
+    bcc: SALES_MAILBOX,
     replyTo: typeof quote.mailbox === "string" && quote.mailbox ? quote.mailbox : undefined,
   });
 
