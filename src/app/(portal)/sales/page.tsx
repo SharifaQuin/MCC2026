@@ -1,7 +1,16 @@
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
-import ComingSoonDepartment from "@/components/ComingSoonDepartment";
 
 export default async function SalesPage() {
-  const { canEdit } = await requireDepartmentAccess("SALES");
-  return <ComingSoonDepartment title="Sales" canEdit={canEdit} />;
+  await requireDepartmentAccess("SALES");
+
+  return (
+    <div>
+      <h1 className="mb-4 text-2xl font-semibold">Sales</h1>
+      <iframe
+        src="/api/sales/pricing-tool"
+        title="Pricing & Client Quotes"
+        className="h-[calc(100vh-160px)] w-full rounded-lg border border-neutral-200"
+      />
+    </div>
+  );
 }

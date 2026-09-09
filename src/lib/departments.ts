@@ -8,7 +8,7 @@ export const DEPARTMENT_INFO: Record<
   { labelEn: string; labelEs: string; href: string; comingSoon: boolean }
 > = {
   HR: { labelEn: "HR", labelEs: "RRHH", href: "/", comingSoon: false },
-  SALES: { labelEn: "Sales", labelEs: "Ventas", href: "/sales", comingSoon: true },
+  SALES: { labelEn: "Sales", labelEs: "Ventas", href: "/sales", comingSoon: false },
   OPERATIONS: {
     labelEn: "Operations",
     labelEs: "Operaciones",
