@@ -17,7 +17,7 @@ export async function setSalesGoalAction(formData: FormData) {
 
   await setSalesGoal(revenueGoal);
   revalidatePath("/sales");
-  revalidatePath("/hr");
+  revalidatePath("/");
 }
 
 export async function setSalesActualsAction(formData: FormData) {
@@ -29,5 +29,5 @@ export async function setSalesActualsAction(formData: FormData) {
 
   await setSalesActuals(revenue, labor);
   revalidatePath("/sales");
-  revalidatePath("/hr");
+  revalidatePath("/");
 }
