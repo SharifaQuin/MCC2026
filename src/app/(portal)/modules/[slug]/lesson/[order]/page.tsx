@@ -56,14 +56,28 @@ export default async function LessonPage({
 
       <div className="rounded-lg border border-neutral-200 bg-white p-5">
         {detail.lesson.videoUrl && (
-          <div className="mb-4 aspect-video w-full overflow-hidden rounded-md bg-black">
-            <iframe
-              src={detail.lesson.videoUrl}
-              className="h-full w-full"
-              allow="encrypted-media; fullscreen; microphone; screen-wake-lock;"
-              allowFullScreen
-              title={lTitle}
-            />
+          <div className="mb-4">
+            <div className="aspect-video w-full overflow-hidden rounded-md bg-black">
+              <iframe
+                src={detail.lesson.videoUrl}
+                className="h-full w-full"
+                allow="encrypted-media; fullscreen; microphone; screen-wake-lock;"
+                allowFullScreen
+                title={lTitle}
+              />
+            </div>
+            <p className="mt-1.5 text-xs text-neutral-400">
+              Video not showing up?{" "}
+              <a
+                href={detail.lesson.videoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-brand-700 hover:underline"
+              >
+                Open it directly in a new tab
+              </a>
+              .
+            </p>
           </div>
         )}
         {detail.lesson.imageUrl && (

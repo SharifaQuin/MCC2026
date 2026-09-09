@@ -89,11 +89,21 @@ function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
             <div>
               <label className="mb-1 block text-xs font-medium">Video URL (embed link)</label>
               <input
+                key={lesson.videoUrl ?? ""}
                 name="videoUrl"
                 defaultValue={lesson.videoUrl ?? ""}
-                placeholder="Paste YouTube/Synthesia embed link once uploaded"
+                placeholder="e.g. https://share.synthesia.io/embeds/videos/..."
                 className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
               />
+              <p className="mt-1 text-xs text-neutral-400">
+                This has to be the actual embed link, not the regular share/watch link — those
+                two look similar but the watch link will show a blank black box here (the video
+                site blocks it from being shown inside another page). In Synthesia: open the
+                video → Share → make sure it&apos;s set to public → copy the link under
+                &quot;Embed&quot; specifically (not the one under &quot;Share&quot;). YouTube
+                works the same way — use &quot;Embed&quot; → copy the URL inside the{" "}
+                <code>src=&quot;...&quot;</code>, not the address-bar link.
+              </p>
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium">

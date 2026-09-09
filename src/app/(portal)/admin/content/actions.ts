@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { normalizeVideoUrl } from "@/lib/videoUrl";
 
 async function requireAdmin() {
   const session = await getSession();
@@ -91,7 +92,7 @@ export async function updateLessonAction(lessonId: string, slug: string, formDat
       titleEs: String(formData.get("titleEs") ?? "") || null,
       contentEn: String(formData.get("contentEn") ?? ""),
       contentEs: String(formData.get("contentEs") ?? "") || null,
-      videoUrl: String(formData.get("videoUrl") ?? "") || null,
+      videoUrl: normalizeVideoUrl(String(formData.get("videoUrl") ?? "")),
       videoDurationSeconds:
         videoDurationSeconds !== null && Number.isFinite(videoDurationSeconds)
           ? videoDurationSeconds
