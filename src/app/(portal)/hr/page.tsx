@@ -16,7 +16,7 @@ function Stat({ label, value }: { label: string; value: number | string }) {
   );
 }
 
-const money = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+const money = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default async function HROverviewPage() {
   const session = await getSession();

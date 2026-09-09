@@ -12,7 +12,7 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   );
 }
 
-const money = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+const money = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default async function SalesPage() {
   const { canEdit } = await requireDepartmentAccess("SALES");
@@ -75,7 +75,7 @@ export default async function SalesPage() {
                   id="revenueGoal"
                   name="revenueGoal"
                   min={0}
-                  step={50}
+                  step="0.01"
                   defaultValue={dash.goal || ""}
                   placeholder="e.g. 5000"
                   className="w-32 rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
@@ -117,7 +117,7 @@ export default async function SalesPage() {
                     id="actualRevenue"
                     name="actualRevenue"
                     min={0}
-                    step={10}
+                    step="0.01"
                     defaultValue={dash.actuals.revenue || ""}
                     placeholder="0"
                     className="w-28 rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
@@ -135,7 +135,7 @@ export default async function SalesPage() {
                     id="actualLabor"
                     name="actualLabor"
                     min={0}
-                    step={10}
+                    step="0.01"
                     defaultValue={dash.actuals.labor || ""}
                     placeholder="0"
                     className="w-28 rounded-md border border-neutral-300 px-2 py-1.5 text-sm"

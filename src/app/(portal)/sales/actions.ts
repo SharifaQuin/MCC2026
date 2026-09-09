@@ -13,7 +13,7 @@ export async function setSalesGoalAction(formData: FormData) {
   const { canEdit } = await requireDepartmentAccess("SALES");
   if (!canEdit) return;
 
-  const revenueGoal = Math.round(toMoney(formData, "revenueGoal"));
+  const revenueGoal = toMoney(formData, "revenueGoal");
 
   await setSalesGoal(revenueGoal);
   revalidatePath("/sales");
