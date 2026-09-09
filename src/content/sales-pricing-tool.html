@@ -1001,15 +1001,56 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 // live inside a Claude.ai chat/artifact. Opened as a downloaded file, it's undefined.
 //
 // Priority order:
+//   0. The MCC Training Portal's own database (Railway Postgres) — used when this file
+//      is being served through the portal's authenticated /api/sales/pricing-tool route,
+//      so quotes/settings/profitability data sync for everyone with Sales access.
 //   1. Real Claude storage (window.storage) — used as-is when present.
 //   2. Firebase (Firestore) — if FIREBASE_CONFIG below has been filled in, this syncs
 //      saves/loads automatically across every computer/browser that opens this file.
 //   3. This browser's localStorage — fallback if neither of the above is available.
 //      Works, but stays on this one browser/computer only.
 //
-// All three expose the exact same get/set/delete/list shape, so nothing else in this
+// All four expose the exact same get/set/delete/list shape, so nothing else in this
 // file has to know or care which one is actually running underneath it.
 (function(){
+  // ---- TIER 0: the portal's own Postgres-backed storage ----
+  if (window.location.pathname === '/api/sales/pricing-tool'){
+    window.__mccStorageMode = 'portal';
+    async function call(op, extra){
+      const res = await fetch('/api/sales/storage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ op: op }, extra)),
+      });
+      if (!res.ok){
+        if (res.status === 404) return null; // "not found" — handled per-call below
+        throw new Error('Storage request failed: ' + res.status);
+      }
+      return res.json();
+    }
+    window.storage = {
+      async get(key, shared){
+        const result = await call('get', { key });
+        if (result === null) throw new Error('Key not found: ' + key);
+        return result;
+      },
+      async set(key, value, shared){
+        try{ return await call('set', { key, value }); }
+        catch(e){ console.error('Portal storage save error:', e); return null; }
+      },
+      async delete(key, shared){
+        try{ return await call('delete', { key }); }
+        catch(e){ return null; }
+      },
+      async list(prefix, shared){
+        try{ return await call('list', { prefix }); }
+        catch(e){ console.error('Portal storage list error:', e); return null; }
+      }
+    };
+    showBanner('#2E5A38', '☁️ Connected — quotes, Cost Settings, and Profitability data sync automatically for everyone with Sales access.');
+    return;
+  }
+
   if (typeof window.storage !== 'undefined' && window.storage) return; // real Claude storage present — use it as-is
 
   // ---- Fill these in once your Firebase project is set up (see setup guide) ----

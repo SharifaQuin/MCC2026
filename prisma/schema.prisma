@@ -401,3 +401,15 @@ model CommunicationLog {
 
   @@index([applicantId, createdAt])
 }
+
+// Generic shared key-value store for the Sales pricing/quotes tool — it was
+// built with its own storage abstraction (get/set/delete/list by key, with
+// a key prefix for listing) already designed for a shared backend; this
+// gives it one instead of browser localStorage, so quotes, cost settings,
+// and profitability data are the same for everyone with Sales access
+// regardless of device or browser.
+model SalesToolData {
+  key       String   @id
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+}

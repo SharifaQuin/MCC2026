@@ -1,8 +1,6 @@
 import { readFile } from "fs/promises";
 import path from "path";
-import { getSession } from "@/lib/session";
-import { prisma } from "@/lib/prisma";
-import { hasDepartmentAccess } from "@/lib/departments";
+import { requireSalesApiAccess } from "@/lib/requireSalesApiAccess";
 
 // Serves the pricing/quotes tool's HTML from a private (non-public/) file so
 // it only ever reaches someone who has passed the Sales department check —
@@ -14,17 +12,8 @@ import { hasDepartmentAccess } from "@/lib/departments";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const session = await getSession();
+  const session = await requireSalesApiAccess();
   if (!session) {
-    return new Response("Not authenticated", { status: 401 });
-  }
-
-  const grants = await prisma.departmentAccess.findMany({
-    where: { userId: session.sub },
-    select: { department: true, canEdit: true },
-  });
-  const { canView } = hasDepartmentAccess(session.role, grants, "SALES");
-  if (!canView) {
     return new Response("Not authorized", { status: 403 });
   }
 
