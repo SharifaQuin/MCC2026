@@ -2124,23 +2124,28 @@ const BASE_INCLUDES = {
 // short summary list on the Client Quote Page / buildIncludedList below).
 // Each entry: items (the checklist itself), recurringExtra (optional — only
 // shown when the quote isn't One-Time), footnote (optional disclaimer shown
-// after the checklist). Deep Clean, Standard, and Move-In/Out have this
-// level of detail — give me the rest (A la Carte, Post Construction,
-// Housekeeping, Airbnb) and I'll add them the same way.
+// after the checklist). A la Carte deliberately has no entry here — it's
+// only ever specific areas of a home, not a full-home checklist, so it
+// keeps using the short, dynamic buildIncludedList() below instead.
+const STANDARD_DETAILED_INCLUDES = {
+  items: [
+    'Ceiling fans & light fixtures (dusted)', 'Cobwebs removed', 'Blinds, window sills, & lockledges (dusted)',
+    'Moldings & woodwork (dusted)', 'Baseboards (dusted)', 'Lamps & Lampshades (dusted)',
+    'Pictures & knick-knacks (dusted)', 'Furniture dusted & polished', 'Top of refrigerator cleaned',
+    'Outside of appliances (inside microwave)', 'Stovetop & drip pans cleaned', 'Counter tops & backsplashes',
+    'All sinks cleaned', 'Mirrors cleaned', 'Tub/shower & tile cleaned', 'All bathroom counters & fixtures',
+    'Wastebaskets emptied/relined', 'Beds made, 1 set of sheets changed', 'Stairs vacuumed', 'Floors vacuumed &/or mopped',
+  ],
+  recurringExtra: [
+    'All linens Changed', 'Baseboards on Rotation', 'Light Organization', 'Inside 1 extra appliance every quarter',
+  ],
+};
+
 const EMAIL_DETAILED_INCLUDES = {
-  standard: {
-    items: [
-      'Ceiling fans & light fixtures (dusted)', 'Cobwebs removed', 'Blinds, window sills, & lockledges (dusted)',
-      'Moldings & woodwork (dusted)', 'Baseboards (dusted)', 'Lamps & Lampshades (dusted)',
-      'Pictures & knick-knacks (dusted)', 'Furniture dusted & polished', 'Top of refrigerator cleaned',
-      'Outside of appliances (inside microwave)', 'Stovetop & drip pans cleaned', 'Counter tops & backsplashes',
-      'All sinks cleaned', 'Mirrors cleaned', 'Tub/shower & tile cleaned', 'All bathroom counters & fixtures',
-      'Wastebaskets emptied/relined', 'Beds made, 1 set of sheets changed', 'Stairs vacuumed', 'Floors vacuumed &/or mopped',
-    ],
-    recurringExtra: [
-      'All linens Changed', 'Baseboards on Rotation', 'Light Organization', 'Inside 1 extra appliance every quarter',
-    ],
-  },
+  // Housekeeping and Airbnb Turnover use the same checklist as Standard.
+  standard: STANDARD_DETAILED_INCLUDES,
+  housekeeping: STANDARD_DETAILED_INCLUDES,
+  airbnb: STANDARD_DETAILED_INCLUDES,
   deep: {
     items: [
       'Ceiling fan blades (hand washed or wiped) & light fixtures (hand washed in place/not removed)', 'Cobwebs removed',
@@ -2168,6 +2173,20 @@ const EMAIL_DETAILED_INCLUDES = {
       'Garage entry areas swept (if accessible)', 'Final quality inspection performed throughout the property',
     ],
     footnote: `Important Service Limitations: For safety and insurance compliance — we do not clean interior or exterior windows, window tracks, window sills, window frames, or screens; we do not remove hazardous materials, debris, or excessive trash; we do not provide junk hauling, mold remediation, or biohazard cleanup services; we do not move large furniture, appliances, or heavy objects; and we do not climb higher than a 2-step ladder. Utilities (water and electricity) must be active at the time of service. Please ensure all personal belongings, moving boxes, and hazardous materials have been removed prior to your scheduled appointment — excessive buildup, pet hair, or unsafe conditions may require additional time and additional charges.`,
+  },
+  construction: {
+    items: [
+      'Ceiling fan blades (hand washed or wiped) & light fixtures (hand washed in place/not removed)', 'Cobwebs removed',
+      'Air vents (exterior surfaces dusted)', 'Moldings & woodwork (hand washed or wiped)', 'Baseboards (hand washed or wiped)',
+      'Doors, door frames, & door handles (washed)', 'Light switch plates & outlet covers (washed)',
+      'Cabinets & drawers (interior and exterior wiped free of dust and debris)', 'Closet shelving & storage spaces (wiped)',
+      'Countertops & backsplashes (washed)', 'All sinks (scrubbed/disinfected)', 'Mirrors (cleaned and polished)',
+      'Tubs, showers, & tiles (scrubbed and sanitized)', 'Toilets (cleaned and disinfected)', 'All bathroom counters & fixtures (sanitized)',
+      'Inside & outside of installed appliances cleaned', 'Inside microwave cleaned', 'Stair railings, banisters, & spindles (hand wiped)',
+      'Spot cleaning of walls to remove fingerprints, dust, and light marks', 'Floors vacuumed multiple times as needed to remove fine construction dust',
+      'Hard surface floors mopped and detailed', 'Final quality inspection performed throughout the property',
+    ],
+    footnote: `Important Service Limitations: Mama's Cleaning Crew is a professional cleaning service and not a hauling, demolition, remediation, or junk removal company. For safety and insurance compliance — we do not clean interior or exterior windows, window tracks, window sills, window frames, or screens; we do not remove, transport, or dispose of hazardous materials or construction debris; we do not remove nails, screws, staples, broken glass, exposed metal, lumber, drywall, tile, concrete, or other sharp or heavy materials; we do not remove paint cans, solvents, adhesives, chemicals, or hazardous substances; we do not provide mold remediation, biohazard cleanup, or junk hauling services; we do not move large furniture, appliances, or heavy objects; and we do not climb higher than a 2-step ladder. Utilities (water and electricity) must be active at the time of service. Clients are responsible for removing all hazardous materials and large debris prior to the scheduled cleaning appointment. Please allow for some dust resettlement after service, as fine construction dust may continue to settle for up to 24-48 hours after cleaning.`,
   },
 };
 
