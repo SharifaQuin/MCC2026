@@ -69,39 +69,49 @@ export default function StageControls({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            const scheduledAt = new FormData(e.currentTarget).get("scheduledAt");
+            const formData = new FormData(e.currentTarget);
+            const date = String(formData.get("scheduledDate") ?? "");
+            const time = String(formData.get("scheduledTime") ?? "");
+            if (!date || !time) return;
             startTransition(async () => {
-              await setApplicantStageAction(applicantId, scheduling, String(scheduledAt));
+              await setApplicantStageAction(applicantId, scheduling, `${date}T${time}`);
               setScheduling(null);
             });
           }}
-          className="flex flex-wrap items-end gap-2 rounded-md border border-neutral-200 bg-neutral-50 p-3"
+          className="rounded-md border border-neutral-200 bg-neutral-50 p-3"
         >
-          <div>
-            <label className="mb-1 block text-xs font-medium text-neutral-700">
-              When is the {STAGE_LABELS[scheduling]}?
-            </label>
+          <label className="mb-1 block text-xs font-medium text-neutral-700">
+            When is the {STAGE_LABELS[scheduling]}?{" "}
+            <span className="font-normal text-neutral-500">(Pacific Time)</span>
+          </label>
+          <div className="flex flex-wrap items-end gap-2">
             <input
-              type="datetime-local"
-              name="scheduledAt"
+              type="date"
+              name="scheduledDate"
               required
               className="rounded-md border border-neutral-300 px-3 py-2 text-sm"
             />
+            <input
+              type="time"
+              name="scheduledTime"
+              required
+              className="rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={pending}
+              className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+            >
+              {pending ? "Saving..." : "Confirm"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setScheduling(null)}
+              className="rounded-md border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+            >
+              Cancel
+            </button>
           </div>
-          <button
-            type="submit"
-            disabled={pending}
-            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
-          >
-            {pending ? "Saving..." : "Confirm"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setScheduling(null)}
-            className="rounded-md border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-          >
-            Cancel
-          </button>
         </form>
       )}
     </div>
