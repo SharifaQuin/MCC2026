@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
+import { prisma } from "@/lib/prisma";
+import { hasDepartmentAccess } from "@/lib/departments";
 import { loadAdminDashboard } from "@/lib/dashboard";
 import { loadRecruitingDashboard } from "@/lib/recruiting";
+import { loadSalesDashboard } from "@/lib/salesDashboard";
 
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
@@ -13,19 +16,70 @@ function Stat({ label, value }: { label: string; value: number | string }) {
   );
 }
 
+const money = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+
 export default async function HROverviewPage() {
   const session = await getSession();
   if (!session) redirect("/login");
   if (session.role !== "ADMIN" && session.role !== "SERVICE_MANAGER") redirect("/");
 
-  const [training, recruiting] = await Promise.all([
+  const grants = await prisma.departmentAccess.findMany({
+    where: { userId: session.sub },
+    select: { department: true, canEdit: true },
+  });
+  const hasSalesAccess = hasDepartmentAccess(session.role, grants, "SALES").canView;
+
+  const [training, recruiting, sales] = await Promise.all([
     loadAdminDashboard(),
     loadRecruitingDashboard(),
+    hasSalesAccess ? loadSalesDashboard() : Promise.resolve(null),
   ]);
 
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold">HR</h1>
+
+      {sales && (
+        <section className="mb-6 rounded-lg border border-neutral-200 bg-white p-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium text-neutral-900">Sales</h2>
+            {sales.goal > 0 && (
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  sales.wonRevenueThisMonth >= sales.goal
+                    ? "bg-green-100 text-green-800"
+                    : "bg-amber-100 text-amber-800"
+                }`}
+              >
+                {sales.wonRevenueThisMonth >= sales.goal
+                  ? "Goal hit this month! 🎉"
+                  : `${money(sales.revenueRemaining)} to hit this month's goal`}
+              </span>
+            )}
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+            <Stat label="Won This Month" value={money(sales.wonRevenueThisMonth)} />
+            <Stat label="Monthly Goal" value={sales.goal > 0 ? money(sales.goal) : "Not set"} />
+            <Stat
+              label="Cleanings Needed"
+              value={
+                sales.goal > 0 && sales.wonRevenueThisMonth < sales.goal
+                  ? String(sales.cleaningsNeeded)
+                  : "0"
+              }
+            />
+            <Stat label="Pending Quotes" value={sales.pendingCount} />
+            <Stat
+              label="Win Rate"
+              value={sales.winRate === null ? "—" : `${Math.round(sales.winRate * 100)}%`}
+            />
+          </div>
+          <Link href="/sales" className="mt-5 inline-block text-sm text-brand-700 hover:underline">
+            View full Sales dashboard →
+          </Link>
+        </section>
+      )}
+
       <div className="grid gap-6 md:grid-cols-2">
         <section className="rounded-lg border border-neutral-200 bg-white p-6">
           <h2 className="text-lg font-medium text-neutral-900">Training</h2>

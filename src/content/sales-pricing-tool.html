@@ -2496,6 +2496,10 @@ function updateSalesControlsUI(data){
 async function setQuoteStatus(status){
   if(!currentQuote || !currentQuote.id) return;
   currentQuote.status = status;
+  // wonAt drives the Sales dashboard's "revenue won this month" — only set
+  // while the quote is actually Won, cleared otherwise so a later status
+  // change doesn't leave a stale win date behind.
+  currentQuote.wonAt = status === 'won' ? new Date().toISOString() : null;
   try{
     await window.storage.set('quote:'+currentQuote.id, JSON.stringify(currentQuote), true);
     updateSalesControlsUI(currentQuote);
