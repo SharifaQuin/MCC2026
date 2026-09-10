@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { normalizeVideoUrl } from "@/lib/videoUrl";
+import { moduleVideoTranscripts } from "@/data/moduleVideoTranscripts";
 
 async function requireAdmin() {
   const session = await getSession();
@@ -170,4 +171,34 @@ export async function deleteQuestionAction(questionId: string, slug: string) {
   await requireAdmin();
   await prisma.quizQuestion.delete({ where: { id: questionId } });
   revalidatePath(`/admin/content/${slug}`);
+}
+
+// One-time helper: fills in the drafted English/Spanish video transcripts on
+// each module's first lesson, but only where that lesson doesn't already
+// have a transcript — so running it again after an admin has edited one
+// never overwrites their changes.
+export async function seedVideoTranscriptsAction() {
+  await requireAdmin();
+
+  let updated = 0;
+  let skipped = 0;
+  for (const entry of moduleVideoTranscripts) {
+    const module = await prisma.module.findFirst({ where: { order: entry.moduleOrder } });
+    if (!module) continue;
+    const lesson1 = await prisma.lesson.findFirst({ where: { moduleId: module.id, order: 1 } });
+    if (!lesson1) continue;
+    if (lesson1.videoTranscriptEn || lesson1.videoTranscriptEs) {
+      skipped += 1;
+      continue;
+    }
+    await prisma.lesson.update({
+      where: { id: lesson1.id },
+      data: { videoTranscriptEn: entry.transcriptEn, videoTranscriptEs: entry.transcriptEs },
+    });
+    updated += 1;
+  }
+
+  revalidatePath("/admin/content");
+  revalidatePath("/modules");
+  return { updated, skipped };
 }
