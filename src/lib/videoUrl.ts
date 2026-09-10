@@ -49,6 +49,12 @@ export function normalizeVideoUrl(raw: string): string | null {
       if (id && /^\d+$/.test(id)) return `https://player.vimeo.com/video/${id}`;
     }
 
+    // Loom: loom.com/share/<id> -> loom.com/embed/<id>
+    if (host === "loom.com" && parsed.pathname.startsWith("/share/")) {
+      const id = parsed.pathname.replace(/^\/share\//, "");
+      if (id) return `https://www.loom.com/embed/${id}`;
+    }
+
     return url;
   } catch {
     // Not a valid URL at all (and no <iframe src> was found inside it) —

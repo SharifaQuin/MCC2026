@@ -96,13 +96,11 @@ function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
                 className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
               />
               <p className="mt-1 text-xs text-neutral-400">
-                This has to be the actual embed link, not the regular share/watch link — those
-                two look similar but the watch link will show a blank black box here (the video
-                site blocks it from being shown inside another page). In Synthesia: open the
-                video → Share → make sure it&apos;s set to public → copy the link under
-                &quot;Embed&quot; specifically (not the one under &quot;Share&quot;). YouTube
-                works the same way — use &quot;Embed&quot; → copy the URL inside the{" "}
-                <code>src=&quot;...&quot;</code>, not the address-bar link.
+                Paste the share link or the full embed code Synthesia, YouTube, Vimeo, or Loom
+                gives you — this field auto-converts the common share/watch link into its
+                embeddable form, and pulls the link out of a pasted{" "}
+                <code>&lt;iframe&gt;</code> snippet automatically. Save the lesson, then reopen
+                it to confirm the link changed if it needed fixing.
               </p>
             </div>
             <div>
