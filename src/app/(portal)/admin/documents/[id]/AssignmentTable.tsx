@@ -9,6 +9,7 @@ export interface EmployeeAssignmentRow {
   email: string;
   assigned: boolean;
   signedAt: string | null;
+  signedName: string | null;
 }
 
 function AssignmentCheckbox({
@@ -71,9 +72,16 @@ export default function AssignmentTable({
               </td>
               <td className="px-4 py-3">
                 {row.signedAt ? (
-                  <span className="rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-800">
-                    Signed {new Date(row.signedAt).toLocaleDateString()}
-                  </span>
+                  <div>
+                    <span className="rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-800">
+                      Signed {new Date(row.signedAt).toLocaleString()}
+                    </span>
+                    {row.signedName && (
+                      <p className="mt-1 text-xs text-neutral-500">
+                        Signed as &ldquo;{row.signedName}&rdquo;
+                      </p>
+                    )}
+                  </div>
                 ) : row.assigned ? (
                   <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
                     Pending

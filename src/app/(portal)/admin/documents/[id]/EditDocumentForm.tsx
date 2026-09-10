@@ -51,6 +51,14 @@ export default function EditDocumentForm({ doc }: { doc: Doc }) {
         {fileName && (
           <div className="mb-2 flex items-center gap-3">
             <p className="text-xs text-neutral-500">Attached: {fileName}</p>
+            <a
+              href={fileDataUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-medium text-brand-700 hover:underline"
+            >
+              View PDF
+            </a>
             <button
               type="button"
               onClick={() => {
