@@ -1,5 +1,19 @@
 import { prisma } from "@/lib/prisma";
 
+// The order to treat as "first lesson still needing to be watched." When
+// every lesson is already completed, this must land past the last lesson's
+// order (never reuse the first lesson's order) — otherwise a trainee who
+// finishes all lessons before passing the quiz gets bounced back to lesson 1
+// every time they try to revisit any later lesson to review it.
+function firstIncompleteLessonOrder(
+  lessons: { id: string; order: number }[],
+  completedLessonIds: Set<string>
+) {
+  const firstIncomplete = lessons.find((l) => !completedLessonIds.has(l.id));
+  if (firstIncomplete) return firstIncomplete.order;
+  return (lessons[lessons.length - 1]?.order ?? 0) + 1;
+}
+
 export async function getModuleListForUser(userId: string) {
   const modules = await prisma.module.findMany({
     where: { published: true },
@@ -80,8 +94,7 @@ export async function getModuleOverview(slug: string, userId: string) {
   // lesson-by-lesson navigation for someone just coming back to review it.
   const allLessonsCompleted =
     status === "COMPLETED" || module.lessons.every((l) => completedLessonIds.has(l.id));
-  const firstIncompleteOrder =
-    module.lessons.find((l) => !completedLessonIds.has(l.id))?.order ?? module.lessons[0]?.order ?? 1;
+  const firstIncompleteOrder = firstIncompleteLessonOrder(module.lessons, completedLessonIds);
 
   return {
     module,
@@ -115,8 +128,7 @@ export async function getLessonDetail(slug: string, order: number, userId: strin
   });
   const completedLessonIds = new Set(lessonProgress.map((p) => p.lessonId));
 
-  const firstIncompleteOrder =
-    module.lessons.find((l) => !completedLessonIds.has(l.id))?.order ?? module.lessons[0]?.order ?? 1;
+  const firstIncompleteOrder = firstIncompleteLessonOrder(module.lessons, completedLessonIds);
   const priorIncomplete = !moduleCompleted && order > firstIncompleteOrder;
 
   const totalLessons = module.lessons.length;

@@ -28,7 +28,9 @@ export default async function ModuleOverviewPage({ params }: { params: { slug: s
   const continueHref =
     overview.status === "COMPLETED"
       ? `/modules/${params.slug}/lesson/1`
-      : `/modules/${params.slug}/lesson/${overview.firstIncompleteOrder}`;
+      : overview.allLessonsCompleted
+        ? `/modules/${params.slug}/quiz`
+        : `/modules/${params.slug}/lesson/${overview.firstIncompleteOrder}`;
   const continueLabel =
     overview.status === "NOT_STARTED"
       ? labels.startModule
