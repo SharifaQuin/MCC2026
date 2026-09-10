@@ -12,6 +12,8 @@ interface Lesson {
   contentEn: string;
   contentEs: string | null;
   videoUrl: string | null;
+  videoTranscriptEn: string | null;
+  videoTranscriptEs: string | null;
   videoDurationSeconds: number | null;
   imageUrl: string | null;
   estimatedMinutes: number | null;
@@ -119,6 +121,35 @@ function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
                 Trainees can&apos;t continue past this lesson until this much time has passed.
               </p>
             </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium">
+                Video transcript (English)
+              </label>
+              <textarea
+                name="videoTranscriptEn"
+                defaultValue={lesson.videoTranscriptEn ?? ""}
+                rows={5}
+                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium">
+                Video transcript (Español)
+              </label>
+              <textarea
+                name="videoTranscriptEs"
+                defaultValue={lesson.videoTranscriptEs ?? ""}
+                rows={5}
+                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <p className="col-span-2 -mt-1 text-xs text-neutral-400">
+              Since the video itself has no Spanish audio or captions, a Spanish transcript
+              shown below the video is the way Spanish-speaking trainees get its content.
+              Optional, but recommended for every lesson with a video.
+            </p>
           </div>
           <div>
             <label className="mb-1 block w-40 text-xs font-medium">

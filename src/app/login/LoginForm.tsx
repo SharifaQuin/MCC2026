@@ -2,6 +2,7 @@
 
 import { useFormState, useFormStatus } from "react-dom";
 import { loginAction, LoginState } from "./actions";
+import PasswordInput from "@/components/PasswordInput";
 
 function SubmitButton({ label }: { label: string }) {
   const { pending } = useFormStatus();
@@ -39,8 +40,7 @@ export default function LoginForm({
       </div>
       <div>
         <label className="mb-1 block text-sm font-medium">{labels.password}</label>
-        <input
-          type="password"
+        <PasswordInput
           name="password"
           required
           className="w-full rounded-md border border-neutral-300 px-3 py-2"

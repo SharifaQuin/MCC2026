@@ -34,6 +34,10 @@ export default async function LessonPage({
     lang === "ES" && detail.lesson.titleEs ? detail.lesson.titleEs : detail.lesson.titleEn;
   const lContent =
     lang === "ES" && detail.lesson.contentEs ? detail.lesson.contentEs : detail.lesson.contentEn;
+  const lTranscript =
+    lang === "ES" && detail.lesson.videoTranscriptEs
+      ? detail.lesson.videoTranscriptEs
+      : detail.lesson.videoTranscriptEn;
 
   const nextHref = detail.isLast
     ? `/modules/${params.slug}/quiz`
@@ -80,6 +84,16 @@ export default async function LessonPage({
               </a>
               .
             </p>
+            {lTranscript && (
+              <details className="mt-3 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                <summary className="cursor-pointer text-sm font-medium text-neutral-700">
+                  {lang === "ES" ? "Transcripción del video" : "Video Transcript"}
+                </summary>
+                <div className="mt-2 whitespace-pre-wrap text-sm text-neutral-700">
+                  {lTranscript}
+                </div>
+              </details>
+            )}
           </div>
         )}
         {detail.lesson.imageUrl && (

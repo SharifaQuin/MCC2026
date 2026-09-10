@@ -156,6 +156,11 @@ model Lesson {
   contentEn  String   @db.Text
   contentEs  String?  @db.Text
   videoUrl   String?
+  // A written transcript of what's spoken in the video, shown as text below
+  // it — this app embeds videos from external platforms (Synthesia, YouTube,
+  // Loom, Vimeo), so we can't add a synced subtitle track to them ourselves.
+  videoTranscriptEn String? @db.Text
+  videoTranscriptEs String? @db.Text
   // How long the trainee must keep this lesson open before "Continue"
   // unlocks — set by an admin to roughly the video's runtime. Null means
   // no minimum wait (text-only lessons, or a video without a known length).
