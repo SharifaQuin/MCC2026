@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { generateInviteToken } from "@/lib/tokens";
 import { isAdminOrServiceManager } from "@/lib/session";
+import { assignDefaultOnboardingDocuments } from "@/lib/onboarding";
 
 export interface InviteState {
   error?: string;
@@ -36,7 +37,7 @@ export async function inviteAction(
   }
 
   const inviteToken = generateInviteToken();
-  await prisma.user.create({
+  const newUser = await prisma.user.create({
     data: {
       email,
       name,
@@ -46,6 +47,7 @@ export async function inviteAction(
       invitedBy: session.sub,
     },
   });
+  if (role === "TRAINEE") await assignDefaultOnboardingDocuments(newUser.id);
 
   revalidatePath("/admin/employees");
 

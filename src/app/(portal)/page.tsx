@@ -6,6 +6,7 @@ import { hasDepartmentAccess } from "@/lib/departments";
 import { loadAdminDashboard } from "@/lib/dashboard";
 import { loadRecruitingDashboard } from "@/lib/recruiting";
 import { loadSalesDashboard } from "@/lib/salesDashboard";
+import { getPendingOnboardingCount } from "@/lib/onboarding";
 
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
@@ -26,7 +27,10 @@ export default async function HomePage() {
   const session = await getSession();
   if (!session) redirect("/login");
   if (session.role === "TRAINER") redirect("/trainer/employees");
-  if (session.role === "TRAINEE") redirect("/modules");
+  if (session.role === "TRAINEE") {
+    const pending = await getPendingOnboardingCount(session.sub);
+    redirect(pending > 0 ? "/documents" : "/modules");
+  }
 
   const grants = await prisma.departmentAccess.findMany({
     where: { userId: session.sub },

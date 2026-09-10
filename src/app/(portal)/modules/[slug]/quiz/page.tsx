@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { getModuleQuiz } from "@/lib/courses";
+import { requireOnboardingComplete } from "@/lib/onboarding";
 import { shuffle } from "@/lib/shuffle";
 import { t } from "@/lib/i18n";
 import QuizForm from "../QuizForm";
@@ -9,6 +10,7 @@ import QuizForm from "../QuizForm";
 export default async function ModuleQuizPage({ params }: { params: { slug: string } }) {
   const session = await getSession();
   if (!session) redirect("/login");
+  await requireOnboardingComplete(session);
   const labels = t(session.language);
 
   const quiz = await getModuleQuiz(params.slug, session.sub);

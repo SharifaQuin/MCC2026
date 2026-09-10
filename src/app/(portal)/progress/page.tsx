@@ -4,11 +4,13 @@ import { getSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { t } from "@/lib/i18n";
 import { loadFieldEvaluationSummaryForTrainee } from "@/lib/fieldEvalData";
+import { requireOnboardingComplete } from "@/lib/onboarding";
 import BackToTraining from "@/components/BackToTraining";
 
 export default async function ProgressPage() {
   const session = await getSession();
   if (!session) redirect("/login");
+  await requireOnboardingComplete(session);
   const labels = t(session.language);
 
   const me = await prisma.user.findUnique({

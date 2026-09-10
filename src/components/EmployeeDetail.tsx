@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { loadFieldEvaluationsForTrainee } from "@/lib/fieldEvalData";
 import FieldEvaluationHistory from "@/components/FieldEvaluationHistory";
@@ -26,7 +27,13 @@ export async function loadEmployeeDetail(userId: string) {
 
   const fieldEval = await loadFieldEvaluationsForTrainee(userId);
 
-  return { user, modules, fieldEval };
+  const onboardingDocs = await prisma.onboardingAssignment.findMany({
+    where: { userId },
+    include: { document: { select: { id: true, title: true } } },
+    orderBy: { document: { order: "asc" } },
+  });
+
+  return { user, modules, fieldEval, onboardingDocs };
 }
 
 type Detail = NonNullable<Awaited<ReturnType<typeof loadEmployeeDetail>>>;
@@ -40,7 +47,7 @@ export function EmployeeDetailView({
   canManageAccount?: boolean;
   viewerRole: "ADMIN" | "TRAINER" | "SERVICE_MANAGER";
 }) {
-  const { user, modules, fieldEval } = data;
+  const { user, modules, fieldEval, onboardingDocs } = data;
 
   return (
     <div className="space-y-10">
@@ -48,6 +55,32 @@ export function EmployeeDetailView({
         <h1 className="text-2xl font-semibold">{user.name}</h1>
         <p className="text-sm text-neutral-500">{user.email}</p>
       </div>
+
+      {user.role === "TRAINEE" && onboardingDocs.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-lg font-medium">Onboarding Documents</h2>
+          <div className="space-y-3">
+            {onboardingDocs.map((a) => (
+              <Link
+                key={a.id}
+                href={`/admin/documents/${a.document.id}`}
+                className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white p-4 hover:border-brand-300"
+              >
+                <p className="font-medium">{a.document.title}</p>
+                {a.signedAt ? (
+                  <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
+                    Signed {new Date(a.signedAt).toLocaleDateString()}
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">
+                    Pending
+                  </span>
+                )}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section>
         <CertificationPanel

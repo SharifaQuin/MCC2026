@@ -62,6 +62,10 @@ export async function loadAdminDashboard() {
     )
     .map((e) => ({ id: e.id, name: e.name }));
 
+  const pendingOnboardingDocs = await prisma.onboardingAssignment.count({
+    where: { signedAt: null },
+  });
+
   const allCategoryScores = await prisma.fieldEvalCategoryScore.findMany({
     select: { categoryKey: true, score: true },
   });
@@ -91,5 +95,6 @@ export async function loadAdminDashboard() {
     avgDaysToCertify,
     stalledEmployees,
     noFieldEvalYet,
+    pendingOnboardingDocs,
   };
 }

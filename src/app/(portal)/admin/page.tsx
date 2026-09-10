@@ -36,6 +36,11 @@ export default async function AdminDashboardPage() {
         <StatCard label="Not Started" value={stats.notStarted} />
         <StatCard label="In Training" value={stats.inTraining} />
         <StatCard label="Completed All Training" value={stats.completedAll} tone="good" />
+        <StatCard
+          label="Pending Onboarding Docs"
+          value={stats.pendingOnboardingDocs}
+          tone={stats.pendingOnboardingDocs > 0 ? "warn" : "neutral"}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">

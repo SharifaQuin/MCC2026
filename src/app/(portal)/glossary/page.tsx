@@ -1,12 +1,14 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { t } from "@/lib/i18n";
+import { requireOnboardingComplete } from "@/lib/onboarding";
 import GlossarySearch from "@/components/GlossarySearch";
 import BackToTraining from "@/components/BackToTraining";
 
 export default async function GlossaryPage() {
   const session = await getSession();
   if (!session) redirect("/login");
+  await requireOnboardingComplete(session);
   const labels = t(session.language);
 
   return (

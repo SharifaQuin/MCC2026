@@ -41,6 +41,9 @@ export default function Nav({
           <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             {session.role === "TRAINEE" && (
               <>
+                <Link href="/documents" className="hover:underline">
+                  {labels.documents}
+                </Link>
                 <Link href="/modules" className="hover:underline">
                   {labels.modules}
                 </Link>

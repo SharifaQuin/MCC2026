@@ -13,6 +13,7 @@ const TABS = [
 
 const ADMIN_ONLY_TABS = [
   { href: "/admin/content", label: "Content Editor" },
+  { href: "/admin/documents", label: "Onboarding Docs" },
   { href: "/admin/permissions", label: "Permissions" },
 ];
 

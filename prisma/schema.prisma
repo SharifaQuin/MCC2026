@@ -105,6 +105,7 @@ model User {
   departmentAccess DepartmentAccess[]
   sentCommunications CommunicationLog[]
   hiredFromApplicant Applicant? @relation("ApplicantHiredUser")
+  onboardingAssignments OnboardingAssignment[]
 
   @@index([role])
 }
@@ -412,4 +413,41 @@ model SalesToolData {
   key       String   @id
   value     String   @db.Text
   updatedAt DateTime @updatedAt
+}
+
+// A policy/paperwork document new employees must read and sign before they
+// can start training. Content can be typed directly (contentText) and/or an
+// uploaded PDF (fileDataUrl, stored as a base64 data URI — same convention
+// as Lesson.imageUrl / Applicant.resumeDataUrl, since the app has no
+// separate file storage). assignByDefault means every newly invited
+// employee automatically gets this one assigned; existing employees are
+// assigned/unassigned individually via OnboardingAssignment.
+model OnboardingDocument {
+  id              String   @id @default(cuid())
+  title           String
+  contentText     String?  @db.Text
+  fileDataUrl     String?  @db.Text
+  fileName        String?
+  assignByDefault Boolean  @default(false)
+  order           Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  assignments OnboardingAssignment[]
+}
+
+// One document assigned to one employee. signedAt/signedName are null until
+// they sign — the pair together is the e-signature record (typed full name
+// + timestamp), which is what gates that employee out of Training.
+model OnboardingAssignment {
+  id         String   @id @default(cuid())
+  documentId String
+  document   OnboardingDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  signedAt   DateTime?
+  signedName String?
+  createdAt  DateTime @default(now())
+
+  @@unique([documentId, userId])
 }
