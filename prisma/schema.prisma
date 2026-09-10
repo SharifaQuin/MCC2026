@@ -156,6 +156,10 @@ model Lesson {
   contentEn  String   @db.Text
   contentEs  String?  @db.Text
   videoUrl   String?
+  // A separately-generated Spanish-dubbed version of the same video (e.g. via
+  // Synthesia's translate/dub feature). Shown instead of videoUrl to trainees
+  // whose language is Spanish, when present.
+  videoUrlEs String?
   // A written transcript of what's spoken in the video, shown as text below
   // it — this app embeds videos from external platforms (Synthesia, YouTube,
   // Loom, Vimeo), so we can't add a synced subtitle track to them ourselves.

@@ -12,6 +12,7 @@ interface Lesson {
   contentEn: string;
   contentEs: string | null;
   videoUrl: string | null;
+  videoUrlEs: string | null;
   videoTranscriptEn: string | null;
   videoTranscriptEs: string | null;
   videoDurationSeconds: number | null;
@@ -103,6 +104,23 @@ function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
                 embeddable form, and pulls the link out of a pasted{" "}
                 <code>&lt;iframe&gt;</code> snippet automatically. Save the lesson, then reopen
                 it to confirm the link changed if it needed fixing.
+              </p>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium">
+                Spanish video URL (optional dub)
+              </label>
+              <input
+                key={lesson.videoUrlEs ?? ""}
+                name="videoUrlEs"
+                defaultValue={lesson.videoUrlEs ?? ""}
+                placeholder="Paste the Spanish-dubbed version's share link here, if you have one"
+                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+              />
+              <p className="mt-1 text-xs text-neutral-400">
+                If you generate a Spanish-dubbed version of this video (e.g. via
+                Synthesia&apos;s translate feature), paste its link here. Trainees whose
+                language is set to Spanish will see this video instead of the English one.
               </p>
             </div>
             <div>

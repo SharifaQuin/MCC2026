@@ -93,6 +93,7 @@ export async function updateLessonAction(lessonId: string, slug: string, formDat
       contentEn: String(formData.get("contentEn") ?? ""),
       contentEs: String(formData.get("contentEs") ?? "") || null,
       videoUrl: normalizeVideoUrl(String(formData.get("videoUrl") ?? "")),
+      videoUrlEs: normalizeVideoUrl(String(formData.get("videoUrlEs") ?? "")),
       videoTranscriptEn: String(formData.get("videoTranscriptEn") ?? "") || null,
       videoTranscriptEs: String(formData.get("videoTranscriptEs") ?? "") || null,
       videoDurationSeconds:

@@ -38,6 +38,8 @@ export default async function LessonPage({
     lang === "ES" && detail.lesson.videoTranscriptEs
       ? detail.lesson.videoTranscriptEs
       : detail.lesson.videoTranscriptEn;
+  const lVideoUrl =
+    lang === "ES" && detail.lesson.videoUrlEs ? detail.lesson.videoUrlEs : detail.lesson.videoUrl;
 
   const nextHref = detail.isLast
     ? `/modules/${params.slug}/quiz`
@@ -61,11 +63,11 @@ export default async function LessonPage({
       </div>
 
       <div className="rounded-lg border border-neutral-200 bg-white p-5">
-        {detail.lesson.videoUrl && (
+        {lVideoUrl && (
           <div className="mb-4">
             <div className="aspect-video w-full overflow-hidden rounded-md bg-black">
               <iframe
-                src={detail.lesson.videoUrl}
+                src={lVideoUrl}
                 className="h-full w-full"
                 allow="encrypted-media; fullscreen; microphone; screen-wake-lock;"
                 allowFullScreen
@@ -75,7 +77,7 @@ export default async function LessonPage({
             <p className="mt-1.5 text-xs text-neutral-400">
               Video not showing up?{" "}
               <a
-                href={detail.lesson.videoUrl}
+                href={lVideoUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-brand-700 hover:underline"
@@ -111,7 +113,7 @@ export default async function LessonPage({
         lessonId={detail.lesson.id}
         slug={params.slug}
         nextHref={nextHref}
-        minWatchSeconds={detail.lesson.videoUrl ? detail.lesson.videoDurationSeconds : null}
+        minWatchSeconds={lVideoUrl ? detail.lesson.videoDurationSeconds : null}
         bypassGate={bypassGate}
         label={labels.continue}
         watchLabel={labels.watchToUnlock}
