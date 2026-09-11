@@ -40,6 +40,10 @@ export default async function LessonPage({
       : detail.lesson.videoTranscriptEn;
   const lVideoUrl =
     lang === "ES" && detail.lesson.videoUrlEs ? detail.lesson.videoUrlEs : detail.lesson.videoUrl;
+  // Once a lesson has a real Spanish-dubbed video, the written transcript is
+  // redundant for Spanish trainees — it stays as a fallback only for lessons
+  // that don't have a dub yet.
+  const showTranscript = lTranscript && !(lang === "ES" && detail.lesson.videoUrlEs);
 
   const nextHref = detail.isLast
     ? `/modules/${params.slug}/quiz`
@@ -86,7 +90,7 @@ export default async function LessonPage({
               </a>
               .
             </p>
-            {lTranscript && (
+            {showTranscript && (
               <details className="mt-3 rounded-md border border-neutral-200 bg-neutral-50 p-3">
                 <summary className="cursor-pointer text-sm font-medium text-neutral-700">
                   {lang === "ES" ? "Transcripción del video" : "Video Transcript"}
