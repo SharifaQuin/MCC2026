@@ -41,6 +41,11 @@ export default async function AdminDashboardPage() {
           value={stats.pendingOnboardingDocs}
           tone={stats.pendingOnboardingDocs > 0 ? "warn" : "neutral"}
         />
+        <StatCard
+          label="Payroll Disputes"
+          value={stats.pendingPayrollDisputes}
+          tone={stats.pendingPayrollDisputes > 0 ? "warn" : "neutral"}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
@@ -77,6 +82,29 @@ export default async function AdminDashboardPage() {
                     recommended {new Date(p.certRecommendedAt).toLocaleDateString()}
                   </span>
                 )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {stats.complaintFlags.length > 0 && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-5">
+          <p className="mb-3 font-medium text-red-800">
+            Approaching or at the valid-complaint termination threshold (last 60 days)
+          </p>
+          <ul className="space-y-2">
+            {stats.complaintFlags.map((f) => (
+              <li key={f.id}>
+                <Link
+                  href={`/admin/employees/${f.id}`}
+                  className="text-sm font-medium text-red-900 underline hover:no-underline"
+                >
+                  {f.name}
+                </Link>
+                <span className="ml-2 text-xs text-red-700">
+                  {f.validComplaintCount} valid complaint{f.validComplaintCount === 1 ? "" : "s"}
+                </span>
               </li>
             ))}
           </ul>

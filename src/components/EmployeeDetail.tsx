@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { loadFieldEvaluationsForTrainee } from "@/lib/fieldEvalData";
+import { getValidComplaintCount } from "@/lib/hr";
 import FieldEvaluationHistory from "@/components/FieldEvaluationHistory";
 import FieldEvaluationForm from "@/components/FieldEvaluationForm";
 import AccountManagement from "@/components/AccountManagement";
 import CertificationPanel from "@/components/CertificationPanel";
+import ComplaintsPanel from "@/components/ComplaintsPanel";
+import AttendancePanel from "@/components/AttendancePanel";
 
 export async function loadEmployeeDetail(userId: string) {
   const user = await prisma.user.findUnique({
@@ -33,7 +36,46 @@ export async function loadEmployeeDetail(userId: string) {
     orderBy: { document: { order: "asc" } },
   });
 
-  return { user, modules, fieldEval, onboardingDocs };
+  const complaintRows = await prisma.complaint.findMany({
+    where: { employeeId: userId },
+    include: { loggedBy: { select: { name: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+  const complaints = complaintRows.map((c) => ({
+    id: c.id,
+    clientName: c.clientName,
+    incidentDate: c.incidentDate ? c.incidentDate.toISOString() : null,
+    description: c.description,
+    status: c.status,
+    resolutionNotes: c.resolutionNotes,
+    loggedByName: c.loggedBy.name,
+    createdAt: c.createdAt.toISOString(),
+  }));
+  const validComplaintCount = await getValidComplaintCount(userId);
+
+  const attendanceRows = await prisma.attendanceEvent.findMany({
+    where: { employeeId: userId },
+    include: { loggedBy: { select: { name: true } } },
+    orderBy: { eventDate: "desc" },
+  });
+  const attendanceEvents = attendanceRows.map((e) => ({
+    id: e.id,
+    kind: e.kind,
+    reasonCategory: e.reasonCategory,
+    eventDate: e.eventDate.toISOString(),
+    notes: e.notes,
+    loggedByName: e.loggedBy.name,
+  }));
+
+  return {
+    user,
+    modules,
+    fieldEval,
+    onboardingDocs,
+    complaints,
+    validComplaintCount,
+    attendanceEvents,
+  };
 }
 
 type Detail = NonNullable<Awaited<ReturnType<typeof loadEmployeeDetail>>>;
@@ -47,7 +89,9 @@ export function EmployeeDetailView({
   canManageAccount?: boolean;
   viewerRole: "ADMIN" | "TRAINER" | "SERVICE_MANAGER";
 }) {
-  const { user, modules, fieldEval, onboardingDocs } = data;
+  const { user, modules, fieldEval, onboardingDocs, complaints, validComplaintCount, attendanceEvents } =
+    data;
+  const canSeeHrPanels = viewerRole === "ADMIN" || viewerRole === "SERVICE_MANAGER";
 
   return (
     <div className="space-y-10">
@@ -156,6 +200,24 @@ export function EmployeeDetailView({
           focusAreas={fieldEval.focusAreas}
         />
       </section>
+
+      {canSeeHrPanels && (
+        <>
+          <section>
+            <h2 className="mb-3 text-lg font-medium">Complaints</h2>
+            <ComplaintsPanel
+              employeeId={user.id}
+              complaints={complaints}
+              validCount={validComplaintCount}
+            />
+          </section>
+
+          <section>
+            <h2 className="mb-3 text-lg font-medium">Attendance</h2>
+            <AttendancePanel employeeId={user.id} events={attendanceEvents} />
+          </section>
+        </>
+      )}
     </div>
   );
 }

@@ -52,6 +52,7 @@ export const dictionary = {
     allModulesComplete: "You've completed all available training modules!",
     backToModulesList: "Back to Modules",
     previousLesson: "← Previous Lesson",
+    payroll: "Payroll",
   },
   ES: {
     appName: "Portal de Capacitación de MCC",
@@ -106,6 +107,7 @@ export const dictionary = {
     allModulesComplete: "¡Has completado todos los módulos de capacitación disponibles!",
     backToModulesList: "Volver a Módulos",
     previousLesson: "← Lección Anterior",
+    payroll: "Nómina",
   },
 } as const;
 

@@ -53,12 +53,20 @@ export default function Nav({
                 <Link href="/glossary" className="hover:underline">
                   {labels.glossary}
                 </Link>
+                <Link href="/payroll" className="hover:underline">
+                  {labels.payroll}
+                </Link>
               </>
             )}
             {session.role === "TRAINER" && (
-              <Link href="/trainer/employees" className="hover:underline">
-                {labels.employees}
-              </Link>
+              <>
+                <Link href="/trainer/employees" className="hover:underline">
+                  {labels.employees}
+                </Link>
+                <Link href="/payroll" className="hover:underline">
+                  {labels.payroll}
+                </Link>
+              </>
             )}
           </nav>
         </div>

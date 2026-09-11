@@ -107,6 +107,12 @@ model User {
   hiredFromApplicant Applicant? @relation("ApplicantHiredUser")
   onboardingAssignments OnboardingAssignment[]
 
+  complaintsReceived Complaint[]       @relation("EmployeeComplaints")
+  complaintsLogged   Complaint[]       @relation("ComplaintsLogged")
+  attendanceEvents       AttendanceEvent[] @relation("EmployeeAttendanceEvents")
+  attendanceEventsLogged AttendanceEvent[] @relation("AttendanceEventsLogged")
+  payrollEntries     PayrollEntry[]    @relation("EmployeePayrollEntries")
+
   @@index([role])
 }
 
@@ -459,4 +465,114 @@ model OnboardingAssignment {
   createdAt  DateTime @default(now())
 
   @@unique([documentId, userId])
+}
+
+enum ComplaintStatus {
+  OPEN
+  VALID
+  DISMISSED
+}
+
+// A client complaint logged against an employee's work or conduct. Starts
+// OPEN when first logged; HR marks it VALID (counts toward the disciplinary
+// thresholds described in training, e.g. 4 valid complaints in 60 days) or
+// DISMISSED (doesn't count) once reviewed.
+model Complaint {
+  id              String          @id @default(cuid())
+  employeeId      String
+  employee        User            @relation("EmployeeComplaints", fields: [employeeId], references: [id], onDelete: Cascade)
+  clientName      String
+  incidentDate    DateTime?
+  description     String          @db.Text
+  status          ComplaintStatus @default(OPEN)
+  loggedById      String
+  loggedBy        User            @relation("ComplaintsLogged", fields: [loggedById], references: [id])
+  resolutionNotes String?         @db.Text
+  resolvedAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([employeeId])
+}
+
+enum AttendanceEventKind {
+  TARDY
+  ABSENCE
+  NO_CALL_NO_SHOW
+}
+
+enum AttendanceReasonCategory {
+  ILLNESS
+  EMERGENCY
+  FAMILY_EMERGENCY
+  TRANSPORTATION
+  OTHER
+}
+
+// A single attendance event logged against an employee (matches the
+// categories in the Attendance & Workplace Policies training module). This
+// app has no integration with TCS, the real time clock — HR/managers log
+// these by hand as they happen.
+model AttendanceEvent {
+  id             String                    @id @default(cuid())
+  employeeId     String
+  employee       User                      @relation("EmployeeAttendanceEvents", fields: [employeeId], references: [id], onDelete: Cascade)
+  kind           AttendanceEventKind
+  reasonCategory AttendanceReasonCategory?
+  eventDate      DateTime
+  notes          String?                   @db.Text
+  loggedById     String
+  loggedBy       User                      @relation("AttendanceEventsLogged", fields: [loggedById], references: [id])
+  createdAt      DateTime                  @default(now())
+
+  @@index([employeeId])
+}
+
+// A biweekly (or whatever cadence HR runs) pay period that hours get
+// entered against.
+model PayPeriod {
+  id        String         @id @default(cuid())
+  startDate DateTime
+  endDate   DateTime
+  label     String
+  createdAt DateTime       @default(now())
+  entries   PayrollEntry[]
+
+  @@unique([startDate, endDate])
+}
+
+enum PayrollEntryStatus {
+  PENDING
+  APPROVED
+  DISPUTED
+}
+
+// One employee's hours for one pay period. Hours get in here either typed
+// in directly or bulk-imported from a CSV export; attachmentDataUrl is an
+// optional reference document (e.g. a timesheet PDF) attached alongside —
+// it's just shown to the employee, not parsed for its hours. The employee
+// then reviews and either signs off (signedAt/signedName, same e-signature
+// pattern as OnboardingAssignment) or disputes it with a note.
+model PayrollEntry {
+  id                 String             @id @default(cuid())
+  payPeriodId        String
+  payPeriod          PayPeriod          @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
+  employeeId         String
+  employee           User               @relation("EmployeePayrollEntries", fields: [employeeId], references: [id], onDelete: Cascade)
+  regularHours       Float
+  overtimeHours      Float              @default(0)
+  attachmentDataUrl  String?            @db.Text
+  attachmentFileName String?
+  status             PayrollEntryStatus @default(PENDING)
+  signedAt           DateTime?
+  signedName         String?
+  disputeNote        String?            @db.Text
+  disputedAt         DateTime?
+  resolutionNotes    String?            @db.Text
+  resolvedAt         DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@unique([payPeriodId, employeeId])
+  @@index([employeeId])
 }
