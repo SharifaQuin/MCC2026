@@ -16,7 +16,7 @@ export default async function AdminPayrollPage() {
         {periods.map((p) => (
           <Link
             key={p.id}
-            href={`/admin/payroll/${p.id}`}
+            href={`/staff/payroll/${p.id}`}
             className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white p-4 hover:border-brand-300"
           >
             <div>

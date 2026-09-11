@@ -76,6 +76,11 @@ model User {
   inviteExpiresAt  DateTime?
   language         Language  @default(EN)
   lastLoginAt      DateTime?
+  // When this person actually started working, not when their account was
+  // created — used for years-of-service and upcoming-anniversary tracking
+  // on the Staff dashboard. Backfilled from createdAt for existing users;
+  // editable afterward since that's rarely their true start date.
+  hireDate         DateTime?
   failedLoginAttempts Int    @default(0)
   lockedUntil      DateTime?
   createdAt        DateTime  @default(now())

@@ -14,7 +14,7 @@ export default async function AdminPayPeriodPage({ params }: { params: { id: str
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/admin/payroll" className="mb-3 inline-block text-sm text-brand-700 hover:underline">
+        <Link href="/staff/payroll" className="mb-3 inline-block text-sm text-brand-700 hover:underline">
           ← Back to Payroll
         </Link>
         <h1 className="text-2xl font-semibold">{payPeriod.label}</h1>

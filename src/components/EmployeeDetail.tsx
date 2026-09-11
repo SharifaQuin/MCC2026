@@ -2,12 +2,15 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { loadFieldEvaluationsForTrainee } from "@/lib/fieldEvalData";
 import { getValidComplaintCount } from "@/lib/hr";
+import { getEmployeePayrollEntries } from "@/lib/payroll";
+import { yearsOfService } from "@/lib/staff";
 import FieldEvaluationHistory from "@/components/FieldEvaluationHistory";
 import FieldEvaluationForm from "@/components/FieldEvaluationForm";
 import AccountManagement from "@/components/AccountManagement";
 import CertificationPanel from "@/components/CertificationPanel";
 import ComplaintsPanel from "@/components/ComplaintsPanel";
 import AttendancePanel from "@/components/AttendancePanel";
+import HireDateForm from "@/components/HireDateForm";
 
 export async function loadEmployeeDetail(userId: string) {
   const user = await prisma.user.findUnique({
@@ -67,6 +70,8 @@ export async function loadEmployeeDetail(userId: string) {
     loggedByName: e.loggedBy.name,
   }));
 
+  const payrollEntries = await getEmployeePayrollEntries(userId);
+
   return {
     user,
     modules,
@@ -75,6 +80,7 @@ export async function loadEmployeeDetail(userId: string) {
     complaints,
     validComplaintCount,
     attendanceEvents,
+    payrollEntries,
   };
 }
 
@@ -84,14 +90,23 @@ export function EmployeeDetailView({
   data,
   canManageAccount = false,
   viewerRole,
+  showHrTools = false,
 }: {
   data: Detail;
   canManageAccount?: boolean;
   viewerRole: "ADMIN" | "TRAINER" | "SERVICE_MANAGER";
+  showHrTools?: boolean;
 }) {
-  const { user, modules, fieldEval, onboardingDocs, complaints, validComplaintCount, attendanceEvents } =
-    data;
-  const canSeeHrPanels = viewerRole === "ADMIN" || viewerRole === "SERVICE_MANAGER";
+  const {
+    user,
+    modules,
+    fieldEval,
+    onboardingDocs,
+    complaints,
+    validComplaintCount,
+    attendanceEvents,
+    payrollEntries,
+  } = data;
 
   return (
     <div className="space-y-10">
@@ -139,6 +154,17 @@ export function EmployeeDetailView({
           canDecide={viewerRole === "ADMIN" || viewerRole === "SERVICE_MANAGER"}
         />
       </section>
+
+      {showHrTools && (
+        <section>
+          <h2 className="mb-3 text-lg font-medium">Hire Date</h2>
+          <HireDateForm
+            userId={user.id}
+            hireDate={user.hireDate ? user.hireDate.toISOString() : null}
+            yearsOfService={user.hireDate ? yearsOfService(user.hireDate) : null}
+          />
+        </section>
+      )}
 
       {canManageAccount && (
         <section>
@@ -201,7 +227,7 @@ export function EmployeeDetailView({
         />
       </section>
 
-      {canSeeHrPanels && (
+      {showHrTools && (
         <>
           <section>
             <h2 className="mb-3 text-lg font-medium">Complaints</h2>
@@ -215,6 +241,29 @@ export function EmployeeDetailView({
           <section>
             <h2 className="mb-3 text-lg font-medium">Attendance</h2>
             <AttendancePanel employeeId={user.id} events={attendanceEvents} />
+          </section>
+
+          <section>
+            <h2 className="mb-3 text-lg font-medium">Payroll</h2>
+            {payrollEntries.length === 0 ? (
+              <p className="text-sm text-neutral-500">No payroll entries yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {payrollEntries.map((e) => (
+                  <Link
+                    key={e.id}
+                    href={`/staff/payroll/${e.payPeriodId}`}
+                    className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white p-3 text-sm hover:border-brand-300"
+                  >
+                    <span className="font-medium">{e.payPeriodLabel}</span>
+                    <span className="text-neutral-500">
+                      {e.regularHours}h reg
+                      {e.overtimeHours > 0 ? ` + ${e.overtimeHours}h OT` : ""} · {e.status}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
           </section>
         </>
       )}

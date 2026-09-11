@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { loadAdminDashboard } from "@/lib/dashboard";
 import { loadRecruitingDashboard } from "@/lib/recruiting";
+import { getStaffDashboardStats } from "@/lib/staff";
 
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
@@ -18,15 +19,16 @@ export default async function HROverviewPage() {
   if (!session) redirect("/login");
   if (session.role !== "ADMIN" && session.role !== "SERVICE_MANAGER") redirect("/");
 
-  const [training, recruiting] = await Promise.all([
+  const [training, recruiting, staff] = await Promise.all([
     loadAdminDashboard(),
     loadRecruitingDashboard(),
+    getStaffDashboardStats(),
   ]);
 
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold">HR</h1>
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
         <section className="rounded-lg border border-neutral-200 bg-white p-6">
           <h2 className="text-lg font-medium text-neutral-900">Training</h2>
           <p className="mt-1 text-sm text-neutral-500">
@@ -62,6 +64,25 @@ export default async function HROverviewPage() {
             className="mt-5 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
           >
             View Recruiting Pipeline
+          </Link>
+        </section>
+
+        <section className="rounded-lg border border-neutral-200 bg-white p-6">
+          <h2 className="text-lg font-medium text-neutral-900">Staff</h2>
+          <p className="mt-1 text-sm text-neutral-500">
+            Complaints, attendance, payroll, and anniversaries.
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <Stat label="Total Staff" value={staff.totalStaff} />
+            <Stat label="Upcoming Anniversaries" value={staff.upcomingAnniversaries.length} />
+            <Stat label="Open Complaints" value={staff.openComplaints} />
+            <Stat label="Payroll Disputes" value={staff.payrollDisputes} />
+          </div>
+          <Link
+            href="/staff"
+            className="mt-5 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            View Staff Dashboard
           </Link>
         </section>
       </div>

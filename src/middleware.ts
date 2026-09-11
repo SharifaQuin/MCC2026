@@ -59,7 +59,9 @@ export async function middleware(req: NextRequest) {
   }
 
   if (
-    (pathname.startsWith("/admin") || pathname.startsWith("/recruiting")) &&
+    (pathname.startsWith("/admin") ||
+      pathname.startsWith("/recruiting") ||
+      pathname.startsWith("/staff")) &&
     payload.role !== "ADMIN" &&
     payload.role !== "SERVICE_MANAGER"
   ) {

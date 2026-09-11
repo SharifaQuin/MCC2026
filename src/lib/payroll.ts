@@ -93,6 +93,7 @@ export async function getEmployeePayrollEntries(employeeId: string) {
 
   return entries.map((e) => ({
     id: e.id,
+    payPeriodId: e.payPeriodId,
     payPeriodLabel: e.payPeriod.label,
     startDate: e.payPeriod.startDate.toISOString(),
     endDate: e.payPeriod.endDate.toISOString(),

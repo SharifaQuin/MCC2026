@@ -41,15 +41,15 @@ export async function createPayPeriodAction(
     data: { label, startDate: new Date(startDateRaw), endDate: new Date(endDateRaw) },
   });
 
-  revalidatePath("/admin/payroll");
-  redirect(`/admin/payroll/${payPeriod.id}`);
+  revalidatePath("/staff/payroll");
+  redirect(`/staff/payroll/${payPeriod.id}`);
 }
 
 export async function deletePayPeriodAction(payPeriodId: string) {
   await requireHrAccess();
   await prisma.payPeriod.delete({ where: { id: payPeriodId } });
-  revalidatePath("/admin/payroll");
-  redirect("/admin/payroll");
+  revalidatePath("/staff/payroll");
+  redirect("/staff/payroll");
 }
 
 export interface EntryFormState {
@@ -97,7 +97,7 @@ export async function upsertPayrollEntryAction(
     },
   });
 
-  revalidatePath(`/admin/payroll/${payPeriodId}`);
+  revalidatePath(`/staff/payroll/${payPeriodId}`);
   revalidatePath("/payroll");
   return { success: true };
 }
@@ -105,7 +105,7 @@ export async function upsertPayrollEntryAction(
 export async function deletePayrollEntryAction(entryId: string, payPeriodId: string) {
   await requireHrAccess();
   await prisma.payrollEntry.delete({ where: { id: entryId } });
-  revalidatePath(`/admin/payroll/${payPeriodId}`);
+  revalidatePath(`/staff/payroll/${payPeriodId}`);
 }
 
 export interface CsvImportState {
@@ -133,7 +133,7 @@ export async function importPayrollCsvAction(
   const text = await file.text();
   const result = await importPayrollCsv(payPeriodId, text);
 
-  revalidatePath(`/admin/payroll/${payPeriodId}`);
+  revalidatePath(`/staff/payroll/${payPeriodId}`);
   revalidatePath("/payroll");
   return { imported: result.imported, errors: result.errors };
 }
@@ -156,7 +156,7 @@ export async function resolveDisputeAction(
     },
   });
 
-  revalidatePath(`/admin/payroll/${payPeriodId}`);
+  revalidatePath(`/staff/payroll/${payPeriodId}`);
   revalidatePath("/payroll");
 }
 
