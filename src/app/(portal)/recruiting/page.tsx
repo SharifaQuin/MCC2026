@@ -44,6 +44,7 @@ export default async function RecruitingPage() {
         prescreenMaxScore: a.prescreenMaxScore,
         stage: a.stage,
         scheduledAt: a.scheduledAt ? a.scheduledAt.toISOString() : null,
+        viewedAt: a.viewedAt ? a.viewedAt.toISOString() : null,
       })),
   }));
 

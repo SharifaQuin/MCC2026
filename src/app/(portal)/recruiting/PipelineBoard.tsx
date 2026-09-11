@@ -15,6 +15,7 @@ interface Card {
   prescreenMaxScore: number | null;
   stage: ApplicantStage;
   scheduledAt: string | null;
+  viewedAt: string | null;
 }
 
 function ApplicantCard({ applicant }: { applicant: Card }) {
@@ -24,12 +25,22 @@ function ApplicantCard({ applicant }: { applicant: Card }) {
 
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-3 shadow-sm">
-      <Link
-        href={`/recruiting/applicants/${applicant.id}`}
-        className="font-medium text-brand-700 hover:underline"
-      >
-        {applicant.firstName} {applicant.lastName}
-      </Link>
+      <div className="flex items-center gap-1.5">
+        <Link
+          href={`/recruiting/applicants/${applicant.id}`}
+          className="font-medium text-brand-700 hover:underline"
+        >
+          {applicant.firstName} {applicant.lastName}
+        </Link>
+        {applicant.viewedAt && (
+          <span
+            title={`Viewed ${new Date(applicant.viewedAt).toLocaleDateString()}`}
+            className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500"
+          >
+            Viewed
+          </span>
+        )}
+      </div>
       <p className="truncate text-xs text-neutral-500">{applicant.jobPostingTitle}</p>
       {applicant.prescreenScore !== null && (
         <p className="mt-1 text-xs text-neutral-400">
