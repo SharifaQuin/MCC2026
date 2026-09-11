@@ -14,7 +14,7 @@ export default async function ApplicantDetailPage({
   params: { id: string };
   searchParams: { duplicate?: string };
 }) {
-  await requireRecruitingAccess();
+  const { session } = await requireRecruitingAccess();
 
   const applicant = await prisma.applicant.findUnique({
     where: { id: params.id },
@@ -33,6 +33,15 @@ export default async function ApplicantDetailPage({
 
   if (!applicant) {
     return <p className="text-neutral-500">Applicant not found.</p>;
+  }
+
+  // Stamp "viewed" once, the first time anyone opens this profile — a
+  // persistent marker distinct from moving them through the pipeline.
+  if (!applicant.viewedAt) {
+    await prisma.applicant.update({
+      where: { id: applicant.id },
+      data: { viewedAt: new Date(), viewedById: session.sub },
+    });
   }
 
   const commHistory = applicant.communications.map((c) => ({
@@ -85,9 +94,16 @@ export default async function ApplicantDetailPage({
           </h1>
           <p className="text-neutral-500">{applicant.jobPosting.titleEn}</p>
         </div>
-        <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700">
-          {STAGE_LABELS[applicant.stage]}
-        </span>
+        <div className="flex flex-col items-end gap-1">
+          <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700">
+            {STAGE_LABELS[applicant.stage]}
+          </span>
+          {applicant.viewedAt && (
+            <span className="text-xs text-neutral-400">
+              Viewed {new Date(applicant.viewedAt).toLocaleDateString()}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="mb-6 rounded-lg border border-neutral-200 bg-white p-4">

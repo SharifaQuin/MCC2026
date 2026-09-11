@@ -110,6 +110,7 @@ model User {
   departmentAccess DepartmentAccess[]
   sentCommunications CommunicationLog[]
   hiredFromApplicant Applicant? @relation("ApplicantHiredUser")
+  applicantsViewed Applicant[] @relation("ApplicantViewedBy")
   onboardingAssignments OnboardingAssignment[]
 
   complaintsReceived Complaint[]       @relation("EmployeeComplaints")
@@ -367,6 +368,12 @@ model Applicant {
   hiredAt        DateTime?
   hiredUserId    String?        @unique
   hiredUser      User?          @relation("ApplicantHiredUser", fields: [hiredUserId], references: [id])
+  // Stamped once, the first time a recruiter opens this applicant's profile
+  // — a persistent "I've already looked into this person" marker, distinct
+  // from moving them through the pipeline.
+  viewedAt       DateTime?
+  viewedById     String?
+  viewedBy       User?          @relation("ApplicantViewedBy", fields: [viewedById], references: [id])
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 

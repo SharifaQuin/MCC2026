@@ -3,6 +3,7 @@ import type { ApplicantStage } from "@prisma/client";
 import { sendEmail } from "@/lib/email";
 import { generateInviteToken } from "@/lib/tokens";
 import { createCalendarEvent } from "@/lib/calendar";
+import { formatInBusinessTimezone } from "@/lib/timezone";
 
 // Auto-scores an applicant's prescreen answers against the question bank's
 // point values and returns whether they cleared the posting's threshold.
@@ -62,6 +63,30 @@ export async function notifyNewApplicant(
   }
 }
 
+// The one rejection email template — kept simple on purpose (one warm,
+// generic message) rather than a per-stage variant. Applied whenever a
+// recruiter chooses "Reject & Send Email" instead of typing something by
+// hand each time.
+export function rejectionEmailTemplate(firstName: string, jobPostingTitle: string) {
+  return {
+    subject: "Update on your application to Mama's Cleaning Crew",
+    body: [
+      `Hi ${firstName},`,
+      "",
+      `Thank you so much for taking the time to apply for the ${jobPostingTitle} position with Mama's Cleaning Crew, and for sharing more about yourself with us.`,
+      "",
+      "After careful consideration, we've decided to move forward with other candidates whose experience more closely matches what we're looking for right now.",
+      "",
+      "We really appreciate the time you invested in the process, and we'd love to keep your information on file for future openings that might be a better fit.",
+      "",
+      "Wishing you the best in your job search!",
+      "",
+      "Warmly,",
+      "Mama's Cleaning Crew",
+    ].join("\n"),
+  };
+}
+
 // The two stages that represent an actual scheduled meeting rather than just
 // a pipeline state — moving into either of these should capture a real date
 // and time instead of just flipping a label.
@@ -112,6 +137,71 @@ export async function scheduleInterviewCalendarEvent(
     });
   } catch {
     // Swallow — a calendar failure shouldn't block the stage move.
+  }
+}
+
+// Emails the applicant a warm confirmation the moment an interview is
+// scheduled — separate from the Outlook calendar invite, and specifically
+// so it lands as a tracked entry in their communication thread, letting
+// staff see (and search) that this went out without having to check Outlook.
+// Best-effort: never blocks or throws, since an email failure shouldn't
+// undo the stage move.
+export async function sendInterviewConfirmationEmail(
+  applicant: { id: string; firstName: string; lastName: string; email: string },
+  jobPostingTitle: string,
+  stage: ApplicantStage,
+  scheduledAt: Date,
+  loggedById: string
+) {
+  const whenText = `${formatInBusinessTimezone(scheduledAt)} Pacific Time`;
+  const bodyLines = [
+    `Hi ${applicant.firstName},`,
+    "",
+    `We're so excited to see you for your ${stage === "PHONE_INTERVIEW_SCHEDULED" ? "phone" : "in-person"} interview for the ${jobPostingTitle} position!`,
+    "",
+    `When: ${whenText}`,
+  ];
+
+  if (stage === "PHONE_INTERVIEW_SCHEDULED") {
+    const zoomPmi = process.env.RECRUITING_ZOOM_PMI;
+    const zoomLink = zoomPmi
+      ? `https://zoom.us/j/${zoomPmi.replace(/\D/g, "")}`
+      : process.env.RECRUITING_ZOOM_LINK;
+    if (zoomLink) bodyLines.push(`Zoom link: ${zoomLink}`);
+  }
+
+  bodyLines.push("", "See you soon!", "", "Mama's Cleaning Crew");
+
+  const subject = `Your interview with Mama's Cleaning Crew — ${whenText}`;
+  const body = bodyLines.join("\n");
+
+  try {
+    const result = await sendEmail({ to: applicant.email, subject, body });
+    await prisma.communicationLog.create({
+      data: {
+        applicantId: applicant.id,
+        channel: "EMAIL",
+        direction: "OUTBOUND",
+        subject,
+        body,
+        status: result.ok ? "SENT" : "FAILED",
+        errorMessage: result.ok ? null : result.error,
+        sentById: loggedById,
+      },
+    });
+  } catch (error) {
+    await prisma.communicationLog.create({
+      data: {
+        applicantId: applicant.id,
+        channel: "EMAIL",
+        direction: "OUTBOUND",
+        subject,
+        body,
+        status: "FAILED",
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
+        sentById: loggedById,
+      },
+    });
   }
 }
 

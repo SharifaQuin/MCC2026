@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { ApplicantStage } from "@prisma/client";
-import { setApplicantStageAction } from "../actions";
+import { setApplicantStageAction, rejectApplicantAction } from "../actions";
 import { STAGE_LABELS, SCHEDULING_STAGES } from "@/lib/recruiting";
 
 // Phase 1 keeps stage changes manual — a manager reviews and moves the
@@ -33,6 +33,7 @@ export default function StageControls({
 }) {
   const [pending, startTransition] = useTransition();
   const [scheduling, setScheduling] = useState<ApplicantStage | null>(null);
+  const [rejecting, setRejecting] = useState(false);
   const options = NEXT_STAGES[stage] ?? [];
 
   if (options.length === 0) return null;
@@ -46,7 +47,9 @@ export default function StageControls({
             type="button"
             disabled={pending}
             onClick={() => {
-              if ((SCHEDULING_STAGES as string[]).includes(next)) {
+              if (next === "REJECTED") {
+                setRejecting(true);
+              } else if ((SCHEDULING_STAGES as string[]).includes(next)) {
                 setScheduling(next);
               } else {
                 startTransition(() => setApplicantStageAction(applicantId, next));
@@ -113,6 +116,44 @@ export default function StageControls({
             </button>
           </div>
         </form>
+      )}
+
+      {rejecting && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-red-200 bg-red-50 p-3">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() =>
+              startTransition(async () => {
+                await rejectApplicantAction(applicantId, true);
+                setRejecting(false);
+              })
+            }
+            className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+          >
+            {pending ? "..." : "Reject & Send Email"}
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() =>
+              startTransition(async () => {
+                await rejectApplicantAction(applicantId, false);
+                setRejecting(false);
+              })
+            }
+            className="rounded-md border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"
+          >
+            Reject (No Email)
+          </button>
+          <button
+            type="button"
+            onClick={() => setRejecting(false)}
+            className="rounded-md border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Cancel
+          </button>
+        </div>
       )}
     </div>
   );

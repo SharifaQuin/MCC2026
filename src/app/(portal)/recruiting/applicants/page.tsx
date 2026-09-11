@@ -95,8 +95,16 @@ export default async function ApplicantsPage({
                 className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white p-4 hover:border-brand-300"
               >
                 <div>
-                  <p className="font-medium text-neutral-900">
+                  <p className="flex items-center gap-2 font-medium text-neutral-900">
                     {a.firstName} {a.lastName}
+                    {a.viewedAt && (
+                      <span
+                        title={`Viewed ${new Date(a.viewedAt).toLocaleDateString()}`}
+                        className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500"
+                      >
+                        Viewed
+                      </span>
+                    )}
                   </p>
                   <p className="text-sm text-neutral-500">{a.jobPosting.titleEn}</p>
                   {a.prescreenScore !== null && (

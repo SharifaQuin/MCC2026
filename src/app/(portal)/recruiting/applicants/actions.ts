@@ -10,6 +10,8 @@ import {
   SCHEDULING_STAGES,
   createEmployeeAccountForHiredApplicant,
   scheduleInterviewCalendarEvent,
+  sendInterviewConfirmationEmail,
+  rejectionEmailTemplate,
 } from "@/lib/recruiting";
 import { zonedTimeToUtc } from "@/lib/timezone";
 import type { ApplicantStage } from "@prisma/client";
@@ -49,6 +51,49 @@ export async function setApplicantStageAction(
 
   if (scheduledAtDate) {
     await scheduleInterviewCalendarEvent(applicant, applicant.jobPosting.titleEn, stage, scheduledAtDate);
+    await sendInterviewConfirmationEmail(
+      applicant,
+      applicant.jobPosting.titleEn,
+      stage,
+      scheduledAtDate,
+      session.sub
+    );
+  }
+
+  revalidatePath(`/recruiting/applicants/${applicantId}`);
+  revalidatePath("/recruiting/applicants");
+  revalidatePath("/recruiting");
+}
+
+// Rejecting is the one stage move that optionally sends the candidate an
+// email — everything else stays silent per Phase 1. sendEmail is false for
+// spam applications, duplicates, or no-shows that were never real
+// candidates to begin with.
+export async function rejectApplicantAction(applicantId: string, sendEmailToApplicant: boolean) {
+  const { session } = await requireRecruitingAccess();
+
+  const applicant = await prisma.applicant.update({
+    where: { id: applicantId },
+    data: { stage: "REJECTED", rejectedAt: new Date() },
+    include: { jobPosting: { select: { titleEn: true } } },
+  });
+
+  if (sendEmailToApplicant) {
+    const { subject, body } = rejectionEmailTemplate(applicant.firstName, applicant.jobPosting.titleEn);
+    const result = await sendEmail({ to: applicant.email, subject, body });
+
+    await prisma.communicationLog.create({
+      data: {
+        applicantId,
+        channel: "EMAIL",
+        direction: "OUTBOUND",
+        subject,
+        body,
+        status: result.ok ? "SENT" : "FAILED",
+        errorMessage: result.ok ? null : result.error,
+        sentById: session.sub,
+      },
+    });
   }
 
   revalidatePath(`/recruiting/applicants/${applicantId}`);
