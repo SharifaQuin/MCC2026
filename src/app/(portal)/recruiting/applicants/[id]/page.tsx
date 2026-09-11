@@ -107,13 +107,21 @@ export default async function ApplicantDetailPage({
           {applicant.resumeDataUrl && (
             <div>
               <dt className="text-neutral-400">Resume</dt>
-              <dd>
+              <dd className="flex items-center gap-3">
+                <a
+                  href={applicant.resumeDataUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-brand-700 hover:underline"
+                >
+                  View{applicant.resumeFileName ? ` (${applicant.resumeFileName})` : ""}
+                </a>
                 <a
                   href={applicant.resumeDataUrl}
                   download={applicant.resumeFileName ?? "resume"}
-                  className="text-brand-700 hover:underline"
+                  className="text-xs text-neutral-500 hover:underline"
                 >
-                  {applicant.resumeFileName || "Download"}
+                  Download
                 </a>
               </dd>
             </div>
