@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getStaffDashboardStats, getStaffDirectory, yearsOfService } from "@/lib/staff";
+import { getStaffDashboardStats, getStaffDirectory, getTurnoverStats, yearsOfService } from "@/lib/staff";
 
 function Stat({
   label,
@@ -27,7 +27,11 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default async function StaffDashboardPage() {
-  const [stats, directory] = await Promise.all([getStaffDashboardStats(), getStaffDirectory()]);
+  const [stats, directory, turnover] = await Promise.all([
+    getStaffDashboardStats(),
+    getStaffDirectory(),
+    getTurnoverStats(90),
+  ]);
 
   return (
     <div className="space-y-8">
@@ -71,6 +75,52 @@ export default async function StaffDashboardPage() {
           </ul>
         </div>
       )}
+
+      <div>
+        <h2 className="mb-3 text-lg font-medium">Turnover &amp; Retention (last 90 days)</h2>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <Stat label="Departures" value={turnover.departures} tone={turnover.departures > 0 ? "warn" : "neutral"} />
+          <Stat
+            label="Turnover Rate"
+            value={`${turnover.turnoverRatePct}%`}
+            tone={turnover.turnoverRatePct > 10 ? "warn" : "neutral"}
+          />
+          <Stat
+            label="Avg. Tenure at Departure"
+            value={turnover.avgTenureDays !== null ? `${Math.round(turnover.avgTenureDays / 30)} mo` : "—"}
+          />
+        </div>
+        {turnover.recentDepartures.length > 0 && (
+          <div className="mt-4 overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-neutral-200 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
+                <tr>
+                  <th className="px-4 py-3">Name</th>
+                  <th className="px-4 py-3">Last Day</th>
+                  <th className="px-4 py-3">Tenure</th>
+                  <th className="px-4 py-3">Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {turnover.recentDepartures.map((d) => (
+                  <tr key={d.id} className="border-b border-neutral-100 last:border-0">
+                    <td className="px-4 py-3">
+                      <Link href={`/staff/${d.id}`} className="font-medium text-brand-700 hover:underline">
+                        {d.name}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-neutral-600">{d.lastDay.toLocaleDateString()}</td>
+                    <td className="px-4 py-3 text-neutral-600">
+                      {d.tenureDays !== null ? `${Math.round(d.tenureDays / 30)} mo` : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-neutral-600">{d.departureReason ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       <div>
         <h2 className="mb-3 text-lg font-medium">Staff Directory</h2>

@@ -72,6 +72,55 @@ export async function getStaffDirectory() {
   }));
 }
 
+// Departed employees are anyone with lastDay set (see Roster Status), not
+// limited to STAFF_ROLES — turnover should count anyone who left, including
+// a departed ADMIN/manager — but the headcount denominator stays STAFF_ROLES
+// since that's the population the rest of this dashboard tracks.
+export async function getTurnoverStats(windowDays = 90) {
+  const now = new Date();
+  const since = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
+
+  const [headcountNow, departedRows] = await Promise.all([
+    prisma.user.count({ where: { role: { in: STAFF_ROLES }, active: true } }),
+    prisma.user.findMany({
+      where: { lastDay: { gte: since, lte: now } },
+      select: { id: true, name: true, lastDay: true, hireDate: true, departureReason: true },
+      orderBy: { lastDay: "desc" },
+    }),
+  ]);
+
+  const departures = departedRows.length;
+  // No historical headcount snapshots exist, so approximate headcount at the
+  // start of the window as "who's still here now, plus who left during it" —
+  // a reasonable stand-in for a proper time series.
+  const headcountAtStart = headcountNow + departures;
+  const turnoverRatePct =
+    headcountAtStart > 0 ? Math.round((departures / headcountAtStart) * 1000) / 10 : 0;
+
+  const tenuresAtDeparture = departedRows
+    .filter((d) => d.hireDate)
+    .map((d) => (d.lastDay!.getTime() - d.hireDate!.getTime()) / (1000 * 60 * 60 * 24));
+  const avgTenureDays =
+    tenuresAtDeparture.length > 0
+      ? Math.round(tenuresAtDeparture.reduce((sum, t) => sum + t, 0) / tenuresAtDeparture.length)
+      : null;
+
+  return {
+    windowDays,
+    headcountNow,
+    departures,
+    turnoverRatePct,
+    avgTenureDays,
+    recentDepartures: departedRows.map((d) => ({
+      id: d.id,
+      name: d.name,
+      lastDay: d.lastDay as Date,
+      departureReason: d.departureReason,
+      tenureDays: d.hireDate ? Math.round((d.lastDay!.getTime() - d.hireDate.getTime()) / (1000 * 60 * 60 * 24)) : null,
+    })),
+  };
+}
+
 export async function getStaffDashboardStats() {
   const [totalStaff, upcomingAnniversaries, openComplaints, payrollDisputes] = await Promise.all([
     prisma.user.count({ where: { role: { in: STAFF_ROLES }, active: true } }),
