@@ -25,6 +25,7 @@ export async function getHrTodayAttentionItems(): Promise<HrTodayItem[]> {
     unsignedDocuments,
     overdueReassessments,
     staffWithHireDates,
+    expiredOrExpiringCompliance,
   ] = await Promise.all([
     prisma.user.count({ where: { role: "TRAINEE", certificationStatus: "PENDING" } }),
     prisma.complaint.count({ where: { status: "OPEN" } }),
@@ -40,6 +41,9 @@ export async function getHrTodayAttentionItems(): Promise<HrTodayItem[]> {
     prisma.user.findMany({
       where: { role: { in: STAFF_ROLES }, active: true, hireDate: { not: null } },
       select: { id: true, hireDate: true, milestoneReviews: true },
+    }),
+    prisma.complianceDocument.count({
+      where: { expirationDate: { lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) } },
     }),
   ]);
 
@@ -58,6 +62,7 @@ export async function getHrTodayAttentionItems(): Promise<HrTodayItem[]> {
     { label: "Draft PAFs awaiting approval", count: draftPafs, href: "/staff", tone: "warn" },
     { label: "Approved PAFs awaiting execution", count: approvedPafs, href: "/staff", tone: "warn" },
     { label: "Personnel documents awaiting signature", count: unsignedDocuments, href: "/staff", tone: "warn" },
+    { label: "Compliance documents expired or expiring soon", count: expiredOrExpiringCompliance, href: "/staff", tone: "bad" },
   ];
 
   return items.filter((item) => item.count > 0);

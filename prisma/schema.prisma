@@ -163,6 +163,9 @@ model User {
   signedDocuments          SignedDocument[]   @relation("SignedDocumentEmployee")
   signedDocumentsCreated   SignedDocument[]   @relation("SignedDocumentCreatedBy")
 
+  complianceDocuments        ComplianceDocument[] @relation("ComplianceDocumentEmployee")
+  complianceDocumentsCreated ComplianceDocument[] @relation("ComplianceDocumentCreatedBy")
+
   @@index([role])
 }
 
@@ -587,6 +590,36 @@ model SignedDocument {
   createdBy   User             @relation("SignedDocumentCreatedBy", fields: [createdById], references: [id])
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
+
+  @@index([employeeId])
+}
+
+enum ComplianceDocType {
+  DRIVERS_LICENSE
+  AUTO_INSURANCE
+  TB_TEST
+  BACKGROUND_CHECK
+  OTHER
+}
+
+// A compliance-tracked document with a real expiration date (driver's
+// license, auto insurance, TB test, background check) — distinct from
+// SignedDocument/OnboardingDocument, neither of which expire. `label` is
+// only used when docType is OTHER, to name whatever it is.
+model ComplianceDocument {
+  id             String            @id @default(cuid())
+  employeeId     String
+  employee       User              @relation("ComplianceDocumentEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  docType        ComplianceDocType
+  label          String?
+  expirationDate DateTime
+  fileDataUrl    String?           @db.Text
+  fileName       String?
+  notes          String?           @db.Text
+  createdById    String
+  createdBy      User              @relation("ComplianceDocumentCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   @@index([employeeId])
 }

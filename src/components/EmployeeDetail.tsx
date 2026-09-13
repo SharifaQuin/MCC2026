@@ -18,6 +18,7 @@ import EmployeeSummaryCard from "@/components/EmployeeSummaryCard";
 import PersonnelActionFormPanel, { type PafRow } from "@/components/PersonnelActionFormPanel";
 import DeparturePanel from "@/components/DeparturePanel";
 import PersonnelDocumentsPanel, { type SignedDocRow, type TemplateOption } from "@/components/PersonnelDocumentsPanel";
+import ComplianceDocsPanel, { type ComplianceDocRow } from "@/components/ComplianceDocsPanel";
 import { getCurrentPairForEmployee, getPairHistoryForEmployee, getPairingCandidates } from "@/lib/pairing";
 import { buildMilestoneTimeline } from "@/lib/milestones";
 import { serializePromotionAssessmentForRole, type ReadinessIndicatorValue } from "@/lib/promotions";
@@ -178,6 +179,20 @@ export async function loadEmployeeDetail(userId: string) {
     fields: t.fields.map((f) => ({ key: f.key, label: f.label, fieldType: f.fieldType, required: f.required })),
   }));
 
+  const complianceDocRows = await prisma.complianceDocument.findMany({
+    where: { employeeId: userId },
+    orderBy: { expirationDate: "asc" },
+  });
+  const complianceDocuments: ComplianceDocRow[] = complianceDocRows.map((d) => ({
+    id: d.id,
+    docType: d.docType,
+    label: d.label,
+    expirationDate: d.expirationDate.toISOString(),
+    fileDataUrl: d.fileDataUrl,
+    fileName: d.fileName,
+    notes: d.notes,
+  }));
+
   return {
     user,
     modules,
@@ -196,6 +211,7 @@ export async function loadEmployeeDetail(userId: string) {
     pafs,
     signedDocuments,
     documentTemplates,
+    complianceDocuments,
   };
 }
 
@@ -230,6 +246,7 @@ export function EmployeeDetailView({
     pafs,
     signedDocuments,
     documentTemplates,
+    complianceDocuments,
   } = data;
 
   const visiblePromotionAssessments = promotionAssessments.map((a) =>
@@ -365,6 +382,17 @@ export function EmployeeDetailView({
             documents={signedDocuments}
             templates={documentTemplates}
             canManage={viewerRole === "ADMIN"}
+          />
+        </section>
+      )}
+
+      {showHrTools && (
+        <section>
+          <h2 className="mb-3 text-lg font-medium">Compliance Documents</h2>
+          <ComplianceDocsPanel
+            employeeId={user.id}
+            documents={complianceDocuments}
+            canManage={viewerRole === "ADMIN" || viewerRole === "SERVICE_MANAGER"}
           />
         </section>
       )}
