@@ -511,6 +511,27 @@ async function seedOwnerDashboard() {
     checklistCreated++;
   }
   console.log(`Seeded ${checklistCreated} new checklist task(s) (existing ones left untouched).`);
+
+  // Fixed id so the weekly-update save action can mark this one Done
+  // directly (see WEEKLY_UPDATE_REMINDER_TASK_ID in src/lib/weeklyUpdate.ts)
+  // — must stay in sync with that constant.
+  const weeklyUpdateReminderId = "weekly_team_update_reminder";
+  const existingReminder = await prisma.checklistTask.findUnique({ where: { id: weeklyUpdateReminderId } });
+  if (!existingReminder) {
+    await prisma.checklistTask.create({
+      data: {
+        id: weeklyUpdateReminderId,
+        frequency: "WEEKLY",
+        task: "Fill out the Monday Team Update form (spotlight, stats, goal, core value)",
+        owner: "OWNER",
+        visibility: "OWNER_ONLY",
+        category: "MANAGEMENT",
+        dueFridayOfWeek: true,
+        order: CHECKLIST_TASKS.length,
+      },
+    });
+    console.log("Seeded the Monday Team Update reminder task.");
+  }
 }
 
 async function main() {

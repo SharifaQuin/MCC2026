@@ -1,7 +1,45 @@
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
-import ComingSoonDepartment from "@/components/ComingSoonDepartment";
+import { prisma } from "@/lib/prisma";
+import { nextMondayFrom } from "@/lib/weeklyUpdate";
+import WeeklyUpdateManager, { type WeeklyUpdateRow } from "@/components/WeeklyUpdateManager";
+
+function toDateKey(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
 
 export default async function ManagementPage() {
   const { canEdit } = await requireDepartmentAccess("MANAGEMENT");
-  return <ComingSoonDepartment title="Management" canEdit={canEdit} />;
+
+  const updates = await prisma.weeklyUpdate.findMany({
+    orderBy: { weekOf: "desc" },
+    take: 12,
+  });
+
+  const rows: WeeklyUpdateRow[] = updates.map((u) => ({
+    id: u.id,
+    weekOf: toDateKey(u.weekOf),
+    status: u.status,
+    formattedMessage: u.formattedMessage,
+    sentAt: u.sentAt ? u.sentAt.toISOString() : null,
+    spotlightName: u.spotlightName,
+    spotlightReason: u.spotlightReason,
+    homesCleaned: u.homesCleaned,
+    commercialServiced: u.commercialServiced,
+    avgRating: u.avgRating,
+    clientShoutout: u.clientShoutout,
+    companyUpdates: u.companyUpdates,
+    weeklyGoal: u.weeklyGoal,
+    coreValue: u.coreValue,
+    coreValueDescription: u.coreValueDescription,
+  }));
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-2xl font-semibold">Management</h1>
+        <p className="mt-1 text-sm text-neutral-500">Monday Team Update — draft, approve, and send to Slack.</p>
+      </div>
+      <WeeklyUpdateManager updates={rows} canEdit={canEdit} defaultWeekOf={toDateKey(nextMondayFrom())} />
+    </div>
+  );
 }

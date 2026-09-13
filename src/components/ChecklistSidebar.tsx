@@ -14,6 +14,7 @@ export interface ChecklistItem {
   category: ChecklistCategory;
   notes: string | null;
   targetDate: string | null;
+  dueFridayOfWeek: boolean;
 }
 
 const STATUS_CYCLE: ChecklistTaskStatus[] = ["NOT_STARTED", "IN_PROGRESS", "DONE"];

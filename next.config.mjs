@@ -7,6 +7,9 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: "6mb",
     },
+    // Runs src/instrumentation.ts once when the persistent `next start`
+    // server process boots — used to schedule the Monday Team Update send.
+    instrumentationHook: true,
   },
 };
 

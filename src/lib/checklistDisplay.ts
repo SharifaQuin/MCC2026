@@ -1,6 +1,7 @@
 // Pure display helpers with no server-only imports (no prisma, no next/headers)
 // so they're safe to use from client components as well as server ones.
 import type { ChecklistCategory, ChecklistFrequency, ChecklistTaskStatus } from "@prisma/client";
+import { businessDateKey, fridayOfBusinessWeek, lastDayOfBusinessMonth } from "@/lib/timezone";
 
 export const CATEGORY_ORDER: ChecklistCategory[] = ["MARKETING", "SALES", "HR", "MANAGEMENT"];
 
@@ -51,17 +52,22 @@ export function reachedGrowthStages(staircase: number[], revenue: number): boole
 
 // The due date a task actually reads as, given its frequency — not
 // necessarily what's stored. Monthly tasks are always due the last day of
-// the current month, recalculated automatically same as effectiveStatus
-// (no manual due date makes sense there). Daily/Weekly tasks already reset
-// themselves every period — that reset IS their deadline — so they never
-// have a due date at all. Only One-Time/Milestone tasks use whatever's
-// actually stored in targetDate.
+// the current month (in the business timezone), recalculated automatically
+// same as effectiveStatus (no manual due date makes sense there). Daily/
+// Weekly tasks already reset themselves every period — that reset IS their
+// deadline — so they never have a due date, unless dueFridayOfWeek opts a
+// specific Weekly task into a Friday deadline on top of its weekly reset
+// (e.g. the Monday Team Update reminder). One-Time/Milestone tasks use
+// whatever's actually stored in targetDate.
 export function getEffectiveTargetDate(
-  task: { frequency: ChecklistFrequency; targetDate: string | Date | null },
+  task: { frequency: ChecklistFrequency; targetDate: string | Date | null; dueFridayOfWeek?: boolean },
   now: Date = new Date()
 ): Date | null {
+  if (task.dueFridayOfWeek) {
+    return fridayOfBusinessWeek(now);
+  }
   if (task.frequency === "MONTHLY") {
-    return new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return lastDayOfBusinessMonth(now);
   }
   if (task.frequency === "DAILY" || task.frequency === "WEEKLY") {
     return null;
@@ -74,17 +80,30 @@ export type DueStatus = "OVERDUE" | "DUE_SOON" | null;
 // A due-date flag shown right on the task — no email, no scheduled job,
 // just computed at read time same as effectiveStatus. Done tasks never show
 // a flag regardless of date. "Due soon" covers today and the next 2 days.
+// Day counting is done in the business timezone so the badge doesn't shift
+// by a day depending on which timezone the server process happens to run in.
 export function getDueStatus(
-  task: { frequency: ChecklistFrequency; targetDate: string | Date | null; effectiveStatus: ChecklistTaskStatus },
+  task: {
+    frequency: ChecklistFrequency;
+    targetDate: string | Date | null;
+    dueFridayOfWeek?: boolean;
+    effectiveStatus: ChecklistTaskStatus;
+  },
   now: Date = new Date()
 ): DueStatus {
   if (task.effectiveStatus === "DONE") return null;
   const due = getEffectiveTargetDate(task, now);
   if (!due) return null;
 
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfDue = new Date(due.getFullYear(), due.getMonth(), due.getDate());
-  const daysUntilDue = Math.round((startOfDue.getTime() - startOfToday.getTime()) / 86400000);
+  // `due` is a pure calendar date (UTC-midnight-encoded, whether computed
+  // here or stored from a plain <input type="date">) — read its Y/M/D
+  // directly rather than re-interpreting it through the business timezone,
+  // which would shift a UTC-midnight value back a day. `now`, in contrast,
+  // is a real moment in time, so what calendar day it currently is DOES
+  // depend on the business timezone.
+  const startOfToday = new Date(`${businessDateKey(now)}T00:00:00Z`);
+  const startOfDue = Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate());
+  const daysUntilDue = Math.round((startOfDue - startOfToday.getTime()) / 86400000);
 
   if (daysUntilDue < 0) return "OVERDUE";
   if (daysUntilDue <= 2) return "DUE_SOON";

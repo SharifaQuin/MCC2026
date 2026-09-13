@@ -73,3 +73,53 @@ export function businessISOWeekKey(date: Date): string {
   const weekNum = Math.ceil(((utcDate.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
   return `${utcDate.getUTCFullYear()}-W${String(weekNum).padStart(2, "0")}`;
 }
+
+// UTC-midnight Date representing the Friday of the current business-timezone
+// week (Mon=1..Sun=7 style ISO weekday, same convention as businessISOWeekKey).
+export function fridayOfBusinessWeek(date: Date): Date {
+  const [y, m, d] = businessDateKey(date).split("-").map(Number);
+  const utcDate = new Date(Date.UTC(y, m - 1, d));
+  const dayNum = utcDate.getUTCDay() || 7;
+  utcDate.setUTCDate(utcDate.getUTCDate() + (5 - dayNum));
+  return utcDate;
+}
+
+// UTC-midnight Date for the last day of the current month, in the business
+// timezone — e.g. so "due at month-end" means the same calendar day
+// regardless of which timezone the server process happens to run in.
+export function lastDayOfBusinessMonth(date: Date): Date {
+  const [y, m] = businessDateKey(date).split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0));
+}
+
+// { year, month, day, weekday, hour, minute } of a Date as read in the
+// business timezone — weekday is ISO-style (Mon=1..Sun=7).
+export function businessTimeParts(date: Date): {
+  year: number;
+  month: number;
+  day: number;
+  weekday: number;
+  hour: number;
+  minute: number;
+} {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: BUSINESS_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = Object.fromEntries(dtf.formatToParts(date).map((p) => [p.type, p.value]));
+  const [y, m, d] = businessDateKey(date).split("-").map(Number);
+  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay() || 7;
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    weekday,
+    hour: Number(parts.hour),
+    minute: Number(parts.minute),
+  };
+}

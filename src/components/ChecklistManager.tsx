@@ -30,6 +30,7 @@ export interface ChecklistRow {
   category: ChecklistCategory;
   notes: string | null;
   targetDate: string | null;
+  dueFridayOfWeek: boolean;
 }
 
 const STATUS_CYCLE: ChecklistTaskStatus[] = ["NOT_STARTED", "IN_PROGRESS", "DONE"];
@@ -155,7 +156,11 @@ function TaskRow({ task }: { task: ChecklistRow }) {
             </select>
           </div>
 
-          {task.frequency === "MONTHLY" ? (
+          {task.dueFridayOfWeek ? (
+            <p className="text-xs text-neutral-500">
+              Due date: automatically this week's Friday — no need to set one.
+            </p>
+          ) : task.frequency === "MONTHLY" ? (
             <p className="text-xs text-neutral-500">
               Due date: automatically the last day of the month — no need to set one.
             </p>

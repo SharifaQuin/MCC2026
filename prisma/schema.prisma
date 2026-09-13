@@ -119,6 +119,9 @@ model User {
   attendanceEventsLogged AttendanceEvent[] @relation("AttendanceEventsLogged")
   payrollEntries     PayrollEntry[]    @relation("EmployeePayrollEntries")
 
+  weeklyUpdatesCreated  WeeklyUpdate[] @relation("WeeklyUpdateCreatedBy")
+  weeklyUpdatesApproved WeeklyUpdate[] @relation("WeeklyUpdateApprovedBy")
+
   @@index([role])
 }
 
@@ -698,6 +701,11 @@ model ChecklistTask {
   notes       String?             @db.Text
   visibility  ChecklistVisibility @default(OWNER_ONLY)
   category    ChecklistCategory   @default(MANAGEMENT)
+  // Opt-in exception to the general Weekly-tasks-have-no-due-date rule (see
+  // getEffectiveTargetDate in lib/checklistDisplay.ts) — for the rare weekly
+  // task, like the Monday Team Update reminder, whose whole point IS a
+  // Friday deadline. Left false for every other Weekly task.
+  dueFridayOfWeek Boolean         @default(false)
   order       Int                 @default(0)
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
@@ -776,4 +784,45 @@ model LoanRepayment {
   createdAt       DateTime @default(now())
 
   @@unique([loanId, month])
+}
+
+enum WeeklyUpdateStatus {
+  DRAFT
+  APPROVED
+  SENT
+  FAILED
+}
+
+// The weekly "Monday Team Update" posted to Slack. Filled out Thu/Fri for
+// the coming Monday, reviewed/approved by anyone with Management edit
+// access, then posted automatically at 8:05am Pacific the following Monday
+// by the in-process scheduler (see instrumentation.ts) — regardless of
+// exactly when during the week it was approved. formattedMessage is built
+// once at save time (see formatWeeklyUpdate in lib/weeklyUpdate.ts) so the
+// preview shown for approval is exactly what gets sent.
+model WeeklyUpdate {
+  id                   String             @id @default(cuid())
+  weekOf               DateTime // the Monday this update is FOR
+  spotlightName        String
+  spotlightReason      String             @db.Text
+  homesCleaned         Int
+  commercialServiced   Int                @default(0)
+  avgRating            Float
+  clientShoutout       String?            @db.Text
+  companyUpdates       String?            @db.Text
+  weeklyGoal           String             @db.Text
+  coreValue            String
+  coreValueDescription String             @db.Text
+  formattedMessage     String             @db.Text
+  status               WeeklyUpdateStatus @default(DRAFT)
+  createdById          String?
+  createdBy            User?              @relation("WeeklyUpdateCreatedBy", fields: [createdById], references: [id])
+  approvedAt           DateTime?
+  approvedById         String?
+  approvedBy           User?              @relation("WeeklyUpdateApprovedBy", fields: [approvedById], references: [id])
+  sentAt               DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@unique([weekOf])
 }
