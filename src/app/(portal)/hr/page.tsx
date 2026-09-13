@@ -4,6 +4,7 @@ import { getSession } from "@/lib/session";
 import { loadAdminDashboard } from "@/lib/dashboard";
 import { loadRecruitingDashboard } from "@/lib/recruiting";
 import { getStaffDashboardStats } from "@/lib/staff";
+import { getHrTodayAttentionItems } from "@/lib/hrToday";
 
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
@@ -19,15 +20,36 @@ export default async function HROverviewPage() {
   if (!session) redirect("/login");
   if (session.role !== "ADMIN" && session.role !== "SERVICE_MANAGER") redirect("/");
 
-  const [training, recruiting, staff] = await Promise.all([
+  const [training, recruiting, staff, attentionItems] = await Promise.all([
     loadAdminDashboard(),
     loadRecruitingDashboard(),
     getStaffDashboardStats(),
+    getHrTodayAttentionItems(),
   ]);
 
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold">HR</h1>
+
+      {attentionItems.length > 0 && (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-5">
+          <p className="mb-3 font-medium text-amber-900">Needs Attention Today</p>
+          <div className="flex flex-wrap gap-2">
+            {attentionItems.map((item) => (
+              <Link
+                key={item.label}
+                href={item.href}
+                className={`rounded-full px-3 py-1.5 text-sm font-medium hover:underline ${
+                  item.tone === "bad" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"
+                }`}
+              >
+                {item.label} ({item.count})
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
         <section className="rounded-lg border border-neutral-200 bg-white p-6">
           <h2 className="text-lg font-medium text-neutral-900">Training</h2>
