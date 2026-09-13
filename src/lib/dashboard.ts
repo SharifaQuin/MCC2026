@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { FIELD_EVAL_CATEGORIES, averageScore } from "@/lib/fieldEval";
+import { getComplaintDashboardFlags } from "@/lib/hr";
 
 export async function loadAdminDashboard() {
   const totalModules = await prisma.module.count({ where: { published: true } });
@@ -62,6 +63,16 @@ export async function loadAdminDashboard() {
     )
     .map((e) => ({ id: e.id, name: e.name }));
 
+  const pendingOnboardingDocs = await prisma.onboardingAssignment.count({
+    where: { signedAt: null },
+  });
+
+  const complaintFlags = await getComplaintDashboardFlags();
+
+  const pendingPayrollDisputes = await prisma.payrollEntry.count({
+    where: { status: "DISPUTED" },
+  });
+
   const allCategoryScores = await prisma.fieldEvalCategoryScore.findMany({
     select: { categoryKey: true, score: true },
   });
@@ -91,5 +102,8 @@ export async function loadAdminDashboard() {
     avgDaysToCertify,
     stalledEmployees,
     noFieldEvalYet,
+    pendingOnboardingDocs,
+    complaintFlags,
+    pendingPayrollDisputes,
   };
 }

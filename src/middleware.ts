@@ -12,6 +12,8 @@ function getSecret() {
 const PUBLIC_PATHS = [
   "/login",
   "/invite",
+  "/apply",
+  "/careers",
   "/manifest.webmanifest",
   "/icon.svg",
   "/apple-icon.png",
@@ -48,14 +50,18 @@ export async function middleware(req: NextRequest) {
   }
 
   if (
-    (pathname.startsWith("/admin/content") || pathname.startsWith("/admin/permissions")) &&
+    (pathname.startsWith("/admin/content") ||
+      pathname.startsWith("/admin/permissions") ||
+      pathname.startsWith("/admin/documents")) &&
     payload.role !== "ADMIN"
   ) {
     return NextResponse.redirect(new URL("/", req.url));
   }
 
   if (
-    pathname.startsWith("/admin") &&
+    (pathname.startsWith("/admin") ||
+      pathname.startsWith("/recruiting") ||
+      pathname.startsWith("/staff")) &&
     payload.role !== "ADMIN" &&
     payload.role !== "SERVICE_MANAGER"
   ) {

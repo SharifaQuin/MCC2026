@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import AddModuleForm from "./AddModuleForm";
+import SeedTranscriptsButton from "./SeedTranscriptsButton";
 
 export default async function AdminContentPage() {
   const modules = await prisma.module.findMany({
@@ -11,6 +12,8 @@ export default async function AdminContentPage() {
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold">Content Editor</h1>
+
+      <SeedTranscriptsButton />
 
       <div className="mb-6 space-y-3">
         {modules.map((m) => (

@@ -2,6 +2,7 @@
 
 import { useFormState, useFormStatus } from "react-dom";
 import { changeOwnPasswordAction, ChangePasswordState } from "@/app/actions/changePassword";
+import PasswordInput from "@/components/PasswordInput";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -26,8 +27,7 @@ export default function ChangePasswordForm() {
     <form action={formAction} className="max-w-sm space-y-4">
       <div>
         <label className="mb-1 block text-sm font-medium">Current Password</label>
-        <input
-          type="password"
+        <PasswordInput
           name="currentPassword"
           required
           className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
@@ -35,8 +35,7 @@ export default function ChangePasswordForm() {
       </div>
       <div>
         <label className="mb-1 block text-sm font-medium">New Password</label>
-        <input
-          type="password"
+        <PasswordInput
           name="newPassword"
           required
           minLength={8}
@@ -45,8 +44,7 @@ export default function ChangePasswordForm() {
       </div>
       <div>
         <label className="mb-1 block text-sm font-medium">Confirm New Password</label>
-        <input
-          type="password"
+        <PasswordInput
           name="confirmPassword"
           required
           minLength={8}

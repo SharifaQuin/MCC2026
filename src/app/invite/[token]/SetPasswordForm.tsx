@@ -2,6 +2,7 @@
 
 import { useFormState, useFormStatus } from "react-dom";
 import { setPasswordAction, SetPasswordState } from "./actions";
+import PasswordInput from "@/components/PasswordInput";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -24,8 +25,7 @@ export default function SetPasswordForm({ token }: { token: string }) {
     <form action={formAction} className="space-y-4">
       <div>
         <label className="mb-1 block text-sm font-medium">New Password</label>
-        <input
-          type="password"
+        <PasswordInput
           name="password"
           required
           minLength={8}
@@ -34,8 +34,7 @@ export default function SetPasswordForm({ token }: { token: string }) {
       </div>
       <div>
         <label className="mb-1 block text-sm font-medium">Confirm Password</label>
-        <input
-          type="password"
+        <PasswordInput
           name="confirm"
           required
           minLength={8}

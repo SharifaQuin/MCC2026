@@ -2,7 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { getModuleListForUser } from "@/lib/courses";
+import { requireOnboardingComplete } from "@/lib/onboarding";
 import { t } from "@/lib/i18n";
+import BackToTraining from "@/components/BackToTraining";
 
 const statusStyles: Record<string, string> = {
   NOT_STARTED: "bg-neutral-100 text-neutral-600",
@@ -13,12 +15,14 @@ const statusStyles: Record<string, string> = {
 export default async function ModulesPage() {
   const session = await getSession();
   if (!session) redirect("/login");
+  await requireOnboardingComplete(session);
   const labels = t(session.language);
   const modules = await getModuleListForUser(session.sub);
   const nextModule = modules.find((m) => !m.locked && m.status !== "COMPLETED");
 
   return (
     <div>
+      {session.role !== "TRAINEE" && <BackToTraining />}
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{labels.modules}</h1>
         {nextModule && (

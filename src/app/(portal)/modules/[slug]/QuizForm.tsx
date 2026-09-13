@@ -161,11 +161,22 @@ export default function QuizForm({
         </div>
       )}
 
-      {!state?.passed && (
-        <SubmitButton
-          label={state?.submitted && !state.passed ? labels.retakeQuiz : labels.submitQuiz}
-        />
-      )}
+      {!state?.passed &&
+        (state?.submitted ? (
+          // A hard reload (plain <a>, not next/link) so the server re-shuffles
+          // the questions/options and the form remounts blank — a next/link
+          // navigation to the same URL can be served from the router cache,
+          // and resubmitting this same form would just grade the same wrong
+          // answers again.
+          <a
+            href={`/modules/${slug}/quiz`}
+            className="inline-block rounded-md bg-brand-600 px-5 py-2 font-medium text-white hover:bg-brand-700"
+          >
+            {labels.retakeQuiz}
+          </a>
+        ) : (
+          <SubmitButton label={labels.submitQuiz} />
+        ))}
     </form>
   );
 }

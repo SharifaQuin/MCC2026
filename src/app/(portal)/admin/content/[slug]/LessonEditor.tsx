@@ -12,9 +12,13 @@ interface Lesson {
   contentEn: string;
   contentEs: string | null;
   videoUrl: string | null;
+  videoUrlEs: string | null;
+  videoTranscriptEn: string | null;
+  videoTranscriptEs: string | null;
   videoDurationSeconds: number | null;
   imageUrl: string | null;
   estimatedMinutes: number | null;
+  published: boolean;
 }
 
 function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
@@ -30,8 +34,13 @@ function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center justify-between text-left"
       >
-        <span className="font-medium">
+        <span className="flex items-center gap-2 font-medium">
           {lesson.order}. {lesson.titleEn}
+          {!lesson.published && (
+            <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-xs font-medium text-neutral-600">
+              Unpublished
+            </span>
+          )}
         </span>
         <span className="text-xs text-neutral-400">{open ? "Hide" : "Edit"}</span>
       </button>
@@ -83,11 +92,36 @@ function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
             <div>
               <label className="mb-1 block text-xs font-medium">Video URL (embed link)</label>
               <input
+                key={lesson.videoUrl ?? ""}
                 name="videoUrl"
                 defaultValue={lesson.videoUrl ?? ""}
-                placeholder="Paste YouTube/Synthesia embed link once uploaded"
+                placeholder="e.g. https://share.synthesia.io/embeds/videos/..."
                 className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
               />
+              <p className="mt-1 text-xs text-neutral-400">
+                Paste the share link or the full embed code Synthesia, YouTube, Vimeo, or Loom
+                gives you — this field auto-converts the common share/watch link into its
+                embeddable form, and pulls the link out of a pasted{" "}
+                <code>&lt;iframe&gt;</code> snippet automatically. Save the lesson, then reopen
+                it to confirm the link changed if it needed fixing.
+              </p>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium">
+                Spanish video URL (optional dub)
+              </label>
+              <input
+                key={lesson.videoUrlEs ?? ""}
+                name="videoUrlEs"
+                defaultValue={lesson.videoUrlEs ?? ""}
+                placeholder="Paste the Spanish-dubbed version's share link here, if you have one"
+                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+              />
+              <p className="mt-1 text-xs text-neutral-400">
+                If you generate a Spanish-dubbed version of this video (e.g. via
+                Synthesia&apos;s translate feature), paste its link here. Trainees whose
+                language is set to Spanish will see this video instead of the English one.
+              </p>
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium">
@@ -105,6 +139,35 @@ function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
                 Trainees can&apos;t continue past this lesson until this much time has passed.
               </p>
             </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium">
+                Video transcript (English)
+              </label>
+              <textarea
+                name="videoTranscriptEn"
+                defaultValue={lesson.videoTranscriptEn ?? ""}
+                rows={5}
+                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium">
+                Video transcript (Español)
+              </label>
+              <textarea
+                name="videoTranscriptEs"
+                defaultValue={lesson.videoTranscriptEs ?? ""}
+                rows={5}
+                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <p className="col-span-2 -mt-1 text-xs text-neutral-400">
+              Since the video itself has no Spanish audio or captions, a Spanish transcript
+              shown below the video is the way Spanish-speaking trainees get its content.
+              Optional, but recommended for every lesson with a video.
+            </p>
           </div>
           <div>
             <label className="mb-1 block w-40 text-xs font-medium">
@@ -162,6 +225,15 @@ function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
               Shown above the lesson text (below the video, if this lesson has one).
             </p>
           </div>
+          <label className="flex items-center gap-2 text-sm text-neutral-700">
+            <input
+              type="checkbox"
+              name="published"
+              defaultChecked={lesson.published}
+              className="h-4 w-4"
+            />
+            Published (visible to trainees)
+          </label>
           <div className="flex items-center gap-3">
             <button
               type="submit"

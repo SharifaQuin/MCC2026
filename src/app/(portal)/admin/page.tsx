@@ -30,30 +30,22 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <div className="flex gap-3">
-          <Link
-            href="/admin/invite"
-            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-          >
-            Invite Employee
-          </Link>
-          <Link
-            href="/admin/employees"
-            className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-          >
-            View All Employees
-          </Link>
-        </div>
-      </div>
-
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard label="Total Employees" value={stats.totalEmployees} />
         <StatCard label="Invite Pending" value={stats.pendingInvites} tone="warn" />
         <StatCard label="Not Started" value={stats.notStarted} />
         <StatCard label="In Training" value={stats.inTraining} />
         <StatCard label="Completed All Training" value={stats.completedAll} tone="good" />
+        <StatCard
+          label="Pending Onboarding Docs"
+          value={stats.pendingOnboardingDocs}
+          tone={stats.pendingOnboardingDocs > 0 ? "warn" : "neutral"}
+        />
+        <StatCard
+          label="Payroll Disputes"
+          value={stats.pendingPayrollDisputes}
+          tone={stats.pendingPayrollDisputes > 0 ? "warn" : "neutral"}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
@@ -90,6 +82,29 @@ export default async function AdminDashboardPage() {
                     recommended {new Date(p.certRecommendedAt).toLocaleDateString()}
                   </span>
                 )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {stats.complaintFlags.length > 0 && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-5">
+          <p className="mb-3 font-medium text-red-800">
+            Approaching or at the valid-complaint termination threshold (last 60 days)
+          </p>
+          <ul className="space-y-2">
+            {stats.complaintFlags.map((f) => (
+              <li key={f.id}>
+                <Link
+                  href={`/admin/employees/${f.id}`}
+                  className="text-sm font-medium text-red-900 underline hover:no-underline"
+                >
+                  {f.name}
+                </Link>
+                <span className="ml-2 text-xs text-red-700">
+                  {f.validComplaintCount} valid complaint{f.validComplaintCount === 1 ? "" : "s"}
+                </span>
               </li>
             ))}
           </ul>

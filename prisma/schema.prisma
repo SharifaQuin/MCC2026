@@ -35,6 +35,25 @@ enum ProgressStatus {
   COMPLETED
 }
 
+// The recruiting pipeline: Applied -> auto-scored prescreen -> phone/Zoom
+// interview -> in-person interview -> offer (sent manually via Gusto) ->
+// Hired. REJECTED and BENCH are manager-confirmed off-ramps from any stage.
+enum ApplicantStage {
+  NEW
+  PRESCREEN_FAILED
+  PRESCREEN_PASSED
+  PHONE_INTERVIEW_SCHEDULED
+  PHONE_INTERVIEW_PASSED
+  PHONE_INTERVIEW_FAILED
+  IN_PERSON_SCHEDULED
+  IN_PERSON_PASSED
+  IN_PERSON_FAILED
+  OFFER_SENT
+  HIRED
+  REJECTED
+  BENCH
+}
+
 // Tracks an employee's path from Trainee to certified Technician: a Trainer
 // recommends once the 3-day field training is done, then a Manager/Admin
 // makes the final call.
@@ -57,6 +76,11 @@ model User {
   inviteExpiresAt  DateTime?
   language         Language  @default(EN)
   lastLoginAt      DateTime?
+  // When this person actually started working, not when their account was
+  // created — used for years-of-service and upcoming-anniversary tracking
+  // on the Staff dashboard. Backfilled from createdAt for existing users;
+  // editable afterward since that's rarely their true start date.
+  hireDate         DateTime?
   failedLoginAttempts Int    @default(0)
   lockedUntil      DateTime?
   createdAt        DateTime  @default(now())
@@ -84,6 +108,16 @@ model User {
   certDecisionsMade  User[]    @relation("CertDecidedBy")
 
   departmentAccess DepartmentAccess[]
+  sentCommunications CommunicationLog[]
+  hiredFromApplicant Applicant? @relation("ApplicantHiredUser")
+  applicantsViewed Applicant[] @relation("ApplicantViewedBy")
+  onboardingAssignments OnboardingAssignment[]
+
+  complaintsReceived Complaint[]       @relation("EmployeeComplaints")
+  complaintsLogged   Complaint[]       @relation("ComplaintsLogged")
+  attendanceEvents       AttendanceEvent[] @relation("EmployeeAttendanceEvents")
+  attendanceEventsLogged AttendanceEvent[] @relation("AttendanceEventsLogged")
+  payrollEntries     PayrollEntry[]    @relation("EmployeePayrollEntries")
 
   @@index([role])
 }
@@ -134,6 +168,15 @@ model Lesson {
   contentEn  String   @db.Text
   contentEs  String?  @db.Text
   videoUrl   String?
+  // A separately-generated Spanish-dubbed version of the same video (e.g. via
+  // Synthesia's translate/dub feature). Shown instead of videoUrl to trainees
+  // whose language is Spanish, when present.
+  videoUrlEs String?
+  // A written transcript of what's spoken in the video, shown as text below
+  // it — this app embeds videos from external platforms (Synthesia, YouTube,
+  // Loom, Vimeo), so we can't add a synced subtitle track to them ourselves.
+  videoTranscriptEn String? @db.Text
+  videoTranscriptEs String? @db.Text
   // How long the trainee must keep this lesson open before "Continue"
   // unlocks — set by an admin to roughly the video's runtime. Null means
   // no minimum wait (text-only lessons, or a video without a known length).
@@ -143,6 +186,11 @@ model Lesson {
   // far longer than the default varchar limit.
   imageUrl   String? @db.Text
   estimatedMinutes Int?
+  // Lets an admin hide a single lesson from trainees (e.g. still being
+  // written, or pulled from the curriculum) without deleting it or
+  // unpublishing the whole module. Defaults to true so existing/new
+  // lessons stay visible unless explicitly hidden.
+  published  Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -246,4 +294,297 @@ model FieldEvalCategoryScore {
   notes        String?         @db.Text
 
   @@index([evaluationId])
+}
+
+// A single open position, e.g. a specific Indeed/ZipRecruiter ad. The
+// public application form lives at /apply/[slug].
+model JobPosting {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  titleEn      String
+  positionType String?
+  descriptionEn String  @db.Text
+  // Percentage of the max possible prescreen score an applicant needs to
+  // auto-pass and move on to scheduling a phone/Zoom interview.
+  passThresholdPct Int  @default(70)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  prescreenQuestions PrescreenQuestion[]
+  applicants         Applicant[]
+}
+
+model PrescreenQuestion {
+  id           String     @id @default(cuid())
+  jobPostingId String
+  jobPosting   JobPosting @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+  order        Int
+  textEn       String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  options PrescreenOption[]
+  answers PrescreenAnswer[]
+
+  @@index([jobPostingId, order])
+}
+
+model PrescreenOption {
+  id         String            @id @default(cuid())
+  questionId String
+  question   PrescreenQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  order      Int
+  textEn     String
+  // Point value toward the applicant's auto-calculated compatibility score.
+  points     Int               @default(0)
+
+  answers PrescreenAnswer[]
+
+  @@index([questionId, order])
+}
+
+// An applicant who applied to a JobPosting. Resume is stored the same way
+// lesson photos are (a base64 data URI directly on the row) since the app
+// has no separate file/blob storage.
+model Applicant {
+  id             String         @id @default(cuid())
+  jobPostingId   String
+  jobPosting     JobPosting     @relation(fields: [jobPostingId], references: [id])
+  firstName      String
+  lastName       String
+  email          String
+  phone          String
+  resumeDataUrl  String?        @db.Text
+  resumeFileName String?
+  stage          ApplicantStage @default(NEW)
+  prescreenScore    Int?
+  prescreenMaxScore Int?
+  prescreenPassed   Boolean?
+  notes          String?        @db.Text
+  scheduledAt    DateTime?
+  rejectedAt     DateTime?
+  benchedAt      DateTime?
+  hiredAt        DateTime?
+  hiredUserId    String?        @unique
+  hiredUser      User?          @relation("ApplicantHiredUser", fields: [hiredUserId], references: [id])
+  // Stamped once, the first time a recruiter opens this applicant's profile
+  // — a persistent "I've already looked into this person" marker, distinct
+  // from moving them through the pipeline.
+  viewedAt       DateTime?
+  viewedById     String?
+  viewedBy       User?          @relation("ApplicantViewedBy", fields: [viewedById], references: [id])
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  answers PrescreenAnswer[]
+  communications CommunicationLog[]
+
+  @@index([jobPostingId, stage])
+}
+
+model PrescreenAnswer {
+  id          String            @id @default(cuid())
+  applicantId String
+  applicant   Applicant         @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  questionId  String
+  question    PrescreenQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  optionId    String
+  option      PrescreenOption   @relation(fields: [optionId], references: [id])
+
+  @@unique([applicantId, questionId])
+}
+
+enum CommChannel {
+  EMAIL
+  SMS
+}
+
+enum CommDirection {
+  OUTBOUND
+  INBOUND
+}
+
+enum CommStatus {
+  SENT
+  FAILED
+}
+
+// Every email/text tied to an applicant, regardless of which manager sent
+// it — shown together on the applicant's profile so nobody has to ask
+// "did anyone already reach out to this person."
+model CommunicationLog {
+  id           String        @id @default(cuid())
+  applicantId  String
+  applicant    Applicant     @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  channel      CommChannel
+  direction    CommDirection @default(OUTBOUND)
+  subject      String?
+  body         String        @db.Text
+  status       CommStatus    @default(SENT)
+  errorMessage String?       @db.Text
+  sentById     String?
+  sentBy       User?         @relation(fields: [sentById], references: [id])
+  createdAt    DateTime      @default(now())
+
+  @@index([applicantId, createdAt])
+}
+
+// Generic shared key-value store for the Sales pricing/quotes tool — it was
+// built with its own storage abstraction (get/set/delete/list by key, with
+// a key prefix for listing) already designed for a shared backend; this
+// gives it one instead of browser localStorage, so quotes, cost settings,
+// and profitability data are the same for everyone with Sales access
+// regardless of device or browser.
+model SalesToolData {
+  key       String   @id
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+}
+
+// A policy/paperwork document new employees must read and sign before they
+// can start training. Content can be typed directly (contentText) and/or an
+// uploaded PDF (fileDataUrl, stored as a base64 data URI — same convention
+// as Lesson.imageUrl / Applicant.resumeDataUrl, since the app has no
+// separate file storage). assignByDefault means every newly invited
+// employee automatically gets this one assigned; existing employees are
+// assigned/unassigned individually via OnboardingAssignment.
+model OnboardingDocument {
+  id              String   @id @default(cuid())
+  title           String
+  contentText     String?  @db.Text
+  fileDataUrl     String?  @db.Text
+  fileName        String?
+  assignByDefault Boolean  @default(false)
+  order           Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  assignments OnboardingAssignment[]
+}
+
+// One document assigned to one employee. signedAt/signedName are null until
+// they sign — the pair together is the e-signature record (typed full name
+// + timestamp), which is what gates that employee out of Training.
+model OnboardingAssignment {
+  id         String   @id @default(cuid())
+  documentId String
+  document   OnboardingDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  signedAt   DateTime?
+  signedName String?
+  createdAt  DateTime @default(now())
+
+  @@unique([documentId, userId])
+}
+
+enum ComplaintStatus {
+  OPEN
+  VALID
+  DISMISSED
+}
+
+// A client complaint logged against an employee's work or conduct. Starts
+// OPEN when first logged; HR marks it VALID (counts toward the disciplinary
+// thresholds described in training, e.g. 4 valid complaints in 60 days) or
+// DISMISSED (doesn't count) once reviewed.
+model Complaint {
+  id              String          @id @default(cuid())
+  employeeId      String
+  employee        User            @relation("EmployeeComplaints", fields: [employeeId], references: [id], onDelete: Cascade)
+  clientName      String
+  incidentDate    DateTime?
+  description     String          @db.Text
+  status          ComplaintStatus @default(OPEN)
+  loggedById      String
+  loggedBy        User            @relation("ComplaintsLogged", fields: [loggedById], references: [id])
+  resolutionNotes String?         @db.Text
+  resolvedAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([employeeId])
+}
+
+enum AttendanceEventKind {
+  TARDY
+  ABSENCE
+  NO_CALL_NO_SHOW
+}
+
+enum AttendanceReasonCategory {
+  ILLNESS
+  EMERGENCY
+  FAMILY_EMERGENCY
+  TRANSPORTATION
+  OTHER
+}
+
+// A single attendance event logged against an employee (matches the
+// categories in the Attendance & Workplace Policies training module). This
+// app has no integration with TCS, the real time clock — HR/managers log
+// these by hand as they happen.
+model AttendanceEvent {
+  id             String                    @id @default(cuid())
+  employeeId     String
+  employee       User                      @relation("EmployeeAttendanceEvents", fields: [employeeId], references: [id], onDelete: Cascade)
+  kind           AttendanceEventKind
+  reasonCategory AttendanceReasonCategory?
+  eventDate      DateTime
+  notes          String?                   @db.Text
+  loggedById     String
+  loggedBy       User                      @relation("AttendanceEventsLogged", fields: [loggedById], references: [id])
+  createdAt      DateTime                  @default(now())
+
+  @@index([employeeId])
+}
+
+// A biweekly (or whatever cadence HR runs) pay period that hours get
+// entered against.
+model PayPeriod {
+  id        String         @id @default(cuid())
+  startDate DateTime
+  endDate   DateTime
+  label     String
+  createdAt DateTime       @default(now())
+  entries   PayrollEntry[]
+
+  @@unique([startDate, endDate])
+}
+
+enum PayrollEntryStatus {
+  PENDING
+  APPROVED
+  DISPUTED
+}
+
+// One employee's hours for one pay period. Hours get in here either typed
+// in directly or bulk-imported from a CSV export; attachmentDataUrl is an
+// optional reference document (e.g. a timesheet PDF) attached alongside —
+// it's just shown to the employee, not parsed for its hours. The employee
+// then reviews and either signs off (signedAt/signedName, same e-signature
+// pattern as OnboardingAssignment) or disputes it with a note.
+model PayrollEntry {
+  id                 String             @id @default(cuid())
+  payPeriodId        String
+  payPeriod          PayPeriod          @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
+  employeeId         String
+  employee           User               @relation("EmployeePayrollEntries", fields: [employeeId], references: [id], onDelete: Cascade)
+  regularHours       Float
+  overtimeHours      Float              @default(0)
+  attachmentDataUrl  String?            @db.Text
+  attachmentFileName String?
+  status             PayrollEntryStatus @default(PENDING)
+  signedAt           DateTime?
+  signedName         String?
+  disputeNote        String?            @db.Text
+  disputedAt         DateTime?
+  resolutionNotes    String?            @db.Text
+  resolvedAt         DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@unique([payPeriodId, employeeId])
+  @@index([employeeId])
 }
