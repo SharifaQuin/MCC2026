@@ -78,12 +78,19 @@ export default async function HROverviewPage() {
             <Stat label="Open Complaints" value={staff.openComplaints} />
             <Stat label="Payroll Disputes" value={staff.payrollDisputes} />
           </div>
-          <Link
-            href="/staff"
-            className="mt-5 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-          >
-            View Staff Dashboard
-          </Link>
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Link
+              href="/staff"
+              className="inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+            >
+              View Staff Dashboard
+            </Link>
+            {session.role === "ADMIN" && (
+              <Link href="/staff/document-templates" className="text-sm font-medium text-brand-700 hover:underline">
+                Manage Document Templates →
+              </Link>
+            )}
+          </div>
         </section>
       </div>
     </div>

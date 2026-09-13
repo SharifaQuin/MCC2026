@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import {
   createPafAction,
@@ -54,7 +54,9 @@ function NewPafForm({ employeeId, onClose }: { employeeId: string; onClose: () =
   const action = createPafAction.bind(null, employeeId);
   const [state, formAction] = useFormState<PafState, FormData>(action, {});
 
-  if (state.success) onClose();
+  useEffect(() => {
+    if (state.success) onClose();
+  }, [state.success, onClose]);
 
   return (
     <form action={formAction} className="space-y-3 rounded-lg border border-neutral-200 bg-white p-4">

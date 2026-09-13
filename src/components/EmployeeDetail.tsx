@@ -17,6 +17,7 @@ import MilestonePanel, { type MilestoneTimelineEntryView } from "@/components/Mi
 import EmployeeSummaryCard from "@/components/EmployeeSummaryCard";
 import PersonnelActionFormPanel, { type PafRow } from "@/components/PersonnelActionFormPanel";
 import DeparturePanel from "@/components/DeparturePanel";
+import PersonnelDocumentsPanel, { type SignedDocRow, type TemplateOption } from "@/components/PersonnelDocumentsPanel";
 import { getCurrentPairForEmployee, getPairHistoryForEmployee, getPairingCandidates } from "@/lib/pairing";
 import { buildMilestoneTimeline } from "@/lib/milestones";
 import { serializePromotionAssessmentForRole, type ReadinessIndicatorValue } from "@/lib/promotions";
@@ -154,6 +155,29 @@ export async function loadEmployeeDetail(userId: string) {
     createdAt: p.createdAt.toISOString(),
   }));
 
+  const signedDocumentRows = await prisma.signedDocument.findMany({
+    where: { employeeId: userId },
+    include: { template: { select: { title: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+  const signedDocuments: SignedDocRow[] = signedDocumentRows.map((d) => ({
+    id: d.id,
+    templateTitle: d.template.title,
+    signedAt: d.signedAt ? d.signedAt.toISOString() : null,
+    signedName: d.signedName,
+  }));
+
+  const documentTemplateRows = await prisma.documentTemplate.findMany({
+    where: { active: true },
+    include: { fields: { orderBy: { order: "asc" } } },
+    orderBy: { title: "asc" },
+  });
+  const documentTemplates: TemplateOption[] = documentTemplateRows.map((t) => ({
+    id: t.id,
+    title: t.title,
+    fields: t.fields.map((f) => ({ key: f.key, label: f.label, fieldType: f.fieldType, required: f.required })),
+  }));
+
   return {
     user,
     modules,
@@ -170,6 +194,8 @@ export async function loadEmployeeDetail(userId: string) {
     milestoneTimeline,
     recentSeriousAttendanceCount,
     pafs,
+    signedDocuments,
+    documentTemplates,
   };
 }
 
@@ -202,6 +228,8 @@ export function EmployeeDetailView({
     milestoneTimeline,
     recentSeriousAttendanceCount,
     pafs,
+    signedDocuments,
+    documentTemplates,
   } = data;
 
   const visiblePromotionAssessments = promotionAssessments.map((a) =>
@@ -323,6 +351,18 @@ export function EmployeeDetailView({
         <section>
           <h2 className="mb-3 text-lg font-medium">Personnel Action Forms</h2>
           <PersonnelActionFormPanel employeeId={user.id} pafs={pafs} canManage={viewerRole === "ADMIN"} />
+        </section>
+      )}
+
+      {showHrTools && (
+        <section>
+          <h2 className="mb-3 text-lg font-medium">Personnel Documents</h2>
+          <PersonnelDocumentsPanel
+            employeeId={user.id}
+            documents={signedDocuments}
+            templates={documentTemplates}
+            canManage={viewerRole === "ADMIN"}
+          />
         </section>
       )}
 

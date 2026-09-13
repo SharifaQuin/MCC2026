@@ -2,12 +2,20 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { getOnboardingDocumentsForUser } from "@/lib/onboarding";
+import { getSignedDocumentsForUser } from "@/lib/documentTemplates";
 
 export default async function DocumentsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const docs = await getOnboardingDocumentsForUser(session.sub);
+  const [onboardingDocs, personnelDocs] = await Promise.all([
+    getOnboardingDocumentsForUser(session.sub),
+    getSignedDocumentsForUser(session.sub),
+  ]);
+  const docs = [
+    ...onboardingDocs.map((d) => ({ key: `o-${d.assignmentId}`, href: `/documents/${d.assignmentId}`, title: d.title, signedAt: d.signedAt })),
+    ...personnelDocs.map((d) => ({ key: `p-${d.id}`, href: `/documents/personnel/${d.id}`, title: d.title, signedAt: d.signedAt })),
+  ];
   const pending = docs.filter((d) => !d.signedAt);
   const signed = docs.filter((d) => d.signedAt);
 
@@ -28,8 +36,8 @@ export default async function DocumentsPage() {
           <div className="space-y-3">
             {pending.map((d) => (
               <Link
-                key={d.assignmentId}
-                href={`/documents/${d.assignmentId}`}
+                key={d.key}
+                href={d.href}
                 className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 p-4 hover:border-amber-300"
               >
                 <span className="font-medium text-neutral-900">{d.title}</span>
@@ -50,8 +58,8 @@ export default async function DocumentsPage() {
           <div className="space-y-3">
             {signed.map((d) => (
               <Link
-                key={d.assignmentId}
-                href={`/documents/${d.assignmentId}`}
+                key={d.key}
+                href={d.href}
                 className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white p-4 hover:border-brand-300"
               >
                 <span className="font-medium text-neutral-900">{d.title}</span>

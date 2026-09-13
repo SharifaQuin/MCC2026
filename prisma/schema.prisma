@@ -146,6 +146,10 @@ model User {
   pafsCreated    PersonnelActionForm[] @relation("PafCreatedBy")
   pafsApproved   PersonnelActionForm[] @relation("PafApprovedBy")
 
+  documentTemplatesCreated DocumentTemplate[] @relation("DocumentTemplateCreatedBy")
+  signedDocuments          SignedDocument[]   @relation("SignedDocumentEmployee")
+  signedDocumentsCreated   SignedDocument[]   @relation("SignedDocumentCreatedBy")
+
   @@index([role])
 }
 
@@ -504,6 +508,69 @@ model OnboardingAssignment {
   createdAt  DateTime @default(now())
 
   @@unique([documentId, userId])
+}
+
+enum DocumentFieldType {
+  TEXT
+  DATE
+  NUMBER
+  CHECKBOX
+}
+
+// A reusable personnel document template (offer letter, raise letter, W-4
+// acknowledgment, etc.) — distinct from OnboardingDocument, which is a fixed
+// policy acknowledgment assigned to every trainee. A template's bodyText
+// holds {{key}} placeholders that get filled in per-employee when a
+// SignedDocument is generated from it.
+model DocumentTemplate {
+  id          String   @id @default(cuid())
+  title       String
+  description String?  @db.Text
+  bodyText    String   @db.Text
+  active      Boolean  @default(true)
+  createdById String
+  createdBy   User     @relation("DocumentTemplateCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  fields          DocumentTemplateField[]
+  signedDocuments SignedDocument[]
+}
+
+model DocumentTemplateField {
+  id         String            @id @default(cuid())
+  templateId String
+  template   DocumentTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  key        String
+  label      String
+  fieldType  DocumentFieldType @default(TEXT)
+  required   Boolean           @default(true)
+  order      Int               @default(0)
+
+  @@unique([templateId, key])
+}
+
+// One filled-out copy of a template for one employee. fieldValues holds the
+// admin-entered answers keyed by DocumentTemplateField.key. signedAt/
+// signedName are null until the employee themself signs it (same typed-
+// name-+-timestamp e-signature idiom as OnboardingAssignment) — signing is
+// what stamps pdfDataUrl, so the PDF always reflects the final signed text.
+model SignedDocument {
+  id          String           @id @default(cuid())
+  templateId  String
+  template    DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  employeeId  String
+  employee    User             @relation("SignedDocumentEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  fieldValues Json
+  signedAt    DateTime?
+  signedName  String?
+  pdfDataUrl  String?          @db.Text
+  createdById String
+  createdBy   User             @relation("SignedDocumentCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([employeeId])
 }
 
 enum ComplaintStatus {

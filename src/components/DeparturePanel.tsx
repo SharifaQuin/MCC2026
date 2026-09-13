@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { markEmployeeDepartedAction, reinstateEmployeeAction, DepartureState } from "@/app/actions/roster";
 
@@ -35,7 +35,9 @@ export default function DeparturePanel({
   const action = markEmployeeDepartedAction.bind(null, employeeId);
   const [state, formAction] = useFormState<DepartureState, FormData>(action, {});
 
-  if (state.success && open) setOpen(false);
+  useEffect(() => {
+    if (state.success) setOpen(false);
+  }, [state.success]);
 
   if (lastDay) {
     return (
