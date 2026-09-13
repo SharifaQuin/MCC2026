@@ -1,16 +1,10 @@
 import Link from "next/link";
-import {
-  getMonthlyFinancials,
-  getOwnerSettings,
-  getChecklistTasksForRole,
-  getLoans,
-} from "@/lib/financials";
+import { getMonthlyFinancials, getOwnerSettings, getLoans } from "@/lib/financials";
 import {
   upsertMonthlyFinancialsAction,
   updateDrawPolicyAction,
   updateProfitabilityTargetAction,
 } from "@/app/actions/financials";
-import ChecklistManager from "./ChecklistManager";
 import LoansManager from "./LoansManager";
 
 const money = (n: number) =>
@@ -67,10 +61,9 @@ export default async function FinancialsPage({
 }: {
   searchParams: { month?: string };
 }) {
-  const [months, ownerSettings, checklistTasks, loans] = await Promise.all([
+  const [months, ownerSettings, loans] = await Promise.all([
     getMonthlyFinancials(),
     getOwnerSettings(),
-    getChecklistTasksForRole("ADMIN"),
     getLoans(),
   ]);
 
@@ -100,17 +93,21 @@ export default async function FinancialsPage({
     notes: l.notes,
   }));
 
-  const checklistRows = checklistTasks.map((t) => ({
-    id: t.id,
-    frequency: t.frequency,
-    task: t.task,
-    owner: t.owner,
-    visibility: t.visibility,
-    effectiveStatus: t.effectiveStatus,
-    category: t.category,
-    notes: t.notes,
-    targetDate: t.targetDate ? t.targetDate.toISOString() : null,
-  }));
+  const latest = months[0] ?? null;
+  const cashFloor = drawPolicy?.cash_floor_minimum;
+  const drawAmount = drawPolicy?.fixed_monthly_amount;
+  const cashAboveFloor = latest && cashFloor !== undefined ? latest.endingBankBalance - cashFloor : null;
+
+  let drawStatus: { label: string; tone: "green" | "amber" | "red" } | null = null;
+  if (cashAboveFloor !== null) {
+    if (drawAmount !== undefined && cashAboveFloor >= drawAmount) {
+      drawStatus = { label: `Full draw available (${money(drawAmount)})`, tone: "green" };
+    } else if (cashAboveFloor > 0) {
+      drawStatus = { label: "Only a partial draw available", tone: "amber" };
+    } else {
+      drawStatus = { label: "Hold the draft — below cash floor", tone: "red" };
+    }
+  }
 
   return (
     <div>
@@ -118,6 +115,71 @@ export default async function FinancialsPage({
       <p className="mb-6 text-sm text-neutral-500">
         Owner-only — full monthly P&amp;L history, targets, and settings.
       </p>
+
+      {latest && (
+        <section className="mb-8 rounded-lg border border-neutral-200 bg-white p-6">
+          <h2 className="mb-1 text-lg font-medium text-neutral-900">
+            Cheat Sheet — {latest.monthLabel} {latest.month.slice(0, 4)}
+          </h2>
+          <p className="mb-4 text-xs text-neutral-500">The at-a-glance numbers, same idea as your old spreadsheet tab.</p>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="rounded-md bg-neutral-50 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Net Profit vs Target</p>
+              <p className="mt-0.5 text-lg font-semibold text-neutral-900">
+                {money(latest.netProfit)} <span className="text-sm font-normal text-neutral-400">/ {money(latest.target21pct)}</span>
+              </p>
+              <span
+                className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                  latest.netProfit >= latest.target21pct ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"
+                }`}
+              >
+                {latest.netProfit >= latest.target21pct ? "On track" : "Below target"}
+              </span>
+            </div>
+            <div className="rounded-md bg-neutral-50 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Variance to Target</p>
+              <p
+                className={`mt-0.5 text-lg font-semibold ${
+                  latest.varianceToTarget < 0 ? "text-red-600" : "text-green-700"
+                }`}
+              >
+                {money(latest.varianceToTarget)}
+              </p>
+            </div>
+            <div className="rounded-md bg-neutral-50 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Ending Bank Balance</p>
+              <p className="mt-0.5 text-lg font-semibold text-neutral-900">{money(latest.endingBankBalance)}</p>
+              {cashFloor !== undefined && (
+                <span
+                  className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                    latest.endingBankBalance >= cashFloor ? "bg-green-100 text-green-800" : "bg-red-100 text-red-700"
+                  }`}
+                >
+                  {latest.endingBankBalance >= cashFloor ? `Above ${money(cashFloor)} floor` : `Below ${money(cashFloor)} floor`}
+                </span>
+              )}
+            </div>
+            <div className="rounded-md bg-neutral-50 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Owner Draw</p>
+              {drawStatus ? (
+                <span
+                  className={`mt-1.5 inline-block rounded-full px-2 py-1 text-xs font-medium ${
+                    drawStatus.tone === "green"
+                      ? "bg-green-100 text-green-800"
+                      : drawStatus.tone === "amber"
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-red-100 text-red-700"
+                  }`}
+                >
+                  {drawStatus.label}
+                </span>
+              ) : (
+                <p className="mt-0.5 text-sm text-neutral-400">Set a draw policy to see this</p>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="mb-8 rounded-lg border border-neutral-200 bg-white p-6">
         <div className="mb-4 flex items-center justify-between">
@@ -338,14 +400,9 @@ export default async function FinancialsPage({
         </div>
       </section>
 
-      <section className="mb-8 rounded-lg border border-neutral-200 bg-white p-6">
+      <section className="rounded-lg border border-neutral-200 bg-white p-6">
         <h2 className="mb-4 text-lg font-medium text-neutral-900">Loans</h2>
         <LoansManager loans={loanRows} />
-      </section>
-
-      <section className="rounded-lg border border-neutral-200 bg-white p-6">
-        <h2 className="mb-4 text-lg font-medium text-neutral-900">Checklist</h2>
-        <ChecklistManager tasks={checklistRows} />
       </section>
     </div>
   );

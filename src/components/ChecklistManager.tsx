@@ -9,8 +9,15 @@ import {
   setChecklistTaskCategoryAction,
   toggleChecklistTaskStatusAction,
   updateChecklistTaskNotesAction,
+  updateChecklistTaskTargetDateAction,
 } from "@/app/actions/financials";
-import { splitChecklistTasks, groupByCategory, guessChecklistCategory, CATEGORY_LABELS } from "@/lib/checklistDisplay";
+import {
+  splitChecklistTasks,
+  groupByCategory,
+  guessChecklistCategory,
+  getDueStatus,
+  CATEGORY_LABELS,
+} from "@/lib/checklistDisplay";
 import type { ChecklistCategory, ChecklistFrequency, ChecklistTaskStatus, ChecklistVisibility } from "@prisma/client";
 
 export interface ChecklistRow {
@@ -37,10 +44,21 @@ const STATUS_LABELS: Record<ChecklistTaskStatus, string> = {
   DONE: "Done",
 };
 
+const DUE_BADGE_STYLES: Record<"OVERDUE" | "DUE_SOON", string> = {
+  OVERDUE: "bg-red-100 text-red-700",
+  DUE_SOON: "bg-amber-100 text-amber-800",
+};
+const DUE_BADGE_LABELS: Record<"OVERDUE" | "DUE_SOON", string> = {
+  OVERDUE: "Overdue",
+  DUE_SOON: "Due soon",
+};
+
 function TaskRow({ task }: { task: ChecklistRow }) {
   const [pending, startTransition] = useTransition();
   const [expanded, setExpanded] = useState(false);
   const [notesDraft, setNotesDraft] = useState(task.notes ?? "");
+  const [dateDraft, setDateDraft] = useState(task.targetDate ? task.targetDate.slice(0, 10) : "");
+  const dueStatus = getDueStatus(task);
 
   function advance(e: React.MouseEvent) {
     e.stopPropagation();
@@ -64,6 +82,12 @@ function TaskRow({ task }: { task: ChecklistRow }) {
     });
   }
 
+  function saveDate() {
+    startTransition(() => {
+      updateChecklistTaskTargetDateAction(task.id, dateDraft || null);
+    });
+  }
+
   return (
     <div className="rounded-md border border-neutral-200 p-3">
       <div
@@ -76,7 +100,14 @@ function TaskRow({ task }: { task: ChecklistRow }) {
         className="flex cursor-pointer items-center justify-between gap-3"
       >
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-neutral-900">{task.task}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="truncate text-sm font-medium text-neutral-900">{task.task}</p>
+            {dueStatus && (
+              <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${DUE_BADGE_STYLES[dueStatus]}`}>
+                {DUE_BADGE_LABELS[dueStatus]}
+              </span>
+            )}
+          </div>
           <p className="mt-0.5 text-xs text-neutral-500">
             {task.frequency.replace("_", "-")} · {task.owner === "TEAM" ? "Team" : "Owner"} ·{" "}
             {task.visibility === "TEAM" ? "Visible to team" : "Owner only"}
@@ -124,11 +155,35 @@ function TaskRow({ task }: { task: ChecklistRow }) {
             </select>
           </div>
 
-          {task.targetDate && (
-            <p className="text-xs text-neutral-500">
-              Target date: {new Date(task.targetDate).toLocaleDateString()}
-            </p>
-          )}
+          <div onClick={(e) => e.stopPropagation()}>
+            <label className="mb-1 block text-xs font-medium text-neutral-600">Due date</label>
+            <div className="flex gap-2">
+              <input
+                type="date"
+                value={dateDraft}
+                onChange={(e) => setDateDraft(e.target.value)}
+                className="rounded-md border border-neutral-300 px-2 py-1.5 text-xs"
+              />
+              <button
+                type="button"
+                disabled={pending || dateDraft === (task.targetDate ? task.targetDate.slice(0, 10) : "")}
+                onClick={saveDate}
+                className="rounded-md bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-40"
+              >
+                {pending ? "Saving..." : "Save"}
+              </button>
+              {dateDraft && (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => setDateDraft("")}
+                  className="text-xs text-neutral-500 hover:underline disabled:opacity-40"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
 
           <div onClick={(e) => e.stopPropagation()}>
             <label className="mb-1 block text-xs font-medium text-neutral-600">Notes</label>

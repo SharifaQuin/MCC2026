@@ -49,6 +49,27 @@ export function reachedGrowthStages(staircase: number[], revenue: number): boole
   return staircase.map((amount) => revenue >= amount);
 }
 
+export type DueStatus = "OVERDUE" | "DUE_SOON" | null;
+
+// A due-date flag shown right on the task — no email, no scheduled job,
+// just computed at read time same as effectiveStatus. Done tasks never show
+// a flag regardless of date. "Due soon" covers today and the next 2 days.
+export function getDueStatus(
+  task: { targetDate: string | Date | null; effectiveStatus: ChecklistTaskStatus },
+  now: Date = new Date()
+): DueStatus {
+  if (!task.targetDate || task.effectiveStatus === "DONE") return null;
+
+  const due = new Date(task.targetDate);
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfDue = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+  const daysUntilDue = Math.round((startOfDue.getTime() - startOfToday.getTime()) / 86400000);
+
+  if (daysUntilDue < 0) return "OVERDUE";
+  if (daysUntilDue <= 2) return "DUE_SOON";
+  return null;
+}
+
 // Keyword lists checked in this order (first match wins) — deliberately
 // excludes ambiguous words like "payroll", which in this checklist's history
 // has meant financial reconciliation (Management/Admin), not an HR task.

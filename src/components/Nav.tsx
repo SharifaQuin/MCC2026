@@ -69,9 +69,14 @@ export default function Nav({
               </>
             )}
             {session.role === "ADMIN" && (
-              <Link href="/financials" className="hover:underline">
-                {labels.financials}
-              </Link>
+              <>
+                <Link href="/financials" className="hover:underline">
+                  {labels.financials}
+                </Link>
+                <Link href="/todo" className="hover:underline">
+                  {labels.todo}
+                </Link>
+              </>
             )}
           </nav>
         </div>

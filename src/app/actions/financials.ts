@@ -150,6 +150,7 @@ export async function addChecklistTaskAction(formData: FormData) {
   });
 
   revalidatePath("/financials");
+  revalidatePath("/todo");
   revalidatePath("/");
 }
 
@@ -181,6 +182,7 @@ export async function bulkAddChecklistTasksAction(
   });
 
   revalidatePath("/financials");
+  revalidatePath("/todo");
   revalidatePath("/");
 }
 
@@ -189,6 +191,7 @@ export async function setChecklistTaskCategoryAction(taskId: string, category: C
   await requireOwnerAccess();
   await prisma.checklistTask.update({ where: { id: taskId }, data: { category } });
   revalidatePath("/financials");
+  revalidatePath("/todo");
   revalidatePath("/");
 }
 
@@ -197,6 +200,19 @@ export async function updateChecklistTaskNotesAction(taskId: string, notes: stri
   await requireOwnerAccess();
   await prisma.checklistTask.update({ where: { id: taskId }, data: { notes: notes.trim() || null } });
   revalidatePath("/financials");
+  revalidatePath("/todo");
+  revalidatePath("/");
+}
+
+// ADMIN only — set, change, or clear (pass null) a task's due date.
+export async function updateChecklistTaskTargetDateAction(taskId: string, targetDate: string | null) {
+  await requireOwnerAccess();
+  await prisma.checklistTask.update({
+    where: { id: taskId },
+    data: { targetDate: targetDate ? new Date(targetDate) : null },
+  });
+  revalidatePath("/financials");
+  revalidatePath("/todo");
   revalidatePath("/");
 }
 
@@ -204,6 +220,7 @@ export async function deleteChecklistTaskAction(taskId: string) {
   await requireOwnerAccess();
   await prisma.checklistTask.delete({ where: { id: taskId } });
   revalidatePath("/financials");
+  revalidatePath("/todo");
   revalidatePath("/");
 }
 
@@ -226,6 +243,7 @@ export async function toggleChecklistTaskStatusAction(taskId: string, newStatus:
   });
 
   revalidatePath("/financials");
+  revalidatePath("/todo");
   revalidatePath("/");
 }
 

@@ -54,6 +54,7 @@ export const dictionary = {
     previousLesson: "← Previous Lesson",
     payroll: "Payroll",
     financials: "Financials",
+    todo: "To-Do List",
   },
   ES: {
     appName: "Portal de Capacitación de MCC",
@@ -110,6 +111,7 @@ export const dictionary = {
     previousLesson: "← Lección Anterior",
     payroll: "Nómina",
     financials: "Finanzas",
+    todo: "Lista de Tareas",
   },
 } as const;
 

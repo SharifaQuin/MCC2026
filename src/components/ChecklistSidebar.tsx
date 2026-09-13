@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { addChecklistTaskAction, toggleChecklistTaskStatusAction } from "@/app/actions/financials";
-import { splitChecklistTasks, groupByCategory } from "@/lib/checklistDisplay";
+import { splitChecklistTasks, groupByCategory, getDueStatus } from "@/lib/checklistDisplay";
 import type { ChecklistCategory, ChecklistFrequency, ChecklistTaskStatus } from "@prisma/client";
 
 export interface ChecklistItem {
@@ -27,10 +27,19 @@ const STATUS_LABELS: Record<ChecklistTaskStatus, string> = {
   IN_PROGRESS: "In Progress",
   DONE: "Done",
 };
+const DUE_BADGE_STYLES: Record<"OVERDUE" | "DUE_SOON", string> = {
+  OVERDUE: "bg-red-100 text-red-700",
+  DUE_SOON: "bg-amber-100 text-amber-800",
+};
+const DUE_BADGE_LABELS: Record<"OVERDUE" | "DUE_SOON", string> = {
+  OVERDUE: "Overdue",
+  DUE_SOON: "Due soon",
+};
 
 function Row({ item }: { item: ChecklistItem }) {
   const [pending, startTransition] = useTransition();
   const [expanded, setExpanded] = useState(false);
+  const dueStatus = getDueStatus(item);
 
   function advance(e: React.MouseEvent) {
     e.stopPropagation();
@@ -52,7 +61,14 @@ function Row({ item }: { item: ChecklistItem }) {
         className="flex w-full cursor-pointer items-start justify-between gap-2 text-left"
       >
         <div className="min-w-0">
-          <p className="text-sm text-neutral-800">{item.task}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="truncate text-sm text-neutral-800">{item.task}</p>
+            {dueStatus && (
+              <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${DUE_BADGE_STYLES[dueStatus]}`}>
+                {DUE_BADGE_LABELS[dueStatus]}
+              </span>
+            )}
+          </div>
           <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
             {item.frequency.replace("_", "-")}
           </p>

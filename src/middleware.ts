@@ -53,7 +53,8 @@ export async function middleware(req: NextRequest) {
     (pathname.startsWith("/admin/content") ||
       pathname.startsWith("/admin/permissions") ||
       pathname.startsWith("/admin/documents") ||
-      pathname.startsWith("/financials")) &&
+      pathname.startsWith("/financials") ||
+      pathname.startsWith("/todo")) &&
     payload.role !== "ADMIN"
   ) {
     return NextResponse.redirect(new URL("/", req.url));
