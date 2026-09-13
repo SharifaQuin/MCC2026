@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Route Day Planner — Mama's Cleaning Crew</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1B2A29;
+    --paper:#F4F5F1;
+    --panel:#FFFFFF;
+    --line:#D8DAD3;
+    --muted:#5B655F;
+    --go:#2F6F58;
+    --go-bg:#E4EFE9;
+    --caution:#B54A22;
+    --caution-bg:#F5E6DD;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',ui-sans-serif,system-ui,-apple-system,sans-serif;
+    line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:920px;margin:0 auto;padding:28px 20px 60px;}
+
+  header.page{margin-bottom:28px;border-bottom:1px solid var(--line);padding-bottom:20px;}
+  h1{
+    font-family:'Barlow Condensed',ui-sans-serif,system-ui,sans-serif;
+    font-weight:700;
+    font-size:clamp(28px,5vw,40px);
+    letter-spacing:0.2px;
+    margin:0 0 6px;
+  }
+  .sub{color:var(--muted);font-size:15px;max-width:60ch;}
+
+  section{margin-bottom:34px;}
+  h2{
+    font-family:'Barlow Condensed',ui-sans-serif,system-ui,sans-serif;
+    font-weight:700;
+    font-size:22px;
+    margin:0 0 4px;
+  }
+  .section-note{color:var(--muted);font-size:13.5px;margin:0 0 16px;max-width:66ch;}
+
+  .card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:20px;
+  }
+
+  .lookup-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:18px;}
+  .field{display:flex;flex-direction:column;gap:6px;}
+  label{font-size:13px;color:var(--muted);font-weight:600;}
+  select, input[type=text], input[type=date]{
+    font-family:inherit;font-size:15px;padding:9px 11px;
+    border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);
+    min-width:220px;
+  }
+  select:focus, input:focus{outline:2px solid var(--go);outline-offset:1px;}
+
+  .result{
+    border-radius:8px;padding:16px 18px;margin-top:4px;
+    display:flex;gap:16px;align-items:flex-start;
+  }
+  .result.thin{background:var(--paper);}
+  .result-text{font-size:14.5px;color:var(--ink);}
+
+  .log-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;}
+  button{
+    font-family:inherit;font-size:14.5px;font-weight:600;
+    background:var(--ink);color:#fff;border:none;border-radius:7px;
+    padding:10px 18px;cursor:pointer;
+  }
+  button:hover{background:#0F1918;}
+  button.ghost{
+    background:transparent;color:var(--caution);border:1px solid var(--caution);
+    padding:5px 10px;font-size:12.5px;
+  }
+  button.ghost:hover{background:var(--caution-bg);}
+
+  ul.log-list{list-style:none;margin:18px 0 0;padding:0;}
+  ul.log-list li{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:10px 0;border-bottom:1px solid var(--line);font-size:14px;
+  }
+  ul.log-list li:last-child{border-bottom:none;}
+  .empty-state{color:var(--muted);font-size:13.5px;padding:14px 0;}
+
+  .badge{
+    display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;
+    border-radius:20px;margin-left:8px;
+  }
+  .badge.match{background:var(--go-bg);color:var(--go);}
+  .badge.mismatch{background:var(--caution-bg);color:var(--caution);}
+
+  .compare-box{
+    margin-top:14px;padding:16px 18px;border-radius:8px;border:1px solid var(--line);
+    background:#FAFAF8;
+  }
+  .compare-grid{display:flex;gap:18px;flex-wrap:wrap;margin:10px 0;}
+  .compare-col{flex:1;min-width:160px;}
+  .compare-col .cc-label{font-size:11.5px;color:var(--muted);font-weight:600;margin-bottom:4px;}
+  .compare-col .cc-value{font-size:18px;font-weight:700;}
+  .compare-col .cc-stat{font-size:13px;color:var(--muted);}
+  .tier-pill{
+    display:inline-block;padding:4px 11px;border-radius:20px;font-size:12.5px;font-weight:600;margin-top:2px;
+  }
+  .tier-great{background:var(--go-bg);color:var(--go);}
+  .tier-minor{background:#FBF0D9;color:#8A6416;}
+  .tier-dedicated{background:var(--caution-bg);color:var(--caution);}
+  .surcharge-line{
+    margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);
+    font-size:15px;
+  }
+  .surcharge-amount{font-weight:700;font-size:19px;}
+
+  .combo-list{display:flex;flex-direction:column;gap:10px;}
+  .combo-card{
+    display:flex;align-items:center;gap:14px;
+    border:1px solid var(--line);border-radius:9px;padding:14px 16px;
+    background:#fff;
+  }
+  .combo-card:first-child{border-color:var(--go);background:var(--go-bg);}
+  .combo-rank{
+    font-family:'Barlow Condensed',ui-sans-serif,system-ui,sans-serif;
+    font-weight:700;font-size:26px;color:var(--go);min-width:34px;
+  }
+  .combo-body{flex:1;}
+  .combo-title{font-size:16.5px;font-weight:700;}
+  .combo-reason{font-size:13px;color:var(--muted);margin-top:2px;}
+  .combo-copy{white-space:nowrap;}
+
+  .doable-line{
+    font-weight:700;color:var(--go);font-size:15px;margin-bottom:10px;
+  }
+
+  @media (max-width:600px){
+    .field select, .field input{min-width:0;width:100%;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="page">
+    <h1>Route Day Planner</h1>
+    <p class="sub">Where a new lead's city already has a running route, which day keeps drive time down, and which arrival window tends to be worth the most.</p>
+  </header>
+
+  <section>
+    <h2>Find the best day and window for a new lead</h2>
+    <p class="section-note">Pick the lead's city. This checks completed jobs (plus anything logged below, or automatically logged when a quote is marked Won) and tells you which weekday already runs through that area, plus the arrival window that's historically most profitable.</p>
+    <div class="card">
+      <div class="lookup-row">
+        <div class="field">
+          <label for="city-select">City</label>
+          <select id="city-select"></select>
+        </div>
+        <div class="field">
+          <label for="requested-day">If client needs a different day</label>
+          <select id="requested-day">
+            <option value="">Same as suggested</option>
+            <option>Monday</option><option>Tuesday</option><option>Wednesday</option>
+            <option>Thursday</option><option>Friday</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="requested-window">If client needs a specific time of day</label>
+          <select id="requested-window">
+            <option value="">Same as suggested</option>
+            <option value="8:00 – 9:00 AM">Early morning (8–9 AM)</option>
+            <option value="8:00 – 11:00 AM">Morning (8–11 AM)</option>
+            <option value="10:00 AM – 1:00 PM">Late morning (10 AM–1 PM)</option>
+            <option value="12:00 – 4:00 PM">Afternoon (12–4 PM)</option>
+          </select>
+        </div>
+      </div>
+      <div id="result-box"></div>
+      <div id="compare-box"></div>
+      <div id="window-compare-box"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Log a scheduled lead</h2>
+    <p class="section-note">Marking a quote Won in the Pricing &amp; Quotes tool logs it here automatically. Use this form only for bookings made outside that flow — every entry updates the recommendations above going forward.</p>
+    <div class="card">
+      <div class="log-row">
+        <div class="field">
+          <label for="lead-name">Client name</label>
+          <input type="text" id="lead-name" placeholder="e.g. Priya Shah">
+        </div>
+        <div class="field">
+          <label for="lead-city">City</label>
+          <select id="lead-city"></select>
+        </div>
+        <div class="field">
+          <label for="lead-day">Day scheduled</label>
+          <select id="lead-day">
+            <option>Monday</option><option>Tuesday</option><option>Wednesday</option>
+            <option>Thursday</option><option>Friday</option>
+          </select>
+        </div>
+        <button id="log-btn">Log booking</button>
+      </div>
+      <div id="log-status" style="margin-top:10px;font-size:13px;color:var(--muted);"></div>
+      <ul class="log-list" id="log-list"></ul>
+    </div>
+  </section>
+
+</div>
+
+<script>
+const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+
+// Baseline: completed jobs by city and weekday (from job-report reconciliation).
+// Kept in sync with the Management-only Route Board's own copy of this data —
+// see src/content/route-board-internal.html.
+const BASELINE = {
+  "Laguna Beach":        {Monday:5, Tuesday:4, Wednesday:4, Thursday:5, Friday:5},
+  "Irvine":              {Monday:6, Tuesday:1, Wednesday:6, Thursday:0, Friday:4},
+  "Corona Del Mar":       {Monday:0, Tuesday:3, Wednesday:0, Thursday:5, Friday:7},
+  "Costa Mesa":          {Monday:0, Tuesday:2, Wednesday:5, Thursday:2, Friday:1},
+  "Laguna Niguel":       {Monday:0, Tuesday:9, Wednesday:2, Thursday:0, Friday:0},
+  "Laguna Hills":        {Monday:4, Tuesday:1, Wednesday:1, Thursday:3, Friday:0},
+  "Mission Viejo":       {Monday:2, Tuesday:1, Wednesday:1, Thursday:2, Friday:4},
+  "Lake Forest":         {Monday:1, Tuesday:1, Wednesday:8, Thursday:0, Friday:0},
+  "Huntington Beach":    {Monday:3, Tuesday:0, Wednesday:1, Thursday:2, Friday:2},
+  "Rancho Santa Margarita":{Monday:2, Tuesday:0, Wednesday:1, Thursday:3, Friday:1},
+  "Tustin":              {Monday:0, Tuesday:0, Wednesday:1, Thursday:5, Friday:0},
+  "Aliso Viejo":         {Monday:0, Tuesday:0, Wednesday:0, Thursday:2, Friday:2},
+  "San Clemente":        {Monday:3, Tuesday:0, Wednesday:0, Thursday:0, Friday:0},
+  "Dana Point":          {Monday:0, Tuesday:2, Wednesday:0, Thursday:0, Friday:0},
+  "Ladera Ranch":        {Monday:2, Tuesday:0, Wednesday:0, Thursday:0, Friday:0},
+  "Laguna Woods":        {Monday:1, Tuesday:0, Wednesday:0, Thursday:0, Friday:1},
+  "Long Beach":          {Monday:1, Tuesday:0, Wednesday:0, Thursday:0, Friday:0},
+  "San Juan Capistrano": {Monday:1, Tuesday:0, Wednesday:0, Thursday:0, Friday:0},
+  // Present in the Pricing Tool's city list but with no completed-job history yet.
+  "Newport Beach":       {Monday:0, Tuesday:0, Wednesday:0, Thursday:0, Friday:0},
+};
+
+// Arrival window profitability, from completed job data (excludes two non-billable/anomalous slot labels)
+const WINDOW_STATS = [
+  {window:'10:00 AM – 1:00 PM', jobs:62, avgPrice:232.08, marginPct:0.812, revPerHr:133.03},
+  {window:'8:00 – 9:00 AM',     jobs:31, avgPrice:205.16, marginPct:0.770, revPerHr:108.63},
+  {window:'8:00 – 11:00 AM',   jobs:33, avgPrice:194.03, marginPct:0.752, revPerHr:100.86},
+  {window:'12:00 – 4:00 PM',   jobs:19, avgPrice:164.37, marginPct:0.764, revPerHr:105.86},
+];
+const BEST_WINDOW = WINDOW_STATS[0].window; // highest margin % and revenue/hr, spread across service types
+
+const STORAGE_KEY = 'route-planner:logged-leads';
+let loggedLeads = [];
+let liveCounts = {};
+
+function cloneBaseline(){
+  const out = {};
+  for(const city in BASELINE){
+    out[city] = Object.assign({}, BASELINE[city]);
+  }
+  return out;
+}
+
+function recompute(){
+  liveCounts = cloneBaseline();
+  loggedLeads.forEach(l=>{
+    if(!liveCounts[l.city]) liveCounts[l.city] = {Monday:0,Tuesday:0,Wednesday:0,Thursday:0,Friday:0};
+    liveCounts[l.city][l.day] = (liveCounts[l.city][l.day]||0) + 1;
+  });
+}
+
+function cityList(){
+  return Object.keys(liveCounts).sort((a,b)=>{
+    const totalA = Object.values(liveCounts[a]).reduce((x,y)=>x+y,0);
+    const totalB = Object.values(liveCounts[b]).reduce((x,y)=>x+y,0);
+    return totalB - totalA;
+  });
+}
+
+function populateSelects(){
+  const citySelect = document.getElementById('city-select');
+  const leadCity = document.getElementById('lead-city');
+  const cities = cityList();
+  [citySelect, leadCity].forEach(sel=>{
+    sel.innerHTML = '';
+    cities.forEach(c=>{
+      const opt = document.createElement('option');
+      opt.value = c; opt.textContent = c;
+      sel.appendChild(opt);
+    });
+    const otherOpt = document.createElement('option');
+    otherOpt.value = '__other__'; otherOpt.textContent = 'Other / new area';
+    sel.appendChild(otherOpt);
+  });
+}
+
+function bestDay(city){
+  const counts = liveCounts[city];
+  if(!counts) return null;
+  const total = Object.values(counts).reduce((a,b)=>a+b,0);
+  if(total === 0) return {none:true};
+  let max = -1, day = null;
+  DAYS.forEach(d=>{ if(counts[d] > max){ max = counts[d]; day = d; } });
+  return {day, max, total, counts, thin: total < 3};
+}
+
+function combinedScore(dayRatio, windowMarginPct){
+  const minMargin = Math.min(...WINDOW_STATS.map(w=>w.marginPct));
+  const maxMargin = Math.max(...WINDOW_STATS.map(w=>w.marginPct));
+  const normWindow = maxMargin > minMargin ? (windowMarginPct - minMargin)/(maxMargin - minMargin) : 1;
+  return 0.65*dayRatio + 0.35*normWindow;
+}
+
+function topCombosForCity(city, n){
+  const counts = liveCounts[city];
+  const hasData = counts && Object.values(counts).some(v=>v>0);
+  const maxDayCount = hasData ? Math.max(...DAYS.map(d=>counts[d]||0)) : 0;
+  const totalJobs = hasData ? DAYS.reduce((s,d)=>s+(counts[d]||0),0) : 0;
+
+  const combos = [];
+  DAYS.forEach(day=>{
+    const dayCount = hasData ? (counts[day]||0) : 0;
+    const dayRatio = hasData && maxDayCount>0 ? dayCount/maxDayCount : 0.5;
+    WINDOW_STATS.forEach(w=>{
+      combos.push({
+        day, window: w.window, dayCount, totalJobs, dayRatio,
+        windowMarginPct: w.marginPct, windowAvgPrice: w.avgPrice,
+        score: combinedScore(dayRatio, w.marginPct)
+      });
+    });
+  });
+  combos.sort((a,b)=>b.score-a.score);
+  return {combos: combos.slice(0,n), hasData, totalJobs};
+}
+
+function comboReason(c, hasData){
+  const dayPart = hasData
+    ? `${c.dayCount} of ${c.totalJobs} jobs (${c.totalJobs?Math.round(c.dayCount/c.totalJobs*100):0}%) already run ${c.day}`
+    : `no routing history yet for this day`;
+  return `${dayPart} · ${c.window} runs ${Math.round(c.windowMarginPct*100)}% margin`;
+}
+
+function renderResult(){
+  const city = document.getElementById('city-select').value;
+  const box = document.getElementById('result-box');
+  if(city === '__other__' || !city){
+    box.innerHTML = `<div class="result thin"><div class="result-text">No routing history for this area yet. Pick the closest city on your route board, or log this lead once scheduled so future recommendations include it.</div></div>`;
+    return;
+  }
+
+  const {combos, hasData} = topCombosForCity(city, 3);
+
+  const cards = combos.map((c, i)=>{
+    const phrase = `${c.day}, arrival window ${c.window}`;
+    return `
+    <div class="combo-card">
+      <div class="combo-rank">#${i+1}</div>
+      <div class="combo-body">
+        <div class="combo-title">${c.day} · ${c.window}</div>
+        <div class="combo-reason">${comboReason(c, hasData)}</div>
+      </div>
+      <button class="ghost copy-btn combo-copy" data-phrase="We have an opening ${phrase}.">Copy</button>
+    </div>`;
+  }).join('');
+
+  box.innerHTML = `
+    <div class="section-note" style="margin-bottom:10px;">Top 3 day &amp; time combinations for <strong>${city}</strong>, ranked by profitability${hasData?'':' (no job history yet for this city — ranked on time-of-day only)'}:</div>
+    <div class="combo-list">${cards}</div>`;
+
+  box.querySelectorAll('.combo-copy').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      try{
+        await navigator.clipboard.writeText(btn.getAttribute('data-phrase'));
+        const orig = btn.textContent;
+        btn.textContent = 'Copied';
+        setTimeout(()=>{ btn.textContent = orig; }, 1500);
+      }catch(e){
+        btn.textContent = 'Select & copy manually';
+      }
+    });
+  });
+}
+
+function surchargeTier(city, day){
+  const counts = liveCounts[city];
+  if(!counts) return {tier:'dedicated', label:'No history for this area', surcharge:45};
+  const max = Math.max(...DAYS.map(d=>counts[d]||0));
+  const val = counts[day]||0;
+  const ratio = max > 0 ? val/max : 0;
+  if(max === 0) return {tier:'dedicated', label:'No history for this area', surcharge:45};
+  if(ratio >= 0.7) return {tier:'great', label:'Good match', surcharge:0};
+  if(ratio >= 0.3) return {tier:'minor', label:'Workable — minor detour', surcharge:20};
+  return {tier:'dedicated', label:'Off-pattern — likely a dedicated trip', surcharge:45};
+}
+
+function renderCompare(){
+  const compareBox = document.getElementById('compare-box');
+  const city = document.getElementById('city-select').value;
+  const reqDay = document.getElementById('requested-day').value;
+
+  if(!reqDay || city === '__other__' || !city){
+    compareBox.innerHTML = '';
+    return;
+  }
+  const res = bestDay(city);
+  const bestDayName = res && !res.none ? res.day : null;
+
+  if(bestDayName && reqDay === bestDayName){
+    compareBox.innerHTML = `<div class="compare-box"><div class="doable-line">✓ Yes — ${reqDay} is doable in ${city}, and it's already the top-ranked day.</div> No adjustment needed.</div>`;
+    return;
+  }
+
+  const tier = surchargeTier(city, reqDay);
+  const counts = liveCounts[city] || {};
+  const bestCount = bestDayName ? (counts[bestDayName]||0) : 0;
+  const bestTotal = res && !res.none ? res.total : 0;
+  const reqCount = counts[reqDay]||0;
+
+  const tierClass = tier.tier === 'great' ? 'tier-great' : tier.tier === 'minor' ? 'tier-minor' : 'tier-dedicated';
+
+  compareBox.innerHTML = `
+    <div class="compare-box">
+      <div class="doable-line">✓ Yes — ${reqDay} is doable in ${city}.</div>
+      <div class="cc-label" style="margin-bottom:6px;">Comparing it against the top-ranked day</div>
+      <div class="compare-grid">
+        <div class="compare-col">
+          <div class="cc-label">Top-ranked</div>
+          <div class="cc-value">${bestDayName || '—'}</div>
+          <div class="cc-stat">${bestTotal ? bestCount+' of '+bestTotal+' jobs ('+Math.round(bestCount/bestTotal*100)+'%)' : 'no data yet'}</div>
+        </div>
+        <div class="compare-col">
+          <div class="cc-label">Client wants</div>
+          <div class="cc-value">${reqDay}</div>
+          <div class="cc-stat">${bestTotal ? reqCount+' of '+bestTotal+' jobs ('+Math.round(reqCount/bestTotal*100)+'%)' : 'no data yet'}</div>
+          <div class="tier-pill ${tierClass}">${tier.label}</div>
+        </div>
+      </div>
+      ${tier.surcharge > 0 ? `
+        <div class="surcharge-line">
+          Suggested quote add-on to stay profitable: <span class="surcharge-amount">+$${tier.surcharge}</span>
+          <div class="cc-stat" style="margin-top:4px;">Estimate, not measured for this exact city/day — based on the extra drive time a mismatched day has cost on similar routes. Add it into the quote rather than mentioning it as a "day fee."</div>
+        </div>` : `
+        <div class="surcharge-line">No add-on needed — this day still has enough existing volume nearby to keep the route efficient.</div>`}
+    </div>`;
+}
+
+function renderWindowCompare(){
+  const box = document.getElementById('window-compare-box');
+  const reqWindow = document.getElementById('requested-window').value;
+  if(!reqWindow || reqWindow === BEST_WINDOW){
+    box.innerHTML = '';
+    return;
+  }
+  const best = WINDOW_STATS.find(w=>w.window === BEST_WINDOW);
+  const req = WINDOW_STATS.find(w=>w.window === reqWindow);
+  const priceDiff = best.avgPrice - req.avgPrice;
+
+  box.innerHTML = `
+    <div class="compare-box">
+      <div class="doable-line">✓ Yes — the ${reqWindow} window works.</div>
+      <div class="cc-label" style="margin-bottom:6px;">What this time of day has historically looked like (informational — not a surcharge rule)</div>
+      <div class="compare-grid">
+        <div class="compare-col">
+          <div class="cc-label">Best window (${BEST_WINDOW})</div>
+          <div class="cc-value">$${best.avgPrice.toFixed(0)} avg</div>
+          <div class="cc-stat">${Math.round(best.marginPct*100)}% margin · ${best.jobs} jobs</div>
+        </div>
+        <div class="compare-col">
+          <div class="cc-label">Client wants (${reqWindow})</div>
+          <div class="cc-value">$${req.avgPrice.toFixed(0)} avg</div>
+          <div class="cc-stat">${Math.round(req.marginPct*100)}% margin · ${req.jobs} jobs</div>
+        </div>
+      </div>
+      <div class="surcharge-line" style="font-size:13.5px;">
+        This window has run about $${Math.abs(priceDiff).toFixed(0)} ${priceDiff>0?'lower':'higher'} on average — that's most likely because of which <em>job types</em> tend to land here (bigger deep cleans cluster late-morning), not a direct cost of the hour itself. Use this as context, not an automatic add-on: still price the job on its own size and scope.
+      </div>
+    </div>`;
+}
+
+function renderLog(){
+  const list = document.getElementById('log-list');
+  if(loggedLeads.length === 0){
+    list.innerHTML = '<div class="empty-state">No bookings logged yet.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  loggedLeads.slice().reverse().forEach((l, revIdx)=>{
+    const idx = loggedLeads.length - 1 - revIdx;
+    const res = bestDay(l.city);
+    const isMatch = res && !res.none && res.day === l.day;
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <span>${l.name || '(unnamed)'} — ${l.city}, ${l.day}
+        <span class="badge ${isMatch ? 'match' : 'mismatch'}">${isMatch ? 'on established day' : 'off-pattern'}</span>
+        ${l.source === 'quote-won' ? '<span class="badge match" style="background:#EDEEF0;color:#5B655F;">from Won quote</span>' : ''}
+      </span>
+      <button class="ghost" data-idx="${idx}">Remove</button>
+    `;
+    list.appendChild(li);
+  });
+  list.querySelectorAll('button.ghost').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      const idx = parseInt(e.target.getAttribute('data-idx'));
+      loggedLeads.splice(idx,1);
+      await saveLeads();
+      recompute();
+      renderAll();
+    });
+  });
+}
+
+function renderAll(){
+  populateSelects();
+  renderResult();
+  renderCompare();
+  renderWindowCompare();
+  renderLog();
+}
+
+async function loadLeads(){
+  try{
+    const res = await window.storage.get(STORAGE_KEY, true);
+    loggedLeads = res && res.value ? JSON.parse(res.value) : [];
+  }catch(e){
+    loggedLeads = [];
+  }
+}
+
+async function saveLeads(){
+  try{
+    await window.storage.set(STORAGE_KEY, JSON.stringify(loggedLeads), true);
+  }catch(e){
+    console.error('Could not save', e);
+  }
+}
+
+document.getElementById('log-btn').addEventListener('click', async ()=>{
+  const nameEl = document.getElementById('lead-name');
+  const cityEl = document.getElementById('lead-city');
+  const dayEl = document.getElementById('lead-day');
+  const status = document.getElementById('log-status');
+
+  let city = cityEl.value;
+  if(city === '__other__'){
+    status.textContent = 'Pick a specific city (or the closest match) before logging — "Other" can\'t be tracked yet.';
+    return;
+  }
+  loggedLeads.push({name: nameEl.value.trim(), city, day: dayEl.value, loggedAt: new Date().toISOString(), source: 'manual'});
+  await saveLeads();
+  recompute();
+  nameEl.value = '';
+  status.textContent = 'Logged. Recommendations updated below.';
+  renderAll();
+});
+
+document.getElementById('city-select').addEventListener('change', ()=>{
+  document.getElementById('requested-day').value = '';
+  document.getElementById('requested-window').value = '';
+  renderResult(); renderCompare(); renderWindowCompare();
+});
+document.getElementById('requested-day').addEventListener('change', ()=>{ renderCompare(); renderResult(); });
+document.getElementById('requested-window').addEventListener('change', ()=>{ renderWindowCompare(); renderResult(); });
+
+// ===== STORAGE COMPATIBILITY LAYER =====
+// Mirrors src/content/sales-pricing-tool.html's shim: uses the portal's own
+// Postgres-backed storage when served through /api/sales/route-planner (the
+// normal case), falling back to this-browser-only localStorage if opened any
+// other way. Both this tool and the Pricing & Quotes tool's "Mark Won" flow
+// read/write the same STORAGE_KEY, so a Won quote's city+day shows up here
+// automatically — see the "log to route planner" code in sales-pricing-tool.html.
+(function(){
+  if (window.location.pathname === '/api/sales/route-planner'){
+    async function call(op, extra){
+      const res = await fetch('/api/sales/storage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ op: op }, extra)),
+      });
+      if (!res.ok){
+        if (res.status === 404) return null;
+        throw new Error('Storage request failed: ' + res.status);
+      }
+      return res.json();
+    }
+    window.storage = {
+      async get(key, shared){
+        const result = await call('get', { key });
+        if (result === null) throw new Error('Key not found: ' + key);
+        return result;
+      },
+      async set(key, value, shared){
+        try{ return await call('set', { key, value }); }
+        catch(e){ console.error('Portal storage save error:', e); return null; }
+      },
+    };
+    return;
+  }
+
+  if (typeof window.storage !== 'undefined' && window.storage) return;
+
+  const PREFIX = 'mcc_local_storage::';
+  const k = (key) => PREFIX + key;
+  window.storage = {
+    async get(key, shared){
+      const raw = window.localStorage.getItem(k(key));
+      if (raw === null) throw new Error('Key not found: ' + key);
+      return { key, value: raw, shared: !!shared };
+    },
+    async set(key, value, shared){
+      try{ window.localStorage.setItem(k(key), value); return { key, value, shared: !!shared }; }
+      catch(e){ return null; }
+    },
+  };
+})();
+
+(async function init(){
+  await loadLeads();
+  recompute();
+  renderAll();
+})();
+</script>
+</body>
+</html>

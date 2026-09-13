@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
 import { prisma } from "@/lib/prisma";
 import { nextMondayFrom } from "@/lib/weeklyUpdate";
@@ -35,9 +36,17 @@ export default async function ManagementPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Management</h1>
-        <p className="mt-1 text-sm text-neutral-500">Monday Team Update — draft, approve, and send to Slack.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Management</h1>
+          <p className="mt-1 text-sm text-neutral-500">Monday Team Update — draft, approve, and send to Slack.</p>
+        </div>
+        <Link
+          href="/management/route-board"
+          className="shrink-0 rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+        >
+          Route Board →
+        </Link>
       </div>
       <WeeklyUpdateManager updates={rows} canEdit={canEdit} defaultWeekOf={toDateKey(nextMondayFrom())} />
     </div>
