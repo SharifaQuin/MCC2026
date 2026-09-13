@@ -588,3 +588,127 @@ model PayrollEntry {
   @@unique([payPeriodId, employeeId])
   @@index([employeeId])
 }
+
+// One calendar month's full P&L, as reconciled by the owner/CFO agent from
+// bank statements, Gusto, Stripe, Square, and QuickBooks. This is the most
+// sensitive data in the app — restricted to ADMIN only, in full detail.
+// Deliberately NOT auto-computed from the raw line items: some of the
+// owner's own totals (opex_total in particular) don't equal a simple sum of
+// the line items shown here, meaning her source spreadsheet folds in at
+// least one more cost factor than what's broken out into its own column —
+// so every field here is entered directly rather than derived, to avoid
+// silently disagreeing with her own numbers.
+model MonthlyFinancials {
+  month                  String   @id // "2026-01"
+  monthLabel             String // "Jan"
+  revenueTotal           Float
+  revenueCommercial      Float
+  revenueResidential     Float
+  cleanerTipsMemo        Float? // memo-only — tips are the cleaner's, not company revenue
+  technicianPayroll      Float
+  mileageReimbursements  Float
+  supplies               Float
+  cogsTotal              Float
+  grossProfit            Float
+  grossMarginPct         Float
+  adminPayroll           Float
+  rent                   Float
+  hiringRecruiting       Float
+  fuel                   Float
+  insurance              Float
+  vehicle                Float
+  marketing              Float
+  fees                   Float
+  misc                   Float?
+  creditCard             Float
+  loanPayoff             Float
+  stripeCapitalInterest  Float
+  equipmentFinancing     Float
+  opexTotal              Float
+  netProfit              Float
+  netMarginPct           Float
+  target21pct            Float
+  varianceToTarget       Float
+  ownerDraw              Float
+  endingBankBalance      Float
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+// Simple key/value JSONB settings the owner tunes over time (draw policy,
+// profitability target, open loans). ADMIN only, same as MonthlyFinancials.
+model OwnerSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+// Key/value JSONB the whole management team can see — the revenue growth
+// staircase, current stage, and marketing budget. Deliberately separate
+// from OwnerSetting so the access split (ADMIN vs ADMIN+SERVICE_MANAGER)
+// is enforced by which table a query even touches, not by a per-row check.
+model TeamGoal {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+enum ChecklistFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  ONE_TIME
+  MILESTONE
+}
+
+enum ChecklistOwner {
+  OWNER
+  TEAM
+}
+
+enum ChecklistVisibility {
+  OWNER_ONLY
+  TEAM
+}
+
+// A running to-do list mixing recurring operating cadences (daily/weekly/
+// monthly checks) with one-off and milestone items. Recurring tasks don't
+// get a scheduled job to reset them — updatedAt is checked against the
+// current day/week/month at read time (see effectiveChecklistStatus in
+// lib/financials.ts), so a Daily task always reads as "Not Started" again
+// once it was last touched outside today, with no cron involved.
+model ChecklistTask {
+  id          String              @id @default(cuid())
+  frequency   ChecklistFrequency
+  task        String
+  owner       ChecklistOwner
+  status      ChecklistTaskStatus @default(NOT_STARTED)
+  completedAt DateTime?
+  targetDate  DateTime?
+  notes       String?             @db.Text
+  visibility  ChecklistVisibility @default(OWNER_ONLY)
+  order       Int                 @default(0)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+}
+
+enum ChecklistTaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  DONE
+}
+
+// A logged sales lead — table only for now. The full lead-capture form
+// (under Sales), conversion tracking, and the KPI rollup feeding this
+// dashboard are a separate, larger build to be scoped on its own.
+model Lead {
+  id           String   @id @default(cuid())
+  date         DateTime
+  clientName   String
+  leadSource   String?
+  clientType   String?
+  converted    String?
+  monthlyValue Float?
+  notes        String?  @db.Text
+  createdAt    DateTime @default(now())
+}

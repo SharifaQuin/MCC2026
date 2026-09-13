@@ -48,3 +48,28 @@ export function formatInBusinessTimezone(date: Date): string {
     timeStyle: "short",
   }).format(date);
 }
+
+// "YYYY-MM-DD" for a date's calendar day in the business timezone —
+// used to key recurring (daily/weekly/monthly) checklist tasks to a period
+// regardless of the server's own runtime timezone.
+export function businessDateKey(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: BUSINESS_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+// "YYYY-Www" ISO week key for a date's calendar day in the business timezone.
+export function businessISOWeekKey(date: Date): string {
+  const [y, m, d] = businessDateKey(date).split("-").map(Number);
+  // Compute the ISO week using a UTC-anchored date so the week/day-of-week
+  // math isn't affected by the server's own runtime timezone or DST.
+  const utcDate = new Date(Date.UTC(y, m - 1, d));
+  const dayNum = utcDate.getUTCDay() || 7;
+  utcDate.setUTCDate(utcDate.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(utcDate.getUTCFullYear(), 0, 1));
+  const weekNum = Math.ceil(((utcDate.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${utcDate.getUTCFullYear()}-W${String(weekNum).padStart(2, "0")}`;
+}

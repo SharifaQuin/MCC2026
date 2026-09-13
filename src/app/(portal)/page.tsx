@@ -7,6 +7,8 @@ import { loadAdminDashboard } from "@/lib/dashboard";
 import { loadRecruitingDashboard } from "@/lib/recruiting";
 import { loadSalesDashboard } from "@/lib/salesDashboard";
 import { getPendingOnboardingCount } from "@/lib/onboarding";
+import { getLatestMonthlyFinancials, getTeamGoals, getChecklistTasksForRole } from "@/lib/financials";
+import ChecklistToggleList from "@/components/ChecklistToggleList";
 
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
@@ -37,16 +39,91 @@ export default async function HomePage() {
     select: { department: true, canEdit: true },
   });
   const hasSalesAccess = hasDepartmentAccess(session.role, grants, "SALES").canView;
+  const isAdmin = session.role === "ADMIN";
 
-  const [training, recruiting, sales] = await Promise.all([
+  const [training, recruiting, sales, latestFinancials, teamGoals, checklistTasks] = await Promise.all([
     loadAdminDashboard(),
     loadRecruitingDashboard(),
     hasSalesAccess ? loadSalesDashboard() : Promise.resolve(null),
+    isAdmin ? getLatestMonthlyFinancials() : Promise.resolve(null),
+    getTeamGoals(),
+    getChecklistTasksForRole(session.role),
   ]);
+
+  const growthStaircase = (teamGoals.growth_staircase_monthly_revenue as number[] | undefined) ?? [];
+  const currentStageStatus = teamGoals.current_stage_status as string | undefined;
+  const profitabilityGoal = teamGoals.profitability_goal as string | undefined;
+  const marketingBudgetMonthly = teamGoals.marketing_budget_monthly as number | undefined;
+  const marketingBudgetNote = teamGoals.marketing_budget_note as string | undefined;
+
+  const checklistItems = checklistTasks.map((t) => ({
+    id: t.id,
+    frequency: t.frequency,
+    task: t.task,
+    effectiveStatus: t.effectiveStatus,
+  }));
 
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold">Home</h1>
+
+      {isAdmin && latestFinancials && (
+        <section className="mb-6 rounded-lg border border-neutral-200 bg-white p-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium text-neutral-900">
+              Financial Overview — {latestFinancials.monthLabel} {latestFinancials.month.slice(0, 4)}
+            </h2>
+            <Link href="/financials" className="text-sm text-brand-700 hover:underline">
+              View full Financials →
+            </Link>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <Stat label="Revenue" value={money(latestFinancials.revenueTotal)} />
+            <Stat
+              label="Net Profit"
+              value={money(latestFinancials.netProfit)}
+            />
+            <Stat label="Net Margin" value={`${(latestFinancials.netMarginPct * 100).toFixed(1)}%`} />
+            <Stat
+              label="Variance to Target"
+              value={money(latestFinancials.varianceToTarget)}
+            />
+            <Stat label="Owner Draw" value={money(latestFinancials.ownerDraw)} />
+            <Stat label="Ending Bank Balance" value={money(latestFinancials.endingBankBalance)} />
+          </div>
+        </section>
+      )}
+
+      <section className="mb-6 rounded-lg border border-neutral-200 bg-white p-6">
+        <h2 className="text-lg font-medium text-neutral-900">Goals</h2>
+        {growthStaircase.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {growthStaircase.map((amount, i) => (
+              <span
+                key={i}
+                className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-600"
+              >
+                Stage {i + 1}: ${amount.toLocaleString()}/mo
+              </span>
+            ))}
+          </div>
+        )}
+        {currentStageStatus && <p className="mt-3 text-sm text-neutral-600">{currentStageStatus}</p>}
+        {profitabilityGoal && <p className="mt-1 text-sm text-neutral-500">{profitabilityGoal}</p>}
+        {marketingBudgetMonthly !== undefined && (
+          <p className="mt-3 text-sm text-neutral-600">
+            Marketing budget: <span className="font-medium">{money(marketingBudgetMonthly)}/mo</span>
+          </p>
+        )}
+        {marketingBudgetNote && <p className="mt-1 text-xs text-neutral-400">{marketingBudgetNote}</p>}
+      </section>
+
+      <section className="mb-6 rounded-lg border border-neutral-200 bg-white p-6">
+        <h2 className="text-lg font-medium text-neutral-900">Checklist</h2>
+        <div className="mt-3">
+          <ChecklistToggleList items={checklistItems} />
+        </div>
+      </section>
 
       {sales && (
         <section className="mb-6 rounded-lg border border-neutral-200 bg-white p-6">

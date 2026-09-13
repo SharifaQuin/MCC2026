@@ -53,6 +53,7 @@ export const dictionary = {
     backToModulesList: "Back to Modules",
     previousLesson: "← Previous Lesson",
     payroll: "Payroll",
+    financials: "Financials",
   },
   ES: {
     appName: "Portal de Capacitación de MCC",
@@ -108,6 +109,7 @@ export const dictionary = {
     backToModulesList: "Volver a Módulos",
     previousLesson: "← Lección Anterior",
     payroll: "Nómina",
+    financials: "Finanzas",
   },
 } as const;
 

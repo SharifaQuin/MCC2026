@@ -68,6 +68,11 @@ export default function Nav({
                 </Link>
               </>
             )}
+            {session.role === "ADMIN" && (
+              <Link href="/financials" className="hover:underline">
+                {labels.financials}
+              </Link>
+            )}
           </nav>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-sm">

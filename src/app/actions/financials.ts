@@ -1,0 +1,181 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/session";
+import type { ChecklistOwner, ChecklistTaskStatus, ChecklistVisibility } from "@prisma/client";
+
+async function requireOwnerAccess() {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    throw new Error("Not authorized");
+  }
+  return session;
+}
+
+function num(formData: FormData, field: string): number {
+  const raw = formData.get(field);
+  const value = Number(raw);
+  if (raw === null || raw === "" || Number.isNaN(value)) {
+    throw new Error(`Missing or invalid value for ${field}`);
+  }
+  return value;
+}
+
+function optionalNum(formData: FormData, field: string): number | null {
+  const raw = String(formData.get(field) ?? "").trim();
+  if (!raw) return null;
+  const value = Number(raw);
+  if (Number.isNaN(value)) throw new Error(`Invalid value for ${field}`);
+  return value;
+}
+
+// ADMIN only — every field is entered directly rather than derived from the
+// others (see the note on the MonthlyFinancials model): her source
+// spreadsheet's opex_total doesn't equal a simple sum of its own line items,
+// so recomputing totals here would risk silently disagreeing with her numbers.
+export async function upsertMonthlyFinancialsAction(formData: FormData) {
+  await requireOwnerAccess();
+
+  const month = String(formData.get("month") ?? "").trim();
+  const monthLabel = String(formData.get("monthLabel") ?? "").trim();
+  if (!month || !monthLabel) throw new Error("Month and month label are required.");
+
+  const data = {
+    monthLabel,
+    revenueTotal: num(formData, "revenueTotal"),
+    revenueCommercial: num(formData, "revenueCommercial"),
+    revenueResidential: num(formData, "revenueResidential"),
+    cleanerTipsMemo: optionalNum(formData, "cleanerTipsMemo"),
+    technicianPayroll: num(formData, "technicianPayroll"),
+    mileageReimbursements: num(formData, "mileageReimbursements"),
+    supplies: num(formData, "supplies"),
+    cogsTotal: num(formData, "cogsTotal"),
+    grossProfit: num(formData, "grossProfit"),
+    grossMarginPct: num(formData, "grossMarginPct"),
+    adminPayroll: num(formData, "adminPayroll"),
+    rent: num(formData, "rent"),
+    hiringRecruiting: num(formData, "hiringRecruiting"),
+    fuel: num(formData, "fuel"),
+    insurance: num(formData, "insurance"),
+    vehicle: num(formData, "vehicle"),
+    marketing: num(formData, "marketing"),
+    fees: num(formData, "fees"),
+    misc: optionalNum(formData, "misc"),
+    creditCard: num(formData, "creditCard"),
+    loanPayoff: num(formData, "loanPayoff"),
+    stripeCapitalInterest: num(formData, "stripeCapitalInterest"),
+    equipmentFinancing: num(formData, "equipmentFinancing"),
+    opexTotal: num(formData, "opexTotal"),
+    netProfit: num(formData, "netProfit"),
+    netMarginPct: num(formData, "netMarginPct"),
+    target21pct: num(formData, "target21pct"),
+    varianceToTarget: num(formData, "varianceToTarget"),
+    ownerDraw: num(formData, "ownerDraw"),
+    endingBankBalance: num(formData, "endingBankBalance"),
+  };
+
+  await prisma.monthlyFinancials.upsert({
+    where: { month },
+    create: { month, ...data },
+    update: data,
+  });
+
+  revalidatePath("/financials");
+  revalidatePath("/");
+}
+
+export async function updateDrawPolicyAction(formData: FormData) {
+  await requireOwnerAccess();
+
+  const value = {
+    fixed_monthly_amount: num(formData, "fixedMonthlyAmount"),
+    cash_floor_minimum: num(formData, "cashFloorMinimum"),
+    note: String(formData.get("note") ?? "").trim(),
+  };
+
+  await prisma.ownerSetting.upsert({
+    where: { key: "owner_draw_policy" },
+    create: { key: "owner_draw_policy", value },
+    update: { value },
+  });
+
+  revalidatePath("/financials");
+}
+
+export async function updateProfitabilityTargetAction(formData: FormData) {
+  await requireOwnerAccess();
+
+  const value = {
+    target_net_margin_pct: num(formData, "targetNetMarginPct"),
+    estimated_revenue_needed_monthly: num(formData, "estimatedRevenueNeededMonthly"),
+    note: String(formData.get("note") ?? "").trim(),
+  };
+
+  await prisma.ownerSetting.upsert({
+    where: { key: "profitability_target" },
+    create: { key: "profitability_target", value },
+    update: { value },
+  });
+
+  revalidatePath("/financials");
+}
+
+export async function addChecklistTaskAction(formData: FormData) {
+  await requireOwnerAccess();
+
+  const frequency = String(formData.get("frequency") ?? "");
+  const task = String(formData.get("task") ?? "").trim();
+  const owner = String(formData.get("owner") ?? "OWNER") as ChecklistOwner;
+  const visibility = String(formData.get("visibility") ?? "OWNER_ONLY") as ChecklistVisibility;
+  const notes = String(formData.get("notes") ?? "").trim() || null;
+  const targetDateRaw = String(formData.get("targetDate") ?? "");
+
+  if (!task) throw new Error("Task text is required.");
+
+  const count = await prisma.checklistTask.count();
+
+  await prisma.checklistTask.create({
+    data: {
+      frequency: frequency as never,
+      task,
+      owner,
+      visibility,
+      notes,
+      targetDate: targetDateRaw ? new Date(targetDateRaw) : null,
+      order: count,
+    },
+  });
+
+  revalidatePath("/financials");
+  revalidatePath("/");
+}
+
+export async function deleteChecklistTaskAction(taskId: string) {
+  await requireOwnerAccess();
+  await prisma.checklistTask.delete({ where: { id: taskId } });
+  revalidatePath("/financials");
+  revalidatePath("/");
+}
+
+// SERVICE_MANAGER may only toggle TEAM-visibility tasks; ADMIN may toggle any.
+export async function toggleChecklistTaskStatusAction(taskId: string, newStatus: ChecklistTaskStatus) {
+  const session = await getSession();
+  if (!session || (session.role !== "ADMIN" && session.role !== "SERVICE_MANAGER")) {
+    throw new Error("Not authorized");
+  }
+
+  const task = await prisma.checklistTask.findUnique({ where: { id: taskId } });
+  if (!task) throw new Error("Task not found");
+  if (session.role !== "ADMIN" && task.visibility !== "TEAM") {
+    throw new Error("Not authorized");
+  }
+
+  await prisma.checklistTask.update({
+    where: { id: taskId },
+    data: { status: newStatus, completedAt: newStatus === "DONE" ? new Date() : null },
+  });
+
+  revalidatePath("/financials");
+  revalidatePath("/");
+}
