@@ -207,19 +207,6 @@ export default async function SalesPage() {
             View Quotes
           </Link>
         </section>
-
-        <section className="rounded-lg border border-neutral-200 bg-white p-6">
-          <h2 className="text-lg font-medium text-neutral-900">Route Day Planner</h2>
-          <p className="mt-1 text-sm text-neutral-500">
-            Find the best day and arrival window for a new lead based on the existing route.
-          </p>
-          <Link
-            href="/sales/route-planner"
-            className="mt-5 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-          >
-            Open Route Day Planner
-          </Link>
-        </section>
       </div>
     </div>
   );

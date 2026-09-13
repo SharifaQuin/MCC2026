@@ -420,6 +420,49 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 .pf-csv-modal{background:#fff;border-radius:10px;max-width:820px;width:100%;max-height:85vh;overflow-y:auto;padding:24px 26px;}
 .pf-csv-map-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center;padding:6px 0;}
 .pf-mini-note{font-family:'DM Mono',monospace;font-size:9.5px;color:var(--ink-lt);margin-top:3px;}
+
+/* ── ROUTE DAY PLANNER (embedded in the Pricing Calculator tab) ── */
+.rdp-card{background:var(--paper);border:1.5px solid var(--orange);border-radius:10px;padding:16px 18px;margin-bottom:16px;}
+.rdp-title{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--orange-dark);margin-bottom:10px;font-weight:600;}
+.rdp-empty{font-size:12.5px;color:var(--ink-lt);}
+.rdp-combo-list{display:flex;flex-direction:column;gap:8px;}
+.rdp-combo{display:flex;align-items:center;gap:10px;border:1px solid var(--paper-dark);border-radius:7px;padding:9px 11px;background:#fff;}
+.rdp-combo:first-child{border-color:var(--green);background:var(--green-lt);}
+.rdp-combo-rank{font-family:'DM Mono',monospace;font-weight:700;font-size:15px;color:var(--green);min-width:20px;}
+.rdp-combo-body{flex:1;min-width:0;}
+.rdp-combo-title{font-size:13px;font-weight:700;color:var(--ink);}
+.rdp-combo-reason{font-size:11px;color:var(--ink-lt);margin-top:1px;}
+.rdp-copy-btn{font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;padding:5px 9px;border-radius:6px;border:1.5px solid var(--green);background:transparent;color:var(--green);cursor:pointer;white-space:nowrap;}
+.rdp-copy-btn:hover{background:var(--green-lt);}
+.rdp-override-row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;}
+.rdp-field{flex:1;min-width:160px;display:flex;flex-direction:column;gap:4px;}
+.rdp-field label{font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-lt);}
+.rdp-field select{font-family:'DM Sans',sans-serif;font-size:12px;padding:7px 8px;border:1.5px solid var(--paper-dark);border-radius:6px;background:#fff;color:var(--ink);width:100%;}
+.rdp-compare{margin-top:12px;padding:12px 14px;border-radius:8px;border:1px solid var(--paper-dark);background:#fff;font-size:12.5px;}
+.rdp-doable{font-weight:700;color:var(--green);margin-bottom:6px;}
+.rdp-compare-grid{display:flex;gap:14px;flex-wrap:wrap;margin:8px 0;}
+.rdp-compare-col{flex:1;min-width:140px;}
+.rdp-compare-col .rdp-cc-label{font-size:10px;color:var(--ink-lt);font-weight:600;text-transform:uppercase;letter-spacing:.04em;}
+.rdp-compare-col .rdp-cc-value{font-size:15px;font-weight:700;color:var(--ink);}
+.rdp-compare-col .rdp-cc-stat{font-size:11px;color:var(--ink-lt);}
+.rdp-tier-pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;margin-top:2px;}
+.rdp-tier-great{background:var(--green-lt);color:var(--green);}
+.rdp-tier-minor{background:var(--gold-lt);color:var(--gold);}
+.rdp-tier-dedicated{background:var(--red-lt);color:var(--red);}
+.rdp-surcharge{margin-top:10px;padding-top:10px;border-top:1px dashed var(--paper-dark);}
+.rdp-surcharge-amount{font-weight:700;font-size:15px;}
+.rdp-log-toggle{margin-top:12px;font-size:11.5px;color:var(--navy);cursor:pointer;text-decoration:underline;display:inline-block;}
+.rdp-log-section{margin-top:10px;padding-top:10px;border-top:1px solid var(--paper-dark);}
+.rdp-log-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;}
+.rdp-log-row input, .rdp-log-row select{font-family:'DM Sans',sans-serif;font-size:12px;padding:7px 8px;border:1.5px solid var(--paper-dark);border-radius:6px;}
+.rdp-log-btn{font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;padding:7px 14px;border-radius:6px;border:none;background:var(--green);color:#fff;cursor:pointer;}
+.rdp-log-list{list-style:none;margin-top:8px;padding:0;}
+.rdp-log-list li{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--paper-dark);font-size:11.5px;}
+.rdp-log-list li:last-child{border-bottom:none;}
+.rdp-badge{display:inline-block;font-size:9.5px;font-weight:600;padding:2px 6px;border-radius:20px;margin-left:6px;}
+.rdp-badge-match{background:var(--green-lt);color:var(--green);}
+.rdp-badge-mismatch{background:var(--red-lt);color:var(--red);}
+.rdp-remove-btn{font-size:10.5px;color:var(--red);background:none;border:none;cursor:pointer;text-decoration:underline;}
 </style>
 </head>
 <body>
@@ -526,6 +569,54 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 
   <!-- RIGHT: OUTPUT -->
   <div>
+    <div class="rdp-card" id="rdp-card">
+      <div class="rdp-title">Route Day Planner</div>
+      <div id="rdp-result"></div>
+
+      <div class="rdp-override-row">
+        <div class="rdp-field">
+          <label for="rdp-requested-day">If client needs a different day</label>
+          <select id="rdp-requested-day">
+            <option value="">Same as suggested</option>
+            <option>Monday</option><option>Tuesday</option><option>Wednesday</option>
+            <option>Thursday</option><option>Friday</option>
+          </select>
+        </div>
+        <div class="rdp-field">
+          <label for="rdp-requested-window">If client needs a different time</label>
+          <select id="rdp-requested-window">
+            <option value="">Same as suggested</option>
+            <option value="8:00 – 9:00 AM">Early morning (8–9 AM)</option>
+            <option value="8:00 – 11:00 AM">Morning (8–11 AM)</option>
+            <option value="10:00 AM – 1:00 PM">Late morning (10 AM–1 PM)</option>
+            <option value="12:00 – 4:00 PM">Afternoon (12–4 PM)</option>
+          </select>
+        </div>
+      </div>
+      <div id="rdp-compare"></div>
+      <div id="rdp-window-compare"></div>
+
+      <div class="rdp-log-toggle" id="rdp-log-toggle" onclick="toggleRdpLog()">+ Log a booking made outside this quote</div>
+      <div class="rdp-log-section" id="rdp-log-section" style="display:none;">
+        <div class="rdp-log-row">
+          <div class="rdp-field" style="min-width:180px;">
+            <label>Client name</label>
+            <input type="text" id="rdp-lead-name" placeholder="e.g. Priya Shah">
+          </div>
+          <div class="rdp-field" style="min-width:140px;">
+            <label>Day scheduled</label>
+            <select id="rdp-lead-day">
+              <option>Monday</option><option>Tuesday</option><option>Wednesday</option>
+              <option>Thursday</option><option>Friday</option>
+            </select>
+          </div>
+          <button class="rdp-log-btn" onclick="confirmRdpManualLog()">Log booking</button>
+        </div>
+        <div style="margin-top:6px;font-size:11px;color:var(--ink-lt);" id="rdp-log-status"></div>
+        <ul class="rdp-log-list" id="rdp-log-list"></ul>
+      </div>
+    </div>
+
     <div class="client-view">
       <div class="cv-label">Client-Facing Estimate</div>
       <div class="cv-price-row">
@@ -1248,6 +1339,9 @@ function switchTab(name){
   document.getElementById('tabbtn-profit').classList.toggle('active', name==='profit');
   if(name==='quote' && typeof refreshPreviousQuotesList === 'function') refreshPreviousQuotesList();
   if (name==='profit' && !window.__profitInited){ window.__profitInited = true; initProfitTab(); }
+  // Refresh the embedded Route Day Planner in case a quote was marked Won
+  // (logging a booking) while on the Client Quote Page tab.
+  if(name==='pricing' && typeof initRoutePlanner === 'function') initRoutePlanner();
 }
 
 // ===== PRICING TAB LOGIC =====
@@ -2110,6 +2204,344 @@ buildDynamicFields();
 })();
 recalc();
 
+// ===== ROUTE DAY PLANNER (embedded, driven by the same #city-select above) =====
+// Shares the 'route-planner:logged-leads' storage key with the Won-quote
+// auto-log (see confirmRouteLog()) and the Management-only Route Board
+// (src/content/route-board-internal.html) — logging a booking from any of
+// the three keeps the others' recommendations current.
+const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+
+const BASELINE = {
+  "Laguna Beach":        {Monday:5, Tuesday:4, Wednesday:4, Thursday:5, Friday:5},
+  "Irvine":              {Monday:6, Tuesday:1, Wednesday:6, Thursday:0, Friday:4},
+  "Corona Del Mar":       {Monday:0, Tuesday:3, Wednesday:0, Thursday:5, Friday:7},
+  "Costa Mesa":          {Monday:0, Tuesday:2, Wednesday:5, Thursday:2, Friday:1},
+  "Laguna Niguel":       {Monday:0, Tuesday:9, Wednesday:2, Thursday:0, Friday:0},
+  "Laguna Hills":        {Monday:4, Tuesday:1, Wednesday:1, Thursday:3, Friday:0},
+  "Mission Viejo":       {Monday:2, Tuesday:1, Wednesday:1, Thursday:2, Friday:4},
+  "Lake Forest":         {Monday:1, Tuesday:1, Wednesday:8, Thursday:0, Friday:0},
+  "Huntington Beach":    {Monday:3, Tuesday:0, Wednesday:1, Thursday:2, Friday:2},
+  "Rancho Santa Margarita":{Monday:2, Tuesday:0, Wednesday:1, Thursday:3, Friday:1},
+  "Tustin":              {Monday:0, Tuesday:0, Wednesday:1, Thursday:5, Friday:0},
+  "Aliso Viejo":         {Monday:0, Tuesday:0, Wednesday:0, Thursday:2, Friday:2},
+  "San Clemente":        {Monday:3, Tuesday:0, Wednesday:0, Thursday:0, Friday:0},
+  "Dana Point":          {Monday:0, Tuesday:2, Wednesday:0, Thursday:0, Friday:0},
+  "Ladera Ranch":        {Monday:2, Tuesday:0, Wednesday:0, Thursday:0, Friday:0},
+  "Laguna Woods":        {Monday:1, Tuesday:0, Wednesday:0, Thursday:0, Friday:1},
+  "Long Beach":          {Monday:1, Tuesday:0, Wednesday:0, Thursday:0, Friday:0},
+  "San Juan Capistrano": {Monday:1, Tuesday:0, Wednesday:0, Thursday:0, Friday:0},
+  "Newport Beach":       {Monday:0, Tuesday:0, Wednesday:0, Thursday:0, Friday:0},
+};
+
+const WINDOW_STATS = [
+  {window:'10:00 AM – 1:00 PM', jobs:62, avgPrice:232.08, marginPct:0.812, revPerHr:133.03},
+  {window:'8:00 – 9:00 AM',     jobs:31, avgPrice:205.16, marginPct:0.770, revPerHr:108.63},
+  {window:'8:00 – 11:00 AM',   jobs:33, avgPrice:194.03, marginPct:0.752, revPerHr:100.86},
+  {window:'12:00 – 4:00 PM',   jobs:19, avgPrice:164.37, marginPct:0.764, revPerHr:105.86},
+];
+const BEST_WINDOW = WINDOW_STATS[0].window;
+
+const ROUTE_STORAGE_KEY = 'route-planner:logged-leads';
+let loggedLeads = [];
+let liveCounts = {};
+
+function cloneBaseline(){
+  const out = {};
+  for(const city in BASELINE) out[city] = Object.assign({}, BASELINE[city]);
+  return out;
+}
+
+function recomputeRouteCounts(){
+  liveCounts = cloneBaseline();
+  loggedLeads.forEach(l=>{
+    if(!liveCounts[l.city]) liveCounts[l.city] = {Monday:0,Tuesday:0,Wednesday:0,Thursday:0,Friday:0};
+    liveCounts[l.city][l.day] = (liveCounts[l.city][l.day]||0) + 1;
+  });
+}
+
+function rdpBestDay(city){
+  const counts = liveCounts[city];
+  if(!counts) return null;
+  const total = Object.values(counts).reduce((a,b)=>a+b,0);
+  if(total === 0) return {none:true};
+  let max = -1, day = null;
+  DAYS.forEach(d=>{ if(counts[d] > max){ max = counts[d]; day = d; } });
+  return {day, max, total};
+}
+
+function rdpCombinedScore(dayRatio, windowMarginPct){
+  const minMargin = Math.min(...WINDOW_STATS.map(w=>w.marginPct));
+  const maxMargin = Math.max(...WINDOW_STATS.map(w=>w.marginPct));
+  const normWindow = maxMargin > minMargin ? (windowMarginPct - minMargin)/(maxMargin - minMargin) : 1;
+  return 0.65*dayRatio + 0.35*normWindow;
+}
+
+function rdpTopCombos(city, n){
+  const counts = liveCounts[city];
+  const hasData = counts && Object.values(counts).some(v=>v>0);
+  const maxDayCount = hasData ? Math.max(...DAYS.map(d=>counts[d]||0)) : 0;
+  const totalJobs = hasData ? DAYS.reduce((s,d)=>s+(counts[d]||0),0) : 0;
+
+  const combos = [];
+  DAYS.forEach(day=>{
+    const dayCount = hasData ? (counts[day]||0) : 0;
+    const dayRatio = hasData && maxDayCount>0 ? dayCount/maxDayCount : 0.5;
+    WINDOW_STATS.forEach(w=>{
+      combos.push({
+        day, window: w.window, dayCount, totalJobs, dayRatio,
+        windowMarginPct: w.marginPct,
+        score: rdpCombinedScore(dayRatio, w.marginPct)
+      });
+    });
+  });
+  combos.sort((a,b)=>b.score-a.score);
+  return {combos: combos.slice(0,n), hasData, totalJobs};
+}
+
+function rdpComboReason(c, hasData){
+  const dayPart = hasData
+    ? `${c.dayCount} of ${c.totalJobs} jobs (${c.totalJobs?Math.round(c.dayCount/c.totalJobs*100):0}%) already run ${c.day}`
+    : `no routing history yet for this day`;
+  return `${dayPart} · ${c.window} runs ${Math.round(c.windowMarginPct*100)}% margin`;
+}
+
+function rdpSurchargeTier(city, day){
+  const counts = liveCounts[city];
+  if(!counts) return {tier:'dedicated', label:'No history for this area', surcharge:45};
+  const max = Math.max(...DAYS.map(d=>counts[d]||0));
+  const val = counts[day]||0;
+  const ratio = max > 0 ? val/max : 0;
+  if(max === 0) return {tier:'dedicated', label:'No history for this area', surcharge:45};
+  if(ratio >= 0.7) return {tier:'great', label:'Good match', surcharge:0};
+  if(ratio >= 0.3) return {tier:'minor', label:'Workable — minor detour', surcharge:20};
+  return {tier:'dedicated', label:'Off-pattern — likely a dedicated trip', surcharge:45};
+}
+
+function rdpCurrentCity(){
+  const el = document.getElementById('city-select');
+  return el ? el.value : '';
+}
+
+function renderRdpResult(){
+  const city = rdpCurrentCity();
+  const box = document.getElementById('rdp-result');
+  if(!box) return;
+  if(!city || city === 'Other'){
+    box.innerHTML = `<p class="rdp-empty">Pick a city above to see the best day &amp; arrival window for this lead.</p>`;
+    return;
+  }
+
+  const {combos, hasData} = rdpTopCombos(city, 3);
+  const cards = combos.map((c, i)=>{
+    const phrase = `${c.day}, arrival window ${c.window}`;
+    return `
+    <div class="rdp-combo">
+      <div class="rdp-combo-rank">#${i+1}</div>
+      <div class="rdp-combo-body">
+        <div class="rdp-combo-title">${c.day} · ${c.window}</div>
+        <div class="rdp-combo-reason">${rdpComboReason(c, hasData)}</div>
+      </div>
+      <button class="rdp-copy-btn" data-phrase="We have an opening ${phrase}.">Copy</button>
+    </div>`;
+  }).join('');
+
+  box.innerHTML = `
+    <p style="font-size:11.5px;color:var(--ink-lt);margin-bottom:8px;">Top 3 for <strong style="color:var(--ink);">${city}</strong>, ranked by profitability${hasData?'':' (no job history yet — ranked on time-of-day only)'}:</p>
+    <div class="rdp-combo-list">${cards}</div>`;
+
+  box.querySelectorAll('.rdp-copy-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      try{
+        await navigator.clipboard.writeText(btn.getAttribute('data-phrase'));
+        const orig = btn.textContent;
+        btn.textContent = 'Copied';
+        setTimeout(()=>{ btn.textContent = orig; }, 1500);
+      }catch(e){
+        btn.textContent = 'Select & copy manually';
+      }
+    });
+  });
+}
+
+function renderRdpCompare(){
+  const compareBox = document.getElementById('rdp-compare');
+  if(!compareBox) return;
+  const city = rdpCurrentCity();
+  const reqDay = document.getElementById('rdp-requested-day').value;
+
+  if(!reqDay || !city || city === 'Other'){
+    compareBox.innerHTML = '';
+    return;
+  }
+  const res = rdpBestDay(city);
+  const bestDayName = res && !res.none ? res.day : null;
+
+  if(bestDayName && reqDay === bestDayName){
+    compareBox.innerHTML = `<div class="rdp-doable">✓ Yes — ${reqDay} is doable in ${city}, and it's already the top-ranked day.</div> No adjustment needed.`;
+    return;
+  }
+
+  const tier = rdpSurchargeTier(city, reqDay);
+  const counts = liveCounts[city] || {};
+  const bestCount = bestDayName ? (counts[bestDayName]||0) : 0;
+  const bestTotal = res && !res.none ? res.total : 0;
+  const reqCount = counts[reqDay]||0;
+  const tierClass = tier.tier === 'great' ? 'rdp-tier-great' : tier.tier === 'minor' ? 'rdp-tier-minor' : 'rdp-tier-dedicated';
+
+  compareBox.innerHTML = `
+    <div class="rdp-doable">✓ Yes — ${reqDay} is doable in ${city}.</div>
+    <div class="rdp-compare-grid">
+      <div class="rdp-compare-col">
+        <div class="rdp-cc-label">Top-ranked</div>
+        <div class="rdp-cc-value">${bestDayName || '—'}</div>
+        <div class="rdp-cc-stat">${bestTotal ? bestCount+' of '+bestTotal+' jobs ('+Math.round(bestCount/bestTotal*100)+'%)' : 'no data yet'}</div>
+      </div>
+      <div class="rdp-compare-col">
+        <div class="rdp-cc-label">Client wants</div>
+        <div class="rdp-cc-value">${reqDay}</div>
+        <div class="rdp-cc-stat">${bestTotal ? reqCount+' of '+bestTotal+' jobs ('+Math.round(reqCount/bestTotal*100)+'%)' : 'no data yet'}</div>
+        <div class="rdp-tier-pill ${tierClass}">${tier.label}</div>
+      </div>
+    </div>
+    ${tier.surcharge > 0 ? `
+      <div class="rdp-surcharge">
+        Suggested quote add-on to stay profitable: <span class="rdp-surcharge-amount">+$${tier.surcharge}</span>
+        <div class="rdp-cc-stat" style="margin-top:4px;">Estimate, not measured for this exact city/day — based on the extra drive time a mismatched day has cost on similar routes. Add it into the quote rather than mentioning it as a "day fee."</div>
+      </div>` : `
+      <div class="rdp-surcharge">No add-on needed — this day still has enough existing volume nearby to keep the route efficient.</div>`}`;
+}
+
+function renderRdpWindowCompare(){
+  const box = document.getElementById('rdp-window-compare');
+  if(!box) return;
+  const reqWindow = document.getElementById('rdp-requested-window').value;
+  if(!reqWindow || reqWindow === BEST_WINDOW){
+    box.innerHTML = '';
+    return;
+  }
+  const best = WINDOW_STATS.find(w=>w.window === BEST_WINDOW);
+  const req = WINDOW_STATS.find(w=>w.window === reqWindow);
+  const priceDiff = best.avgPrice - req.avgPrice;
+
+  box.innerHTML = `
+    <div class="rdp-compare">
+      <div class="rdp-doable">✓ Yes — the ${reqWindow} window works.</div>
+      <div class="rdp-compare-grid">
+        <div class="rdp-compare-col">
+          <div class="rdp-cc-label">Best window (${BEST_WINDOW})</div>
+          <div class="rdp-cc-value">$${best.avgPrice.toFixed(0)} avg</div>
+          <div class="rdp-cc-stat">${Math.round(best.marginPct*100)}% margin · ${best.jobs} jobs</div>
+        </div>
+        <div class="rdp-compare-col">
+          <div class="rdp-cc-label">Client wants (${reqWindow})</div>
+          <div class="rdp-cc-value">$${req.avgPrice.toFixed(0)} avg</div>
+          <div class="rdp-cc-stat">${Math.round(req.marginPct*100)}% margin · ${req.jobs} jobs</div>
+        </div>
+      </div>
+      <div class="rdp-cc-stat" style="margin-top:8px;">
+        This window has run about $${Math.abs(priceDiff).toFixed(0)} ${priceDiff>0?'lower':'higher'} on average — that's most likely because of which <em>job types</em> tend to land here (bigger deep cleans cluster late-morning), not a direct cost of the hour itself. Use this as context, not an automatic add-on: still price the job on its own size and scope.
+      </div>
+    </div>`;
+}
+
+function renderRdpLog(){
+  const list = document.getElementById('rdp-log-list');
+  if(!list) return;
+  if(loggedLeads.length === 0){
+    list.innerHTML = '<li class="rdp-empty" style="border:none;">No bookings logged yet.</li>';
+    return;
+  }
+  list.innerHTML = '';
+  loggedLeads.slice().reverse().slice(0, 8).forEach((l, i)=>{
+    const idx = loggedLeads.length - 1 - i;
+    const res = rdpBestDay(l.city);
+    const isMatch = res && !res.none && res.day === l.day;
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <span>${l.name || '(unnamed)'} — ${l.city}, ${l.day}
+        <span class="rdp-badge ${isMatch ? 'rdp-badge-match' : 'rdp-badge-mismatch'}">${isMatch ? 'on established day' : 'off-pattern'}</span>
+        ${l.source === 'quote-won' ? '<span class="rdp-badge" style="background:#EDEEF0;color:#6B6B6B;">from Won quote</span>' : ''}
+      </span>
+      <button class="rdp-remove-btn" data-idx="${idx}">Remove</button>
+    `;
+    list.appendChild(li);
+  });
+  list.querySelectorAll('.rdp-remove-btn').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      const idx = parseInt(e.currentTarget.getAttribute('data-idx'));
+      loggedLeads.splice(idx,1);
+      await saveRdpLeads();
+      recomputeRouteCounts();
+      renderRdpAll();
+    });
+  });
+}
+
+function renderRdpAll(){
+  renderRdpResult();
+  renderRdpCompare();
+  renderRdpWindowCompare();
+  renderRdpLog();
+}
+
+async function loadRdpLeads(){
+  try{
+    const res = await window.storage.get(ROUTE_STORAGE_KEY, true);
+    loggedLeads = res && res.value ? JSON.parse(res.value) : [];
+  }catch(e){
+    loggedLeads = [];
+  }
+}
+
+async function saveRdpLeads(){
+  try{
+    await window.storage.set(ROUTE_STORAGE_KEY, JSON.stringify(loggedLeads), true);
+  }catch(e){
+    console.error('Could not save route planner leads', e);
+  }
+}
+
+function toggleRdpLog(){
+  const section = document.getElementById('rdp-log-section');
+  const toggle = document.getElementById('rdp-log-toggle');
+  const open = section.style.display !== 'none';
+  section.style.display = open ? 'none' : '';
+  toggle.textContent = open ? '+ Log a booking made outside this quote' : '– Hide manual log';
+}
+
+async function confirmRdpManualLog(){
+  const nameEl = document.getElementById('rdp-lead-name');
+  const dayEl = document.getElementById('rdp-lead-day');
+  const statusEl = document.getElementById('rdp-log-status');
+  const city = rdpCurrentCity();
+  if(!city || city === 'Other'){
+    statusEl.textContent = 'Pick a specific city above before logging — "Other" can\'t be tracked yet.';
+    return;
+  }
+  loggedLeads.push({ name: nameEl.value.trim(), city, day: dayEl.value, loggedAt: new Date().toISOString(), source: 'manual' });
+  await saveRdpLeads();
+  recomputeRouteCounts();
+  nameEl.value = '';
+  statusEl.textContent = 'Logged. Recommendations updated above.';
+  renderRdpAll();
+}
+
+async function initRoutePlanner(){
+  await loadRdpLeads();
+  recomputeRouteCounts();
+  renderRdpAll();
+}
+
+document.getElementById('city-select').addEventListener('change', ()=>{
+  document.getElementById('rdp-requested-day').value = '';
+  document.getElementById('rdp-requested-window').value = '';
+  renderRdpAll();
+});
+document.getElementById('rdp-requested-day').addEventListener('change', ()=>{ renderRdpCompare(); renderRdpResult(); });
+document.getElementById('rdp-requested-window').addEventListener('change', ()=>{ renderRdpWindowCompare(); renderRdpResult(); });
+
+initRoutePlanner();
+
 
 // ===== QUOTE TAB LOGIC =====
 
@@ -2529,31 +2961,27 @@ async function setQuoteStatus(status){
   }
 }
 
-// ── Route Day Planner integration — a Won quote logs its city/day into the
-// same shared 'route-planner:logged-leads' storage key the Route Day Planner
-// tool reads, so its recommendations stay current without a separate step. ──
+// ── Route Day Planner integration — a Won quote logs its city/day straight
+// into the same loggedLeads/ROUTE_STORAGE_KEY the embedded planner on the
+// Pricing Calculator tab reads, so its recommendations stay current without
+// a separate step (see the "ROUTE DAY PLANNER" block below). ──
 async function confirmRouteLog(){
   const day = document.getElementById('sc-route-log-day').value;
   const logStatus = document.getElementById('sc-route-log-status');
-  const ROUTE_STORAGE_KEY = 'route-planner:logged-leads';
   try{
-    let leads = [];
-    try{
-      const res = await window.storage.get(ROUTE_STORAGE_KEY, true);
-      leads = res && res.value ? JSON.parse(res.value) : [];
-    }catch(e){ leads = []; }
-    leads.push({
+    loggedLeads.push({
       name: currentQuote.clientName || '(unnamed)',
       city: currentQuote.city,
       day,
       loggedAt: new Date().toISOString(),
       source: 'quote-won',
     });
-    await window.storage.set(ROUTE_STORAGE_KEY, JSON.stringify(leads), true);
+    await saveRdpLeads();
+    recomputeRouteCounts();
     document.getElementById('sc-route-log-row').style.display = 'none';
     logStatus.textContent = `Logged ${currentQuote.city}, ${day} to the Route Day Planner.`;
   }catch(e){
-    logStatus.textContent = 'Could not log this booking — try again from the Route Day Planner tool.';
+    logStatus.textContent = 'Could not log this booking — try again from the Pricing Calculator tab.';
   }
 }
 
