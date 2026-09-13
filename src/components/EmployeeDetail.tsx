@@ -15,6 +15,7 @@ import PairingPanel from "@/components/PairingPanel";
 import PromotionPanel, { type PromotionAssessmentRow } from "@/components/PromotionPanel";
 import MilestonePanel, { type MilestoneTimelineEntryView } from "@/components/MilestonePanel";
 import EmployeeSummaryCard from "@/components/EmployeeSummaryCard";
+import PersonnelActionFormPanel, { type PafRow } from "@/components/PersonnelActionFormPanel";
 import { getCurrentPairForEmployee, getPairHistoryForEmployee, getPairingCandidates } from "@/lib/pairing";
 import { buildMilestoneTimeline } from "@/lib/milestones";
 import { serializePromotionAssessmentForRole, type ReadinessIndicatorValue } from "@/lib/promotions";
@@ -127,6 +128,30 @@ export async function loadEmployeeDetail(userId: string) {
       }))
     : [];
 
+  const pafRows = await prisma.personnelActionForm.findMany({
+    where: { employeeId: userId },
+    include: { createdBy: { select: { name: true } }, approvedBy: { select: { name: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+  const pafs = pafRows.map((p) => ({
+    id: p.id,
+    actionType: p.actionType,
+    effectiveDate: p.effectiveDate.toISOString(),
+    priorTitle: p.priorTitle,
+    newTitle: p.newTitle,
+    priorPay: p.priorPay,
+    newPay: p.newPay,
+    priorDepartment: p.priorDepartment,
+    newDepartment: p.newDepartment,
+    reason: p.reason,
+    linkedAssessmentId: p.linkedAssessmentId,
+    status: p.status,
+    createdByName: p.createdBy.name,
+    approvedByName: p.approvedBy?.name ?? null,
+    approvedAt: p.approvedAt ? p.approvedAt.toISOString() : null,
+    createdAt: p.createdAt.toISOString(),
+  }));
+
   return {
     user,
     modules,
@@ -142,6 +167,7 @@ export async function loadEmployeeDetail(userId: string) {
     promotionAssessments,
     milestoneTimeline,
     recentSeriousAttendanceCount,
+    pafs,
   };
 }
 
@@ -173,6 +199,7 @@ export function EmployeeDetailView({
     promotionAssessments,
     milestoneTimeline,
     recentSeriousAttendanceCount,
+    pafs,
   } = data;
 
   const visiblePromotionAssessments = promotionAssessments.map((a) =>
@@ -287,6 +314,13 @@ export function EmployeeDetailView({
             assessments={visiblePromotionAssessments}
             canSetPayDifferential={viewerRole === "ADMIN"}
           />
+        </section>
+      )}
+
+      {showHrTools && (
+        <section>
+          <h2 className="mb-3 text-lg font-medium">Personnel Action Forms</h2>
+          <PersonnelActionFormPanel employeeId={user.id} pafs={pafs} canManage={viewerRole === "ADMIN"} />
         </section>
       )}
 

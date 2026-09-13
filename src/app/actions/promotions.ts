@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { TARGET_ROLE_LABELS } from "@/lib/promotions";
 import type { PromotionTargetRole, PromotionDecision } from "@prisma/client";
 
 export interface PromotionAssessmentState {
@@ -76,7 +77,7 @@ export async function createPromotionAssessmentAction(
     }
   }
 
-  await prisma.promotionAssessment.create({
+  const assessment = await prisma.promotionAssessment.create({
     data: {
       employeeId,
       targetRole,
@@ -88,6 +89,27 @@ export async function createPromotionAssessmentAction(
       assessedById: session.sub,
     },
   });
+
+  // A "Promote" decision auto-generates a linked draft PAF — the assessment
+  // is the evaluation, the PAF is the execution record that actually
+  // authorizes payroll to act. This app doesn't track a base pay rate, so
+  // newPay is left for whoever approves the PAF to fill in; the approved
+  // differential (if any) is preserved in the reason text either way.
+  if (decision === "PROMOTE") {
+    await prisma.personnelActionForm.create({
+      data: {
+        employeeId,
+        actionType: "PROMOTION",
+        effectiveDate: new Date(),
+        newTitle: TARGET_ROLE_LABELS[targetRole],
+        reason:
+          `Auto-generated from a Promote decision on a Promotion Assessment.` +
+          (payDifferential !== null ? ` Approved pay differential: +$${payDifferential.toFixed(2)}/hr.` : ""),
+        linkedAssessmentId: assessment.id,
+        createdById: session.sub,
+      },
+    });
+  }
 
   revalidateEmployeeViews(employeeId);
   return { success: true };

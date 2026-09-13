@@ -132,6 +132,10 @@ model User {
   milestoneReviews       MilestoneReview[] @relation("MilestoneReviewEmployee")
   milestoneReviewsMade   MilestoneReview[] @relation("MilestoneReviewReviewedBy")
 
+  pafsAsEmployee PersonnelActionForm[] @relation("PafEmployee")
+  pafsCreated    PersonnelActionForm[] @relation("PafCreatedBy")
+  pafsApproved   PersonnelActionForm[] @relation("PafApprovedBy")
+
   @@index([role])
 }
 
@@ -902,6 +906,8 @@ model PromotionAssessment {
   assessedAt           DateTime           @default(now())
   createdAt           DateTime            @default(now())
 
+  linkedPaf PersonnelActionForm?
+
   @@index([employeeId])
 }
 
@@ -932,4 +938,54 @@ model MilestoneReview {
   updatedAt    DateTime            @updatedAt
 
   @@unique([employeeId, checkpoint])
+}
+
+// ── Personnel Action Form (PAF) ──
+// The execution record for pay changes, transfers, title changes, and
+// terminations — distinct from PromotionAssessment (the evaluation: "did
+// they earn it, what's the evidence") in that a PAF is "what changed,
+// effective when, approved by whom." Deciding a PromotionAssessment
+// "Promote" auto-generates a linked draft PAF; a PAF can also stand alone
+// for actions that never went through an assessment. Creating/approving a
+// PAF is ADMIN-only — the record that actually authorizes payroll to act.
+enum PafActionType {
+  PROMOTION
+  PAY_CHANGE
+  TRANSFER
+  TITLE_CHANGE
+  TERMINATION
+  OTHER
+}
+
+enum PafStatus {
+  DRAFT
+  APPROVED
+  EXECUTED
+}
+
+model PersonnelActionForm {
+  id                 String               @id @default(cuid())
+  employeeId         String
+  employee           User                 @relation("PafEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  actionType         PafActionType
+  effectiveDate      DateTime
+  priorTitle         String?
+  newTitle           String?
+  priorPay           Float?
+  newPay             Float?
+  priorDepartment    String?
+  newDepartment      String?
+  reason             String?              @db.Text
+  linkedAssessmentId String?              @unique
+  linkedAssessment   PromotionAssessment? @relation(fields: [linkedAssessmentId], references: [id], onDelete: SetNull)
+  status             PafStatus            @default(DRAFT)
+  createdById        String
+  createdBy          User                 @relation("PafCreatedBy", fields: [createdById], references: [id])
+  approvedById       String?
+  approvedBy         User?                @relation("PafApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt         DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  @@index([employeeId])
 }
