@@ -16,6 +16,7 @@ import PromotionPanel, { type PromotionAssessmentRow } from "@/components/Promot
 import MilestonePanel, { type MilestoneTimelineEntryView } from "@/components/MilestonePanel";
 import EmployeeSummaryCard from "@/components/EmployeeSummaryCard";
 import PersonnelActionFormPanel, { type PafRow } from "@/components/PersonnelActionFormPanel";
+import DeparturePanel from "@/components/DeparturePanel";
 import { getCurrentPairForEmployee, getPairHistoryForEmployee, getPairingCandidates } from "@/lib/pairing";
 import { buildMilestoneTimeline } from "@/lib/milestones";
 import { serializePromotionAssessmentForRole, type ReadinessIndicatorValue } from "@/lib/promotions";
@@ -26,6 +27,7 @@ export async function loadEmployeeDetail(userId: string) {
     include: {
       certRecommendedBy: { select: { name: true } },
       certDecidedBy: { select: { name: true } },
+      departureRecordedBy: { select: { name: true } },
     },
   });
   if (!user) return null;
@@ -341,6 +343,19 @@ export function EmployeeDetailView({
             userId={user.id}
             active={user.active}
             mustSetPassword={user.mustSetPassword}
+            hasBeenInvited={user.inviteToken !== null || !user.mustSetPassword}
+          />
+        </section>
+      )}
+
+      {showHrTools && (
+        <section>
+          <DeparturePanel
+            employeeId={user.id}
+            lastDay={user.lastDay ? user.lastDay.toISOString() : null}
+            departureReason={user.departureReason}
+            departureRecordedByName={user.departureRecordedBy?.name ?? null}
+            canManage={viewerRole === "ADMIN" || viewerRole === "SERVICE_MANAGER"}
           />
         </section>
       )}

@@ -48,9 +48,20 @@ export default function InviteForm() {
             <option value="TRAINER">Trainer / Field Supervisor</option>
           </select>
         </div>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="sendInviteNow" defaultChecked className="h-4 w-4" />
+          Send the invite link now (uncheck to just add them to the roster and invite later)
+        </label>
         {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
         <SubmitButton />
       </form>
+
+      {state?.addedWithoutInvite && (
+        <div className="rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+          Added to the roster. They can&apos;t log in yet — use &quot;Send Invite&quot; on their
+          profile whenever you&apos;re ready.
+        </div>
+      )}
 
       {state?.inviteUrl && (
         <div className="rounded-md border border-green-200 bg-green-50 p-4 text-sm">

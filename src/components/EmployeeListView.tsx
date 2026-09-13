@@ -7,11 +7,13 @@ import type { EmployeeSummaries } from "@/components/EmployeeList";
 export type StatusFilter =
   | "ALL"
   | "ACTIVE"
+  | "NOT_YET_INVITED"
   | "INVITE_PENDING"
   | "PENDING_CERT"
   | "CERTIFIED"
   | "COMPLETED_ALL"
-  | "DEACTIVATED";
+  | "DEACTIVATED"
+  | "DEPARTED";
 
 function onboardingDayBadge(createdAt: Date, active: boolean, mustSetPassword: boolean, certified: boolean) {
   if (!active || mustSetPassword || certified) return null;
@@ -50,8 +52,10 @@ export function EmployeeListView({
       switch (status) {
         case "ACTIVE":
           return u.active && !u.mustSetPassword && u.certificationStatus !== "CERTIFIED";
+        case "NOT_YET_INVITED":
+          return u.active && u.mustSetPassword && !u.inviteToken;
         case "INVITE_PENDING":
-          return u.active && u.mustSetPassword;
+          return u.active && u.mustSetPassword && !!u.inviteToken;
         case "PENDING_CERT":
           return u.certificationStatus === "PENDING";
         case "CERTIFIED":
@@ -59,7 +63,9 @@ export function EmployeeListView({
         case "COMPLETED_ALL":
           return totalModules > 0 && u.progress.length === totalModules;
         case "DEACTIVATED":
-          return !u.active;
+          return !u.active && !u.lastDay;
+        case "DEPARTED":
+          return !!u.lastDay;
         default:
           return true;
       }
@@ -83,11 +89,13 @@ export function EmployeeListView({
         >
           <option value="ALL">All statuses</option>
           <option value="ACTIVE">Active / In training</option>
+          <option value="NOT_YET_INVITED">Not yet invited</option>
           <option value="INVITE_PENDING">Invite pending</option>
           <option value="PENDING_CERT">Pending certification review</option>
           <option value="CERTIFIED">Certified</option>
           <option value="COMPLETED_ALL">Completed all training</option>
           <option value="DEACTIVATED">Deactivated</option>
+          <option value="DEPARTED">Departed</option>
         </select>
       </div>
 
@@ -106,8 +114,14 @@ export function EmployeeListView({
             <div className={u.active ? "" : "opacity-50"}>
               <p className="font-medium">{u.name}</p>
               <p className="text-xs text-neutral-500">{u.email}</p>
-              {!u.active && <p className="mt-1 text-xs font-medium text-red-600">Deactivated</p>}
-              {u.active && u.mustSetPassword && (
+              {u.lastDay && <p className="mt-1 text-xs font-medium text-red-600">Departed</p>}
+              {!u.active && !u.lastDay && (
+                <p className="mt-1 text-xs font-medium text-red-600">Deactivated</p>
+              )}
+              {u.active && u.mustSetPassword && !u.inviteToken && (
+                <p className="mt-1 text-xs font-medium text-blue-600">Not yet invited</p>
+              )}
+              {u.active && u.mustSetPassword && u.inviteToken && (
                 <p className="mt-1 text-xs font-medium text-amber-600">Invite pending</p>
               )}
             </div>

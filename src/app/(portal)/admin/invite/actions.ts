@@ -10,6 +10,7 @@ import { assignDefaultOnboardingDocuments } from "@/lib/onboarding";
 export interface InviteState {
   error?: string;
   inviteUrl?: string;
+  addedWithoutInvite?: boolean;
 }
 
 export async function inviteAction(
@@ -26,6 +27,11 @@ export async function inviteAction(
     .toLowerCase();
   const name = String(formData.get("name") ?? "").trim();
   const role = String(formData.get("role") ?? "TRAINEE") as "TRAINEE" | "TRAINER";
+  // Unchecked checkboxes submit nothing at all (not "off"), so presence is
+  // the signal. Unchecked = add them to the roster now, send the actual
+  // invite link later (e.g. once they've completed paperwork) via "Send
+  // Invite" on their profile.
+  const sendInviteNow = formData.get("sendInviteNow") !== null;
 
   if (!email || !name) {
     return { error: "Name and email are required." };
@@ -36,20 +42,24 @@ export async function inviteAction(
     return { error: "An account with this email already exists." };
   }
 
-  const inviteToken = generateInviteToken();
+  const inviteToken = sendInviteNow ? generateInviteToken() : null;
   const newUser = await prisma.user.create({
     data: {
       email,
       name,
       role,
       inviteToken,
-      inviteExpiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
+      inviteExpiresAt: sendInviteNow ? new Date(Date.now() + 1000 * 60 * 60 * 24 * 7) : null,
       invitedBy: session.sub,
     },
   });
   if (role === "TRAINEE") await assignDefaultOnboardingDocuments(newUser.id);
 
   revalidatePath("/admin/employees");
+
+  if (!sendInviteNow) {
+    return { addedWithoutInvite: true };
+  }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   return { inviteUrl: `${appUrl}/invite/${inviteToken}` };

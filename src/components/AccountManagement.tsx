@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { resetPasswordAction, setAccountActiveAction, ResetPasswordState } from "@/app/actions/account";
 
-function ResetButton() {
+function ResetButton({ label }: { label: string }) {
   const { pending } = useFormStatus();
   return (
     <button
@@ -12,7 +12,7 @@ function ResetButton() {
       disabled={pending}
       className="rounded-md bg-neutral-800 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-900 disabled:opacity-60"
     >
-      {pending ? "..." : "Reset Password"}
+      {pending ? "..." : label}
     </button>
   );
 }
@@ -21,22 +21,32 @@ export default function AccountManagement({
   userId,
   active,
   mustSetPassword,
+  hasBeenInvited = true,
 }: {
   userId: string;
   active: boolean;
   mustSetPassword: boolean;
+  hasBeenInvited?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [copied, setCopied] = useState(false);
   const action = resetPasswordAction.bind(null, userId);
   const [state, formAction] = useFormState<ResetPasswordState, FormData>(action, {});
 
-  const statusLabel = !active ? "Deactivated" : mustSetPassword ? "Invite Pending" : "Active";
+  const notYetInvited = mustSetPassword && !hasBeenInvited;
+  const statusLabel = !active
+    ? "Deactivated"
+    : notYetInvited
+      ? "Not Yet Invited"
+      : mustSetPassword
+        ? "Invite Pending"
+        : "Active";
   const statusColor = !active
     ? "bg-red-100 text-red-700"
     : mustSetPassword
       ? "bg-amber-100 text-amber-700"
       : "bg-green-100 text-green-700";
+  const resetButtonLabel = notYetInvited ? "Send Invite" : mustSetPassword ? "Resend Invite" : "Reset Password";
 
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -49,7 +59,7 @@ export default function AccountManagement({
 
       <div className="flex flex-wrap items-center gap-3">
         <form action={formAction}>
-          <ResetButton />
+          <ResetButton label={resetButtonLabel} />
         </form>
 
         <button

@@ -86,6 +86,16 @@ model User {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
+  // Departed is a distinct, HR-recorded roster status — not the same as a
+  // plain `active=false` deactivation (which just revokes login access for
+  // any reason). Marking someone departed also sets active=false; a rehire
+  // clears these three fields and reactivates the account.
+  lastDay               DateTime?
+  departureReason       String?   @db.Text
+  departureRecordedById String?
+  departureRecordedBy   User?     @relation("DepartureRecordedBy", fields: [departureRecordedById], references: [id], onDelete: SetNull)
+  departuresRecorded    User[]    @relation("DepartureRecordedBy")
+
   progress       ModuleProgress[]
   lessonProgress LessonProgress[]
   quizAttempts   QuizAttempt[]
