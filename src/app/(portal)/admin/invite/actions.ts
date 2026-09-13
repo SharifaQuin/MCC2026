@@ -6,6 +6,7 @@ import { getSession } from "@/lib/session";
 import { generateInviteToken } from "@/lib/tokens";
 import { isAdminOrServiceManager } from "@/lib/session";
 import { assignDefaultOnboardingDocuments } from "@/lib/onboarding";
+import { generateNextEmployeeId } from "@/lib/employeeId";
 
 export interface InviteState {
   error?: string;
@@ -43,8 +44,10 @@ export async function inviteAction(
   }
 
   const inviteToken = sendInviteNow ? generateInviteToken() : null;
+  const employeeId = await generateNextEmployeeId();
   const newUser = await prisma.user.create({
     data: {
+      employeeId,
       email,
       name,
       role,

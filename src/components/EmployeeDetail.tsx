@@ -240,7 +240,10 @@ export function EmployeeDetailView({
     <div className="space-y-10">
       <div>
         <h1 className="text-2xl font-semibold">{user.name}</h1>
-        <p className="text-sm text-neutral-500">{user.email}</p>
+        <p className="text-sm text-neutral-500">
+          {user.email}
+          {user.employeeId && <span className="ml-2 text-neutral-400">· {user.employeeId}</span>}
+        </p>
       </div>
 
       {showHrTools && (

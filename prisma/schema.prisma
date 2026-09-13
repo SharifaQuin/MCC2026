@@ -66,6 +66,10 @@ enum CertificationStatus {
 
 model User {
   id               String    @id @default(cuid())
+  // Human-facing identifier ("MCC-0001"), distinct from the internal cuid
+  // `id` — assigned once at account creation from a Postgres sequence
+  // (see the employee_id_seq migration), never reused or renumbered.
+  employeeId       String?   @unique
   email            String    @unique
   name             String
   role             Role      @default(TRAINEE)

@@ -43,7 +43,7 @@ export async function getStaffDirectory() {
   const staff = await prisma.user.findMany({
     where: { role: { in: STAFF_ROLES }, active: true },
     orderBy: { name: "asc" },
-    select: { id: true, name: true, email: true, role: true, hireDate: true },
+    select: { id: true, employeeId: true, name: true, email: true, role: true, hireDate: true },
   });
 
   const since = new Date(Date.now() - COMPLAINT_WINDOW_DAYS * 24 * 60 * 60 * 1000);
@@ -62,6 +62,7 @@ export async function getStaffDirectory() {
 
   return staff.map((s) => ({
     id: s.id,
+    employeeId: s.employeeId,
     name: s.name,
     email: s.email,
     role: s.role,

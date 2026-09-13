@@ -113,7 +113,10 @@ export function EmployeeListView({
           >
             <div className={u.active ? "" : "opacity-50"}>
               <p className="font-medium">{u.name}</p>
-              <p className="text-xs text-neutral-500">{u.email}</p>
+              <p className="text-xs text-neutral-500">
+                {u.email}
+                {u.employeeId && <span className="ml-2 text-neutral-400">· {u.employeeId}</span>}
+              </p>
               {u.lastDay && <p className="mt-1 text-xs font-medium text-red-600">Departed</p>}
               {!u.active && !u.lastDay && (
                 <p className="mt-1 text-xs font-medium text-red-600">Deactivated</p>

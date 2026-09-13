@@ -6,6 +6,7 @@ import { getSession } from "@/lib/session";
 import { generateInviteToken } from "@/lib/tokens";
 import { isAdminOrServiceManager } from "@/lib/session";
 import { assignDefaultOnboardingDocuments } from "@/lib/onboarding";
+import { generateNextEmployeeId } from "@/lib/employeeId";
 
 export interface BulkInviteResult {
   name: string;
@@ -79,8 +80,10 @@ export async function bulkInviteAction(
     }
 
     const inviteToken = generateInviteToken();
+    const employeeId = await generateNextEmployeeId();
     const newUser = await prisma.user.create({
       data: {
+        employeeId,
         email,
         name,
         role,

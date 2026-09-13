@@ -79,6 +79,7 @@ export default async function StaffDashboardPage() {
             <thead className="border-b border-neutral-200 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
               <tr>
                 <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Employee ID</th>
                 <th className="px-4 py-3">Role</th>
                 <th className="px-4 py-3">Years of Service</th>
                 <th className="px-4 py-3">Flags</th>
@@ -96,6 +97,7 @@ export default async function StaffDashboardPage() {
                     </Link>
                     <p className="text-xs text-neutral-500">{s.email}</p>
                   </td>
+                  <td className="px-4 py-3 text-neutral-600">{s.employeeId ?? "—"}</td>
                   <td className="px-4 py-3 text-neutral-600">{ROLE_LABELS[s.role] ?? s.role}</td>
                   <td className="px-4 py-3 text-neutral-600">
                     {s.hireDate ? yearsOfService(new Date(s.hireDate)) : "—"}

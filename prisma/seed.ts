@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import fs from "node:fs";
 import path from "node:path";
 import { hashPassword } from "../src/lib/password";
+import { generateNextEmployeeId } from "../src/lib/employeeId";
 
 const prisma = new PrismaClient();
 
@@ -51,8 +52,10 @@ async function seedAdmin() {
   }
 
   const passwordHash = await hashPassword(password);
+  const employeeId = await generateNextEmployeeId();
   await prisma.user.create({
     data: {
+      employeeId,
       email,
       name,
       role: "ADMIN",

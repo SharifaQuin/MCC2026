@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { ApplicantStage } from "@prisma/client";
 import { sendEmail } from "@/lib/email";
 import { generateInviteToken } from "@/lib/tokens";
+import { generateNextEmployeeId } from "@/lib/employeeId";
 import { createCalendarEvent } from "@/lib/calendar";
 import { formatInBusinessTimezone } from "@/lib/timezone";
 
@@ -231,8 +232,10 @@ export async function createEmployeeAccountForHiredApplicant(
   }
 
   const inviteToken = generateInviteToken();
+  const employeeId = await generateNextEmployeeId();
   const user = await prisma.user.create({
     data: {
+      employeeId,
       email: applicant.email,
       name: `${applicant.firstName} ${applicant.lastName}`,
       role: "TRAINEE",
