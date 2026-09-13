@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { Role } from "@prisma/client";
 import { COMPLAINT_WINDOW_DAYS } from "@/lib/hr";
 
-const STAFF_ROLES: Role[] = ["TRAINEE", "TRAINER", "SERVICE_MANAGER"];
+export const STAFF_ROLES: Role[] = ["TRAINEE", "TRAINER", "SERVICE_MANAGER"];
 
 function nextAnniversary(hireDate: Date, from: Date): Date {
   const next = new Date(from.getFullYear(), hireDate.getMonth(), hireDate.getDate());

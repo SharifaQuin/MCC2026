@@ -122,6 +122,16 @@ model User {
   weeklyUpdatesCreated  WeeklyUpdate[] @relation("WeeklyUpdateCreatedBy")
   weeklyUpdatesApproved WeeklyUpdate[] @relation("WeeklyUpdateApprovedBy")
 
+  pairsAsLead      Pair[] @relation("PairLead")
+  pairsAsAssistant Pair[] @relation("PairAssistant")
+  pairsCreated     Pair[] @relation("PairCreatedBy")
+
+  promotionAssessments       PromotionAssessment[] @relation("PromotionAssessmentEmployee")
+  promotionAssessmentsMade   PromotionAssessment[] @relation("PromotionAssessmentAssessedBy")
+
+  milestoneReviews       MilestoneReview[] @relation("MilestoneReviewEmployee")
+  milestoneReviewsMade   MilestoneReview[] @relation("MilestoneReviewReviewedBy")
+
   @@index([role])
 }
 
@@ -514,6 +524,7 @@ enum AttendanceEventKind {
   TARDY
   ABSENCE
   NO_CALL_NO_SHOW
+  SENT_HOME
 }
 
 enum AttendanceReasonCategory {
@@ -825,4 +836,100 @@ model WeeklyUpdate {
   updatedAt            DateTime           @updatedAt
 
   @@unique([weekOf])
+}
+
+// ── HR Phase 1: Pair / Promotion / Milestone foundation ──
+// A Field Team pairing: one Lead + one Assistant. Changing a pair logs a new
+// row and closes out the old one (endDate + active:false) rather than
+// overwriting it — HR needs pairing history, not just current state. At most
+// one active pair per leadId and per assistantId is enforced with a partial
+// unique index (see migration.sql), matching the "exactly one partner at a
+// time" rule.
+model Pair {
+  id          String    @id @default(cuid())
+  leadId      String
+  lead        User      @relation("PairLead", fields: [leadId], references: [id], onDelete: Cascade)
+  assistantId String
+  assistant   User      @relation("PairAssistant", fields: [assistantId], references: [id], onDelete: Cascade)
+  startDate   DateTime
+  endDate     DateTime?
+  active      Boolean   @default(true)
+  createdById String
+  createdBy   User      @relation("PairCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+
+  @@index([leadId])
+  @@index([assistantId])
+}
+
+enum PromotionTargetRole {
+  ASSISTANT
+  LEAD
+  TRAINER
+}
+
+enum PromotionDecision {
+  PROMOTE
+  DEVELOP
+  STAY
+  ADDRESS
+}
+
+// Structured, queryable promotion pathway data (Assistant -> Lead -> Trainer)
+// replacing what used to live only in Word documents. readinessIndicators is
+// a JSON array of {label, met} pairs — the specific indicator text is a
+// judgment call that will likely get revised after the first few promotions,
+// so it's kept as editable app-config content (see READINESS_INDICATORS_BY_ROLE
+// in src/lib/promotions.ts), not baked into separate DB columns.
+// payDifferential is ADMIN-only — SERVICE_MANAGER should never see or set it
+// even though the rest of the record is visible to them; enforced in the
+// server action and stripped by serializePromotionAssessmentForRole before
+// ever reaching a SERVICE_MANAGER's page. A CHECK constraint (see
+// migration.sql) enforces that a DEVELOP decision always carries a
+// development plan and a reassessment date.
+model PromotionAssessment {
+  id                  String              @id @default(cuid())
+  employeeId          String
+  employee            User               @relation("PromotionAssessmentEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  targetRole          PromotionTargetRole
+  readinessIndicators Json
+  decision            PromotionDecision
+  developmentPlan     String?             @db.Text
+  reassessmentDate    DateTime?
+  payDifferential     Float?
+  assessedById        String
+  assessedBy          User                @relation("PromotionAssessmentAssessedBy", fields: [assessedById], references: [id])
+  assessedAt           DateTime           @default(now())
+  createdAt           DateTime            @default(now())
+
+  @@index([employeeId])
+}
+
+enum MilestoneCheckpoint {
+  DAY_30
+  DAY_60
+  DAY_90
+}
+
+// 30/60/90-day milestone reviews. Due date is never stored — it's always
+// computed at read time from the employee's real User.startDate (see
+// getMilestoneDueDate in src/lib/milestones.ts), since a manually-typed
+// tenure field is exactly what caused confusion in MCC's old spreadsheet.
+// A row only exists once a review has actually been started/completed;
+// "not started yet" for a checkpoint that's already due is computed by
+// the absence of a row, not a stored status.
+model MilestoneReview {
+  id           String              @id @default(cuid())
+  employeeId   String
+  employee     User                @relation("MilestoneReviewEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  checkpoint   MilestoneCheckpoint
+  completedAt  DateTime?
+  score        Int?
+  notes        String?             @db.Text
+  reviewedById String?
+  reviewedBy   User?               @relation("MilestoneReviewReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@unique([employeeId, checkpoint])
 }

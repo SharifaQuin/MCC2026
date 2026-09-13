@@ -10,7 +10,7 @@ import {
 
 export interface AttendanceEventRow {
   id: string;
-  kind: "TARDY" | "ABSENCE" | "NO_CALL_NO_SHOW";
+  kind: "TARDY" | "ABSENCE" | "NO_CALL_NO_SHOW" | "SENT_HOME";
   reasonCategory: "ILLNESS" | "EMERGENCY" | "FAMILY_EMERGENCY" | "TRANSPORTATION" | "OTHER" | null;
   eventDate: string;
   notes: string | null;
@@ -21,12 +21,14 @@ const KIND_LABELS: Record<AttendanceEventRow["kind"], string> = {
   TARDY: "Tardy",
   ABSENCE: "Absence",
   NO_CALL_NO_SHOW: "No-Call, No-Show",
+  SENT_HOME: "Sent Home",
 };
 
 const KIND_STYLES: Record<AttendanceEventRow["kind"], string> = {
   TARDY: "bg-amber-100 text-amber-700",
   ABSENCE: "bg-orange-100 text-orange-700",
   NO_CALL_NO_SHOW: "bg-red-100 text-red-700",
+  SENT_HOME: "bg-red-100 text-red-700",
 };
 
 const REASON_LABELS: Record<NonNullable<AttendanceEventRow["reasonCategory"]>, string> = {
@@ -71,6 +73,7 @@ function LogEventForm({ employeeId, onClose }: { employeeId: string; onClose: ()
             <option value="TARDY">Tardy</option>
             <option value="ABSENCE">Absence</option>
             <option value="NO_CALL_NO_SHOW">No-Call, No-Show</option>
+            <option value="SENT_HOME">Sent Home</option>
           </select>
         </div>
         <div>

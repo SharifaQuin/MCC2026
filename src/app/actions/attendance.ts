@@ -22,7 +22,7 @@ function revalidateEmployeeViews(employeeId: string) {
   revalidatePath("/admin");
 }
 
-const VALID_KINDS = new Set(["TARDY", "ABSENCE", "NO_CALL_NO_SHOW"]);
+const VALID_KINDS = new Set(["TARDY", "ABSENCE", "NO_CALL_NO_SHOW", "SENT_HOME"]);
 const VALID_REASONS = new Set(["ILLNESS", "EMERGENCY", "FAMILY_EMERGENCY", "TRANSPORTATION", "OTHER"]);
 
 export async function createAttendanceEventAction(
@@ -38,7 +38,9 @@ export async function createAttendanceEventAction(
   }
 
   const kindRaw = String(formData.get("kind") ?? "");
-  const kind = VALID_KINDS.has(kindRaw) ? (kindRaw as "TARDY" | "ABSENCE" | "NO_CALL_NO_SHOW") : null;
+  const kind = VALID_KINDS.has(kindRaw)
+    ? (kindRaw as "TARDY" | "ABSENCE" | "NO_CALL_NO_SHOW" | "SENT_HOME")
+    : null;
   const reasonRaw = String(formData.get("reasonCategory") ?? "");
   const reasonCategory = VALID_REASONS.has(reasonRaw)
     ? (reasonRaw as "ILLNESS" | "EMERGENCY" | "FAMILY_EMERGENCY" | "TRANSPORTATION" | "OTHER")
