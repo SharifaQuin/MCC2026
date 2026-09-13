@@ -14,6 +14,7 @@ import HireDateForm from "@/components/HireDateForm";
 import PairingPanel from "@/components/PairingPanel";
 import PromotionPanel, { type PromotionAssessmentRow } from "@/components/PromotionPanel";
 import MilestonePanel, { type MilestoneTimelineEntryView } from "@/components/MilestonePanel";
+import EmployeeSummaryCard from "@/components/EmployeeSummaryCard";
 import { getCurrentPairForEmployee, getPairHistoryForEmployee, getPairingCandidates } from "@/lib/pairing";
 import { buildMilestoneTimeline } from "@/lib/milestones";
 import { serializePromotionAssessmentForRole, type ReadinessIndicatorValue } from "@/lib/promotions";
@@ -78,6 +79,11 @@ export async function loadEmployeeDetail(userId: string) {
 
   const payrollEntries = await getEmployeePayrollEntries(userId);
 
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const recentSeriousAttendanceCount = attendanceRows.filter(
+    (e) => (e.kind === "NO_CALL_NO_SHOW" || e.kind === "SENT_HOME") && e.eventDate >= thirtyDaysAgo
+  ).length;
+
   const [currentPair, pairHistory, pairingCandidates] = await Promise.all([
     getCurrentPairForEmployee(userId),
     getPairHistoryForEmployee(userId),
@@ -135,6 +141,7 @@ export async function loadEmployeeDetail(userId: string) {
     pairingCandidates,
     promotionAssessments,
     milestoneTimeline,
+    recentSeriousAttendanceCount,
   };
 }
 
@@ -165,6 +172,7 @@ export function EmployeeDetailView({
     pairingCandidates,
     promotionAssessments,
     milestoneTimeline,
+    recentSeriousAttendanceCount,
   } = data;
 
   const visiblePromotionAssessments = promotionAssessments.map((a) =>
@@ -177,6 +185,26 @@ export function EmployeeDetailView({
         <h1 className="text-2xl font-semibold">{user.name}</h1>
         <p className="text-sm text-neutral-500">{user.email}</p>
       </div>
+
+      {showHrTools && (
+        <EmployeeSummaryCard
+          currentPair={
+            currentPair ? { role: currentPair.role, partnerName: currentPair.partner.name } : null
+          }
+          latestPromotion={
+            promotionAssessments[0]
+              ? {
+                  targetRole: promotionAssessments[0].targetRole,
+                  decision: promotionAssessments[0].decision,
+                  assessedAt: promotionAssessments[0].assessedAt,
+                }
+              : null
+          }
+          milestoneStatuses={milestoneTimeline.map((m) => m.status)}
+          validComplaintCount={validComplaintCount}
+          recentSeriousAttendanceCount={recentSeriousAttendanceCount}
+        />
+      )}
 
       {user.role === "TRAINEE" && onboardingDocs.length > 0 && (
         <section>
