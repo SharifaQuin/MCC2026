@@ -107,6 +107,22 @@ export default async function NewApplicantPage({
           <ResumeUpload required={false} />
 
           <div>
+            <label className="mb-1 block text-sm font-medium text-neutral-700">Source</label>
+            <select
+              name="source"
+              defaultValue="REFERRAL"
+              className="w-full rounded-md border border-neutral-300 px-3 py-2"
+            >
+              <option value="REFERRAL">Referral</option>
+              <option value="WALK_IN">Walk-in</option>
+              <option value="INDEED">Indeed</option>
+              <option value="ZIPRECRUITER">ZipRecruiter</option>
+              <option value="CAREERS_PAGE">Careers Page</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </div>
+
+          <div>
             <label className="mb-1 block text-sm font-medium text-neutral-700">
               Notes (optional)
             </label>

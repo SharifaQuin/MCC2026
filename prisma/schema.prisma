@@ -54,6 +54,15 @@ enum ApplicantStage {
   BENCH
 }
 
+enum ApplicantSource {
+  CAREERS_PAGE
+  INDEED
+  ZIPRECRUITER
+  REFERRAL
+  WALK_IN
+  OTHER
+}
+
 // Tracks an employee's path from Trainee to certified Technician: a Trainer
 // recommends once the 3-day field training is done, then a Manager/Admin
 // makes the final call.
@@ -383,16 +392,21 @@ model PrescreenOption {
 // lesson photos are (a base64 data URI directly on the row) since the app
 // has no separate file/blob storage.
 model Applicant {
-  id             String         @id @default(cuid())
+  id             String          @id @default(cuid())
   jobPostingId   String
-  jobPosting     JobPosting     @relation(fields: [jobPostingId], references: [id])
+  jobPosting     JobPosting      @relation(fields: [jobPostingId], references: [id])
   firstName      String
   lastName       String
   email          String
   phone          String
-  resumeDataUrl  String?        @db.Text
+  resumeDataUrl  String?         @db.Text
   resumeFileName String?
-  stage          ApplicantStage @default(NEW)
+  stage          ApplicantStage  @default(NEW)
+  // Where this applicant came from — CAREERS_PAGE by default for the public
+  // /apply/[slug] form, overridden by a ?src= query param on job-board
+  // postings that link there (see parseApplicantSource), or picked
+  // explicitly on the manual "add applicant" form.
+  source         ApplicantSource @default(OTHER)
   prescreenScore    Int?
   prescreenMaxScore Int?
   prescreenPassed   Boolean?

@@ -15,7 +15,7 @@ export default async function ApplyPage({
   searchParams,
 }: {
   params: { slug: string };
-  searchParams: { error?: string };
+  searchParams: { error?: string; src?: string };
 }) {
   const posting = await prisma.jobPosting.findUnique({
     where: { slug: params.slug },
@@ -52,6 +52,7 @@ export default async function ApplyPage({
         action={submitApplicationAction.bind(null, params.slug)}
         className="mt-8 space-y-5 rounded-lg border border-neutral-200 bg-white p-6"
       >
+        <input type="hidden" name="src" value={searchParams.src ?? ""} />
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium text-neutral-700">First Name *</label>

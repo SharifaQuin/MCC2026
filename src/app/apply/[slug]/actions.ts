@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { scorePrescreenAnswers, notifyNewApplicant } from "@/lib/recruiting";
+import { scorePrescreenAnswers, notifyNewApplicant, parseApplicantSource } from "@/lib/recruiting";
 
 export async function submitApplicationAction(slug: string, formData: FormData) {
   const posting = await prisma.jobPosting.findUnique({
@@ -17,6 +17,7 @@ export async function submitApplicationAction(slug: string, formData: FormData) 
   const phone = String(formData.get("phone") ?? "").trim();
   const resumeDataUrl = String(formData.get("resumeDataUrl") ?? "");
   const resumeFileName = String(formData.get("resumeFileName") ?? "");
+  const source = parseApplicantSource(String(formData.get("src") ?? ""));
 
   if (!firstName || !lastName || !email || !phone || !resumeDataUrl) {
     redirect(`/apply/${slug}?error=incomplete`);
@@ -48,6 +49,7 @@ export async function submitApplicationAction(slug: string, formData: FormData) 
       phone,
       resumeDataUrl,
       resumeFileName,
+      source,
       prescreenScore: score,
       prescreenMaxScore: maxScore,
       prescreenPassed: passed,

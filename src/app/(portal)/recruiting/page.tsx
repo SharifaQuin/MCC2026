@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
 import {
   loadRecruitingDashboard,
+  getApplicantFunnelBySource,
   PIPELINE_COLUMNS,
   NEEDS_DECISION_STAGES,
   ARCHIVED_STAGES,
@@ -22,8 +23,9 @@ function Stat({ label, value }: { label: string; value: number }) {
 export default async function RecruitingPage() {
   await requireRecruitingAccess();
 
-  const [stats, applicants] = await Promise.all([
+  const [stats, funnelBySource, applicants] = await Promise.all([
     loadRecruitingDashboard(),
+    getApplicantFunnelBySource(),
     prisma.applicant.findMany({
       where: { stage: { notIn: [...NEEDS_DECISION_STAGES, ...ARCHIVED_STAGES] } },
       include: { jobPosting: { select: { titleEn: true } } },
@@ -100,6 +102,44 @@ export default async function RecruitingPage() {
       </div>
 
       <PipelineBoard columns={columns} />
+
+      {funnelBySource.length > 0 && (
+        <div className="mt-6 rounded-lg border border-neutral-200 bg-white p-4">
+          <p className="mb-3 font-medium text-neutral-900">Applicants by Source</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-neutral-200 text-xs uppercase tracking-wide text-neutral-500">
+                <tr>
+                  <th className="py-2 pr-4">Source</th>
+                  <th className="py-2 pr-4">Total</th>
+                  <th className="py-2 pr-4">Active</th>
+                  <th className="py-2 pr-4">Hired</th>
+                  <th className="py-2 pr-4">Rejected</th>
+                  <th className="py-2 pr-4">Benched</th>
+                  <th className="py-2 pr-4">Hire Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {funnelBySource.map((s) => (
+                  <tr key={s.source} className="border-b border-neutral-100 last:border-0">
+                    <td className="py-2 pr-4 font-medium text-neutral-900">{s.label}</td>
+                    <td className="py-2 pr-4 text-neutral-600">{s.total}</td>
+                    <td className="py-2 pr-4 text-neutral-600">{s.active}</td>
+                    <td className="py-2 pr-4 text-neutral-600">{s.hired}</td>
+                    <td className="py-2 pr-4 text-neutral-600">{s.rejected}</td>
+                    <td className="py-2 pr-4 text-neutral-600">{s.benched}</td>
+                    <td className="py-2 pr-4 text-neutral-600">{s.hireRatePct}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-neutral-400">
+            Reflects each applicant&apos;s current stage — a rejected/benched applicant&apos;s prior
+            progress isn&apos;t tracked separately from their final outcome.
+          </p>
+        </div>
+      )}
 
       {(needsDecisionCount > 0 || stats.benched > 0) && (
         <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4">

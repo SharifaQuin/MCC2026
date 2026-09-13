@@ -33,6 +33,23 @@ export async function scorePrescreenAnswers(
   return { score, maxScore, scorePct, passed };
 }
 
+const APPLICANT_SOURCE_ALIASES: Record<string, "INDEED" | "ZIPRECRUITER" | "REFERRAL" | "WALK_IN"> = {
+  indeed: "INDEED",
+  zip: "ZIPRECRUITER",
+  ziprecruiter: "ZIPRECRUITER",
+  referral: "REFERRAL",
+  walkin: "WALK_IN",
+  "walk-in": "WALK_IN",
+};
+
+// Job-board postings (Indeed, ZipRecruiter) all point at the same shared
+// /apply/[slug] link, so a query param (?src=indeed) is the only way to tell
+// them apart from direct careers-page traffic.
+export function parseApplicantSource(raw: string | null | undefined): "CAREERS_PAGE" | "INDEED" | "ZIPRECRUITER" | "REFERRAL" | "WALK_IN" {
+  const key = (raw ?? "").trim().toLowerCase();
+  return APPLICANT_SOURCE_ALIASES[key] ?? "CAREERS_PAGE";
+}
+
 // Pings the recruiting inbox whenever a new applicant lands in the pipeline —
 // from the careers page, Indeed/ZipRecruiter (once those postings point at
 // the shared /apply/[slug] link), or a manual entry — so nobody has to keep
@@ -293,6 +310,48 @@ export async function loadRecruitingDashboard() {
     benched,
     counts,
   };
+}
+
+export const APPLICANT_SOURCE_LABELS: Record<string, string> = {
+  CAREERS_PAGE: "Careers Page",
+  INDEED: "Indeed",
+  ZIPRECRUITER: "ZipRecruiter",
+  REFERRAL: "Referral",
+  WALK_IN: "Walk-in",
+  OTHER: "Other",
+};
+
+// Applicant.stage only holds the CURRENT stage, not a history of every stage
+// reached — so this can't reconstruct "how many from Indeed made it to an
+// in-person interview before being rejected." What it can show honestly:
+// where each source's applicants currently sit, and how many of them
+// ultimately got hired — still useful for judging which sources are worth
+// the spend.
+export async function getApplicantFunnelBySource() {
+  const rows = await prisma.applicant.groupBy({ by: ["source", "stage"], _count: true });
+
+  const bySource = new Map<string, { total: number; hired: number; rejected: number; benched: number }>();
+  for (const row of rows) {
+    const entry = bySource.get(row.source) ?? { total: 0, hired: 0, rejected: 0, benched: 0 };
+    entry.total += row._count;
+    if (row.stage === "HIRED") entry.hired += row._count;
+    if (row.stage === "REJECTED") entry.rejected += row._count;
+    if (row.stage === "BENCH") entry.benched += row._count;
+    bySource.set(row.source, entry);
+  }
+
+  return Array.from(bySource.entries())
+    .map(([source, stats]) => ({
+      source,
+      label: APPLICANT_SOURCE_LABELS[source] ?? source,
+      total: stats.total,
+      active: stats.total - stats.hired - stats.rejected - stats.benched,
+      hired: stats.hired,
+      rejected: stats.rejected,
+      benched: stats.benched,
+      hireRatePct: stats.total > 0 ? Math.round((stats.hired / stats.total) * 100) : 0,
+    }))
+    .sort((a, b) => b.total - a.total);
 }
 
 export const STAGE_LABELS: Record<string, string> = {

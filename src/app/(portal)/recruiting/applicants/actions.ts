@@ -14,7 +14,9 @@ import {
   rejectionEmailTemplate,
 } from "@/lib/recruiting";
 import { zonedTimeToUtc } from "@/lib/timezone";
-import type { ApplicantStage } from "@prisma/client";
+import type { ApplicantStage, ApplicantSource } from "@prisma/client";
+
+const VALID_APPLICANT_SOURCES = new Set(["CAREERS_PAGE", "INDEED", "ZIPRECRUITER", "REFERRAL", "WALK_IN", "OTHER"]);
 
 const STAGE_TIMESTAMP_FIELD: Partial<Record<ApplicantStage, "rejectedAt" | "benchedAt" | "hiredAt">> = {
   REJECTED: "rejectedAt",
@@ -115,6 +117,8 @@ export async function createManualApplicantAction(formData: FormData) {
   const resumeDataUrl = String(formData.get("resumeDataUrl") ?? "") || null;
   const resumeFileName = String(formData.get("resumeFileName") ?? "") || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
+  const sourceRaw = String(formData.get("source") ?? "");
+  const source = VALID_APPLICANT_SOURCES.has(sourceRaw) ? (sourceRaw as ApplicantSource) : "REFERRAL";
 
   if (!jobPostingId || !firstName || !lastName || !email || !phone) return;
 
@@ -135,6 +139,7 @@ export async function createManualApplicantAction(formData: FormData) {
       resumeDataUrl,
       resumeFileName,
       notes,
+      source,
       stage: "NEW",
     },
   });
