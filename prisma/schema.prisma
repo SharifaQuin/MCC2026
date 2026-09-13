@@ -102,12 +102,18 @@ model User {
   // Departed is a distinct, HR-recorded roster status — not the same as a
   // plain `active=false` deactivation (which just revokes login access for
   // any reason). Marking someone departed also sets active=false; a rehire
-  // clears these three fields and reactivates the account.
+  // clears these fields and reactivates the account.
   lastDay               DateTime?
   departureReason       String?   @db.Text
   departureRecordedById String?
   departureRecordedBy   User?     @relation("DepartureRecordedBy", fields: [departureRecordedById], references: [id], onDelete: SetNull)
   departuresRecorded    User[]    @relation("DepartureRecordedBy")
+  // Null = not yet determined (the usual case right when someone is marked
+  // departed, before an exit interview has happened) — distinct from false
+  // (determined not eligible), so the two states aren't conflated.
+  rehireEligible           Boolean?
+  exitInterviewCompletedAt DateTime?
+  exitInterviewNotes       String?   @db.Text
 
   progress       ModuleProgress[]
   lessonProgress LessonProgress[]

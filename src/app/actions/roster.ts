@@ -44,6 +44,10 @@ export async function markEmployeeDepartedAction(
   const lastDayRaw = String(formData.get("lastDay") ?? "");
   const lastDay = lastDayRaw ? new Date(lastDayRaw) : null;
   const departureReason = String(formData.get("departureReason") ?? "").trim() || null;
+  const rehireEligibleRaw = String(formData.get("rehireEligible") ?? "");
+  const rehireEligible = rehireEligibleRaw === "true" ? true : rehireEligibleRaw === "false" ? false : null;
+  const exitInterviewNotes = String(formData.get("exitInterviewNotes") ?? "").trim() || null;
+  const exitInterviewCompleted = formData.get("exitInterviewCompleted") === "on";
 
   if (!lastDay) {
     return { error: "Please provide a last day." };
@@ -57,6 +61,9 @@ export async function markEmployeeDepartedAction(
         lastDay,
         departureReason,
         departureRecordedById: session.sub,
+        rehireEligible,
+        exitInterviewNotes,
+        exitInterviewCompletedAt: exitInterviewCompleted ? new Date() : null,
       },
     }),
     prisma.personnelActionForm.create({
@@ -83,7 +90,53 @@ export async function reinstateEmployeeAction(employeeId: string) {
       lastDay: null,
       departureReason: null,
       departureRecordedById: null,
+      rehireEligible: null,
+      exitInterviewNotes: null,
+      exitInterviewCompletedAt: null,
     },
   });
   revalidateEmployeeViews(employeeId);
+}
+
+// Exit interviews often happen days after someone's last day, not at the
+// moment they're marked departed — this lets HR come back and fill in or
+// correct rehire eligibility / exit interview notes on an already-departed
+// employee without touching lastDay/departureReason.
+export async function updateExitInfoAction(
+  employeeId: string,
+  _prevState: DepartureState,
+  formData: FormData
+): Promise<DepartureState> {
+  try {
+    await requireHrAccess();
+  } catch {
+    return { error: "Not authorized." };
+  }
+
+  const employee = await prisma.user.findUnique({
+    where: { id: employeeId },
+    select: { lastDay: true, exitInterviewCompletedAt: true },
+  });
+  if (!employee?.lastDay) {
+    return { error: "This employee isn't marked Departed." };
+  }
+
+  const rehireEligibleRaw = String(formData.get("rehireEligible") ?? "");
+  const rehireEligible = rehireEligibleRaw === "true" ? true : rehireEligibleRaw === "false" ? false : null;
+  const exitInterviewNotes = String(formData.get("exitInterviewNotes") ?? "").trim() || null;
+  const exitInterviewCompleted = formData.get("exitInterviewCompleted") === "on";
+
+  await prisma.user.update({
+    where: { id: employeeId },
+    data: {
+      rehireEligible,
+      exitInterviewNotes,
+      // Keep the original completion timestamp if it was already completed
+      // and still is — only set/clear it on an actual state transition.
+      exitInterviewCompletedAt: exitInterviewCompleted ? (employee.exitInterviewCompletedAt ?? new Date()) : null,
+    },
+  });
+
+  revalidateEmployeeViews(employeeId);
+  return { success: true };
 }

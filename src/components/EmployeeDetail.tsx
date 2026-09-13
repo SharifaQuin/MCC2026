@@ -426,6 +426,9 @@ export function EmployeeDetailView({
             lastDay={user.lastDay ? user.lastDay.toISOString() : null}
             departureReason={user.departureReason}
             departureRecordedByName={user.departureRecordedBy?.name ?? null}
+            rehireEligible={user.rehireEligible}
+            exitInterviewCompletedAt={user.exitInterviewCompletedAt ? user.exitInterviewCompletedAt.toISOString() : null}
+            exitInterviewNotes={user.exitInterviewNotes}
             canManage={viewerRole === "ADMIN" || viewerRole === "SERVICE_MANAGER"}
           />
         </section>
