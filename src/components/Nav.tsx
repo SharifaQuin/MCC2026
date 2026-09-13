@@ -18,7 +18,7 @@ export default function Nav({
 
   return (
     <header className="border-b-2 border-gold-500 bg-white print:hidden">
-      <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
           <Link href="/">
             <Logo />

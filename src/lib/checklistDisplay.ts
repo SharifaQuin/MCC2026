@@ -1,6 +1,27 @@
 // Pure display helpers with no server-only imports (no prisma, no next/headers)
 // so they're safe to use from client components as well as server ones.
-import type { ChecklistFrequency, ChecklistTaskStatus } from "@prisma/client";
+import type { ChecklistCategory, ChecklistFrequency, ChecklistTaskStatus } from "@prisma/client";
+
+export const CATEGORY_ORDER: ChecklistCategory[] = ["MARKETING", "SALES", "HR", "MANAGEMENT"];
+
+export const CATEGORY_LABELS: Record<ChecklistCategory, string> = {
+  MARKETING: "Marketing",
+  SALES: "Sales",
+  HR: "HR",
+  MANAGEMENT: "Management / Admin",
+};
+
+// Groups tasks into to-do-list-style subsections, in a fixed order, skipping
+// any category with nothing in it so an unused section doesn't show up empty.
+export function groupByCategory<T extends { category: ChecklistCategory }>(
+  tasks: T[]
+): { category: ChecklistCategory; label: string; tasks: T[] }[] {
+  return CATEGORY_ORDER.map((category) => ({
+    category,
+    label: CATEGORY_LABELS[category],
+    tasks: tasks.filter((t) => t.category === category),
+  })).filter((group) => group.tasks.length > 0);
+}
 
 // Once a task reads as Done, it drops out of the active list immediately.
 // Daily/Weekly/Monthly tasks just reappear on their own next period (their

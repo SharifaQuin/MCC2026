@@ -11,13 +11,21 @@ import { getLatestMonthlyFinancials, getTeamGoals, getChecklistTasksForRole } fr
 import { reachedGrowthStages } from "@/lib/checklistDisplay";
 import ChecklistSidebar from "@/components/ChecklistSidebar";
 
-function Stat({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="rounded-md bg-neutral-50 p-3">
+function Stat({ label, value, href }: { label: string; value: number | string; href?: string }) {
+  const content = (
+    <>
       <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">{label}</p>
       <p className="mt-0.5 text-xl font-semibold text-neutral-900">{value}</p>
-    </div>
+    </>
   );
+  if (href) {
+    return (
+      <Link href={href} className="block rounded-md bg-neutral-50 p-3 hover:bg-neutral-100">
+        {content}
+      </Link>
+    );
+  }
+  return <div className="rounded-md bg-neutral-50 p-3">{content}</div>;
 }
 
 const money = (n: number) =>
@@ -67,6 +75,9 @@ export default async function HomePage() {
     frequency: t.frequency,
     task: t.task,
     effectiveStatus: t.effectiveStatus,
+    category: t.category,
+    notes: t.notes,
+    targetDate: t.targetDate ? t.targetDate.toISOString() : null,
   }));
 
   return (
@@ -147,6 +158,7 @@ export default async function HomePage() {
                 <Stat
                   label={sales.actuals.entered ? "Actual Revenue" : "Won This Month"}
                   value={money(sales.revenueTowardGoal)}
+                  href="/sales/quotes?status=won"
                 />
                 <Stat label="Monthly Goal" value={sales.goal > 0 ? money(sales.goal) : "Not set"} />
                 <Stat
@@ -158,7 +170,7 @@ export default async function HomePage() {
                   }
                 />
                 <Stat label="Profit So Far" value={sales.actuals.entered ? money(sales.actuals.profit) : "—"} />
-                <Stat label="Pending Quotes" value={sales.pendingCount} />
+                <Stat label="Pending Quotes" value={sales.pendingCount} href="/sales/quotes?status=pending" />
                 <Stat
                   label="Win Rate"
                   value={sales.winRate === null ? "—" : `${Math.round(sales.winRate * 100)}%`}
@@ -177,10 +189,18 @@ export default async function HomePage() {
                 Onboarding, modules, certification, and field evaluations.
               </p>
               <div className="mt-4 grid grid-cols-2 gap-3">
-                <Stat label="Total Employees" value={training.totalEmployees} />
-                <Stat label="In Training" value={training.inTraining} />
-                <Stat label="Completed All Training" value={training.completedAll} />
-                <Stat label="Pending Certification" value={training.pendingCertifications.length} />
+                <Stat label="Total Employees" value={training.totalEmployees} href="/admin/employees" />
+                <Stat label="In Training" value={training.inTraining} href="/admin/employees?status=ACTIVE" />
+                <Stat
+                  label="Completed All Training"
+                  value={training.completedAll}
+                  href="/admin/employees?status=COMPLETED_ALL"
+                />
+                <Stat
+                  label="Pending Certification"
+                  value={training.pendingCertifications.length}
+                  href="/admin/employees?status=PENDING_CERT"
+                />
               </div>
               <Link
                 href="/admin"
@@ -196,10 +216,14 @@ export default async function HomePage() {
                 Job postings, applicants, and the hiring pipeline.
               </p>
               <div className="mt-4 grid grid-cols-2 gap-3">
-                <Stat label="Active Applicants" value={recruiting.active} />
-                <Stat label="Interviews Scheduled" value={recruiting.scheduledInterviews} />
-                <Stat label="Awaiting Scheduling" value={recruiting.awaitingScheduling} />
-                <Stat label="Hired" value={recruiting.hired} />
+                <Stat label="Active Applicants" value={recruiting.active} href="/recruiting" />
+                <Stat label="Interviews Scheduled" value={recruiting.scheduledInterviews} href="/recruiting" />
+                <Stat
+                  label="Awaiting Scheduling"
+                  value={recruiting.awaitingScheduling}
+                  href="/recruiting/applicants?stage=PRESCREEN_PASSED"
+                />
+                <Stat label="Hired" value={recruiting.hired} href="/recruiting/applicants?stage=HIRED" />
               </div>
               <Link
                 href="/recruiting"

@@ -29,7 +29,7 @@ export default async function PortalLayout({ children }: { children: React.React
         <Nav session={session} departments={departments} />
         <GoalProgressBar session={session} departments={departments} />
       </div>
-      <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
+      <main className="mx-auto max-w-7xl px-4 py-8">{children}</main>
     </div>
   );
 }

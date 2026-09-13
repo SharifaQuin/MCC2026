@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import type { ChecklistOwner, ChecklistTaskStatus, ChecklistVisibility } from "@prisma/client";
+import type { ChecklistCategory, ChecklistOwner, ChecklistTaskStatus, ChecklistVisibility } from "@prisma/client";
 
 async function requireOwnerAccess() {
   const session = await getSession();
@@ -128,6 +128,7 @@ export async function addChecklistTaskAction(formData: FormData) {
   const task = String(formData.get("task") ?? "").trim();
   const owner = String(formData.get("owner") ?? "OWNER") as ChecklistOwner;
   const visibility = String(formData.get("visibility") ?? "OWNER_ONLY") as ChecklistVisibility;
+  const category = String(formData.get("category") ?? "MANAGEMENT") as ChecklistCategory;
   const notes = String(formData.get("notes") ?? "").trim() || null;
   const targetDateRaw = String(formData.get("targetDate") ?? "");
 
@@ -141,12 +142,29 @@ export async function addChecklistTaskAction(formData: FormData) {
       task,
       owner,
       visibility,
+      category,
       notes,
       targetDate: targetDateRaw ? new Date(targetDateRaw) : null,
       order: count,
     },
   });
 
+  revalidatePath("/financials");
+  revalidatePath("/");
+}
+
+// ADMIN only — re-tag which category subsection a task shows under.
+export async function setChecklistTaskCategoryAction(taskId: string, category: ChecklistCategory) {
+  await requireOwnerAccess();
+  await prisma.checklistTask.update({ where: { id: taskId }, data: { category } });
+  revalidatePath("/financials");
+  revalidatePath("/");
+}
+
+// ADMIN only — edit a task's notes (shown when the task row is expanded).
+export async function updateChecklistTaskNotesAction(taskId: string, notes: string) {
+  await requireOwnerAccess();
+  await prisma.checklistTask.update({ where: { id: taskId }, data: { notes: notes.trim() || null } });
   revalidatePath("/financials");
   revalidatePath("/");
 }

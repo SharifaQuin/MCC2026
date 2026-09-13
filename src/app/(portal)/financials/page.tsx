@@ -86,6 +86,9 @@ export default async function FinancialsPage({
     owner: t.owner,
     visibility: t.visibility,
     effectiveStatus: t.effectiveStatus,
+    category: t.category,
+    notes: t.notes,
+    targetDate: t.targetDate ? t.targetDate.toISOString() : null,
   }));
 
   return (

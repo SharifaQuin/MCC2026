@@ -1,8 +1,22 @@
 import Link from "next/link";
 import { loadEmployeeSummaries } from "@/components/EmployeeList";
-import { EmployeeListView } from "@/components/EmployeeListView";
+import { EmployeeListView, type StatusFilter } from "@/components/EmployeeListView";
 
-export default async function AdminEmployeesPage() {
+const VALID_STATUSES: string[] = [
+  "ALL",
+  "ACTIVE",
+  "INVITE_PENDING",
+  "PENDING_CERT",
+  "CERTIFIED",
+  "COMPLETED_ALL",
+  "DEACTIVATED",
+];
+
+export default async function AdminEmployeesPage({
+  searchParams,
+}: {
+  searchParams: { status?: string };
+}) {
   const data = await loadEmployeeSummaries();
   return (
     <div>
@@ -23,7 +37,13 @@ export default async function AdminEmployeesPage() {
           </Link>
         </div>
       </div>
-      <EmployeeListView data={data} basePath="/admin/employees" />
+      <EmployeeListView
+        data={data}
+        basePath="/admin/employees"
+        initialStatus={
+          VALID_STATUSES.includes(searchParams.status ?? "") ? (searchParams.status as StatusFilter) : undefined
+        }
+      />
     </div>
   );
 }

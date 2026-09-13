@@ -39,7 +39,7 @@ export default async function GoalProgressBar({
 
   return (
     <div className="border-b border-neutral-200 bg-brand-50">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2 text-xs">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2 text-xs">
         {showSales && sales && (
           <span className="font-medium text-neutral-700">
             Monthly goal: {money(sales.revenueTowardGoal)} / {money(sales.goal)}

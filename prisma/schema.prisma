@@ -671,6 +671,16 @@ enum ChecklistVisibility {
   TEAM
 }
 
+// Groups checklist tasks into to-do-list-style subsections. Independent of
+// owner/visibility — a category is "what area of the business is this
+// about", not "who can see it".
+enum ChecklistCategory {
+  MARKETING
+  SALES
+  HR
+  MANAGEMENT
+}
+
 // A running to-do list mixing recurring operating cadences (daily/weekly/
 // monthly checks) with one-off and milestone items. Recurring tasks don't
 // get a scheduled job to reset them — updatedAt is checked against the
@@ -687,6 +697,7 @@ model ChecklistTask {
   targetDate  DateTime?
   notes       String?             @db.Text
   visibility  ChecklistVisibility @default(OWNER_ONLY)
+  category    ChecklistCategory   @default(MANAGEMENT)
   order       Int                 @default(0)
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt

@@ -4,7 +4,14 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { EmployeeSummaries } from "@/components/EmployeeList";
 
-type StatusFilter = "ALL" | "ACTIVE" | "INVITE_PENDING" | "PENDING_CERT" | "CERTIFIED" | "DEACTIVATED";
+export type StatusFilter =
+  | "ALL"
+  | "ACTIVE"
+  | "INVITE_PENDING"
+  | "PENDING_CERT"
+  | "CERTIFIED"
+  | "COMPLETED_ALL"
+  | "DEACTIVATED";
 
 function onboardingDayBadge(createdAt: Date, active: boolean, mustSetPassword: boolean, certified: boolean) {
   if (!active || mustSetPassword || certified) return null;
@@ -24,13 +31,15 @@ function onboardingDayBadge(createdAt: Date, active: boolean, mustSetPassword: b
 export function EmployeeListView({
   data,
   basePath,
+  initialStatus,
 }: {
   data: EmployeeSummaries;
   basePath: string;
+  initialStatus?: StatusFilter;
 }) {
   const { totalModules, users } = data;
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("ALL");
+  const [status, setStatus] = useState<StatusFilter>(initialStatus ?? "ALL");
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -47,6 +56,8 @@ export function EmployeeListView({
           return u.certificationStatus === "PENDING";
         case "CERTIFIED":
           return u.certificationStatus === "CERTIFIED";
+        case "COMPLETED_ALL":
+          return totalModules > 0 && u.progress.length === totalModules;
         case "DEACTIVATED":
           return !u.active;
         default:
@@ -75,6 +86,7 @@ export function EmployeeListView({
           <option value="INVITE_PENDING">Invite pending</option>
           <option value="PENDING_CERT">Pending certification review</option>
           <option value="CERTIFIED">Certified</option>
+          <option value="COMPLETED_ALL">Completed all training</option>
           <option value="DEACTIVATED">Deactivated</option>
         </select>
       </div>
