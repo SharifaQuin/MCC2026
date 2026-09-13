@@ -723,3 +723,57 @@ model Lead {
   notes        String?  @db.Text
   createdAt    DateTime @default(now())
 }
+
+enum LoanStatus {
+  OPEN
+  CLOSED
+}
+
+// A business loan/MCA/equipment-financing balance. currentBalance is
+// entered/updated by the owner periodically (not reconstructed from a live
+// payment ledger) — the expected payoff date is then estimated as
+// currentBalance / minimumPayment periods, spaced by minimumPaymentFrequency
+// (see estimateLoanPayoff in lib/loans.ts). For MCA-style loans repaid via a
+// % holdback of daily sales, minimumPayment is only a contractual floor, so
+// the real payoff is usually sooner than this estimate — never later.
+model Loan {
+  id                       String     @id @default(cuid())
+  lender                   String
+  loanType                 String? // e.g. "merchant_cash_advance", "equipment_installment"
+  status                   LoanStatus @default(OPEN)
+  originationDate          DateTime?
+  closedDate               DateTime?
+  loanAmount               Float?
+  feeAmount                Float?
+  totalToRepay             Float?
+  repaymentRatePct         Float? // % of daily sales withheld — informational only
+  minimumPayment           Float?
+  minimumPaymentFrequency  String? // "monthly" | "every_60_days" | "weekly" | "daily"
+  repaymentStartDate       DateTime?
+  maturityDate             DateTime?
+  priorLoanBalance         Float?
+  netProceeds              Float?
+  currentBalance           Float? // owner-entered, drives the payoff estimate
+  currentBalanceAsOf       DateTime?
+  notes                    String?    @db.Text
+  order                    Int        @default(0)
+  createdAt                DateTime   @default(now())
+  updatedAt                DateTime   @updatedAt
+
+  repayments LoanRepayment[]
+}
+
+// Historical monthly repayment record, for reference — not used to derive
+// currentBalance going forward (see the note on Loan above).
+model LoanRepayment {
+  id              String   @id @default(cuid())
+  loanId          String
+  loan            Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  month           String // "2026-01"
+  interestFeePaid Float?
+  principalPaid   Float?
+  totalPaid       Float
+  createdAt       DateTime @default(now())
+
+  @@unique([loanId, month])
+}

@@ -3,6 +3,7 @@ import {
   getMonthlyFinancials,
   getOwnerSettings,
   getChecklistTasksForRole,
+  getLoans,
 } from "@/lib/financials";
 import {
   upsertMonthlyFinancialsAction,
@@ -10,6 +11,7 @@ import {
   updateProfitabilityTargetAction,
 } from "@/app/actions/financials";
 import ChecklistManager from "./ChecklistManager";
+import LoansManager from "./LoansManager";
 
 const money = (n: number) =>
   `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -65,10 +67,11 @@ export default async function FinancialsPage({
 }: {
   searchParams: { month?: string };
 }) {
-  const [months, ownerSettings, checklistTasks] = await Promise.all([
+  const [months, ownerSettings, checklistTasks, loans] = await Promise.all([
     getMonthlyFinancials(),
     getOwnerSettings(),
     getChecklistTasksForRole("ADMIN"),
+    getLoans(),
   ]);
 
   const selectedMonth = searchParams.month ?? "";
@@ -77,7 +80,25 @@ export default async function FinancialsPage({
 
   const drawPolicy = ownerSettings.owner_draw_policy as DrawPolicy | undefined;
   const profitabilityTarget = ownerSettings.profitability_target as ProfitabilityTarget | undefined;
-  const loansOpen = (ownerSettings.loans_open as Array<Record<string, unknown>> | undefined) ?? [];
+
+  const loanRows = loans.map((l) => ({
+    id: l.id,
+    lender: l.lender,
+    loanType: l.loanType,
+    status: l.status,
+    originationDate: l.originationDate ? l.originationDate.toISOString() : null,
+    closedDate: l.closedDate ? l.closedDate.toISOString() : null,
+    loanAmount: l.loanAmount,
+    feeAmount: l.feeAmount,
+    totalToRepay: l.totalToRepay,
+    repaymentRatePct: l.repaymentRatePct,
+    minimumPayment: l.minimumPayment,
+    minimumPaymentFrequency: l.minimumPaymentFrequency,
+    maturityDate: l.maturityDate ? l.maturityDate.toISOString() : null,
+    currentBalance: l.currentBalance,
+    currentBalanceAsOf: l.currentBalanceAsOf ? l.currentBalanceAsOf.toISOString() : null,
+    notes: l.notes,
+  }));
 
   const checklistRows = checklistTasks.map((t) => ({
     id: t.id,
@@ -317,40 +338,10 @@ export default async function FinancialsPage({
         </div>
       </section>
 
-      {loansOpen.length > 0 && (
-        <section className="mb-8 rounded-lg border border-neutral-200 bg-white p-6">
-          <h2 className="mb-4 text-lg font-medium text-neutral-900">Open Loans</h2>
-          <div className="grid gap-3 md:grid-cols-2">
-            {loansOpen.map((loan, i) => {
-              const { lender, status, ...rest } = loan;
-              return (
-                <div key={i} className="rounded-md border border-neutral-200 p-3 text-sm">
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium">{String(lender ?? "Loan")}</p>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                        status === "closed" ? "bg-neutral-100 text-neutral-500" : "bg-amber-100 text-amber-800"
-                      }`}
-                    >
-                      {String(status ?? "—")}
-                    </span>
-                  </div>
-                  {Object.keys(rest).length > 0 && (
-                    <dl className="mt-2 space-y-0.5 text-xs text-neutral-500">
-                      {Object.entries(rest).map(([k, v]) => (
-                        <div key={k} className="flex justify-between gap-3">
-                          <dt className="capitalize">{k.replace(/_/g, " ")}</dt>
-                          <dd className="text-right text-neutral-700">{String(v)}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
+      <section className="mb-8 rounded-lg border border-neutral-200 bg-white p-6">
+        <h2 className="mb-4 text-lg font-medium text-neutral-900">Loans</h2>
+        <LoansManager loans={loanRows} />
+      </section>
 
       <section className="rounded-lg border border-neutral-200 bg-white p-6">
         <h2 className="mb-4 text-lg font-medium text-neutral-900">Checklist</h2>

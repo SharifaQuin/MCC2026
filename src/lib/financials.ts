@@ -51,6 +51,19 @@ export async function getTeamGoals(): Promise<Record<string, unknown>> {
   return Object.fromEntries(rows.map((r) => [r.key, r.value]));
 }
 
+// ADMIN only — every loan, open and closed, most recently added first within
+// their original order.
+export async function getLoans() {
+  await requireOwnerAccess();
+  return prisma.loan.findMany({ orderBy: { order: "asc" } });
+}
+
+// ADMIN only — just the open loans, for the Home page loan summary.
+export async function getOpenLoans() {
+  await requireOwnerAccess();
+  return prisma.loan.findMany({ where: { status: "OPEN" }, orderBy: { order: "asc" } });
+}
+
 function periodKey(frequency: ChecklistFrequency, date: Date): string {
   if (frequency === "DAILY") return businessDateKey(date);
   if (frequency === "WEEKLY") return businessISOWeekKey(date);

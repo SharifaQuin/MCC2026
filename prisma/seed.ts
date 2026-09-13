@@ -179,15 +179,6 @@ const OWNER_SETTINGS: { key: string; value: unknown }[] = [
       note: "SCENARIO estimate, not a guarantee. Holds current gross margin (~46%) and fixed OpEx (~$10,069/mo) roughly constant.",
     },
   },
-  {
-    key: "loans_open",
-    value: [
-      { lender: "Stripe Capital", status: "open", note: "Two originations (Jan 12, Jul 6); Jul loan paid off the Jan loan, so effectively 1 open balance." },
-      { lender: "Square (Square Financial Services)", status: "open", origination_date: "2026-08-14", loan_amount: 2180.0, loan_fee: 218.0, total_to_repay: 2398.0, repayment_rate_pct: 19.98, minimum_payment: 599.5, minimum_payment_due_day: 14, maturity_date: "2026-12-14" },
-      { lender: "Affirm", status: "open", note: "Installment payments for new vacuums (equipment financing)." },
-      { lender: "MCA / Capitalized Equipment", status: "closed", note: "Confirmed fully paid off, no payments after March 2026." },
-    ],
-  },
 ];
 
 const TEAM_GOALS: { key: string; value: unknown }[] = [
@@ -231,6 +222,247 @@ const CHECKLIST_TASKS: {
   { frequency: "MONTHLY", task: "Update and re-send Team Updates to Business Coach + Marketing Director", owner: "OWNER", status: "NOT_STARTED", visibility: "OWNER_ONLY", category: "MANAGEMENT" },
   { frequency: "MONTHLY", task: "Review progress toward the $39,000/month revenue goal on Goals & Decisions", owner: "OWNER", status: "NOT_STARTED", visibility: "OWNER_ONLY", category: "SALES" },
 ];
+
+interface SeedLoan {
+  id: string;
+  lender: string;
+  loanType: string;
+  status: "OPEN" | "CLOSED";
+  originationDate: string | null;
+  closedDate: string | null;
+  loanAmount: number | null;
+  feeAmount: number | null;
+  totalToRepay: number | null;
+  repaymentRatePct: number | null;
+  minimumPayment: number | null;
+  minimumPaymentFrequency: string | null;
+  repaymentStartDate: string | null;
+  maturityDate: string | null;
+  priorLoanBalance: number | null;
+  netProceeds: number | null;
+  currentBalance: number | null;
+  currentBalanceAsOf: string | null;
+  notes: string;
+}
+
+// Reconstructed from bank/lender statements. currentBalance for open loans
+// is a one-time computed starting point (totalToRepay minus repayments
+// logged below through their last documented month); the owner updates it
+// directly going forward rather than the app deriving it from a live ledger.
+const LOANS: SeedLoan[] = [
+  {
+    id: "mca_2025",
+    lender: "MCA Servicing / Capitalized Equipment",
+    loanType: "merchant_cash_advance",
+    status: "CLOSED",
+    originationDate: null,
+    closedDate: "2026-03-31",
+    loanAmount: null,
+    feeAmount: null,
+    totalToRepay: null,
+    repaymentRatePct: null,
+    minimumPayment: null,
+    minimumPaymentFrequency: null,
+    repaymentStartDate: null,
+    maturityDate: null,
+    priorLoanBalance: null,
+    netProceeds: null,
+    currentBalance: 0,
+    currentBalanceAsOf: "2026-03-31",
+    notes:
+      "Older loan, terms not documented in original paperwork - reconstructed from bank statement debits only (ACH 'Capitalized Equi' / 'MCA Servicing' + occasional card charges). No payments found after March 2026 - confirmed closed.",
+  },
+  {
+    id: "stripe_capital_1",
+    lender: "Stripe Capital (Celtic Bank)",
+    loanType: "merchant_cash_advance",
+    status: "CLOSED",
+    originationDate: "2026-01-12",
+    closedDate: "2026-07-06",
+    loanAmount: 25200.0,
+    feeAmount: 4838.0,
+    totalToRepay: 30038.0,
+    repaymentRatePct: 25.0,
+    minimumPayment: 3337.56,
+    minimumPaymentFrequency: "every_60_days",
+    repaymentStartDate: "2026-01-19",
+    maturityDate: "2027-07-13",
+    priorLoanBalance: 4877.87,
+    netProceeds: 20322.13,
+    currentBalance: 0,
+    currentBalanceAsOf: "2026-07-06",
+    notes:
+      "Paid off early on 2026-07-06 using proceeds from stripe_capital_2 (a $8,586.59 payoff transaction). Confirmed via signed loan agreement.",
+  },
+  {
+    id: "stripe_capital_2",
+    lender: "Stripe Capital (Celtic Bank)",
+    loanType: "merchant_cash_advance",
+    status: "OPEN",
+    originationDate: "2026-07-06",
+    closedDate: null,
+    loanAmount: 28200.0,
+    feeAmount: 4709.0,
+    totalToRepay: 32909.0,
+    repaymentRatePct: 20.0,
+    minimumPayment: 3656.56,
+    minimumPaymentFrequency: "every_60_days",
+    repaymentStartDate: "2026-07-13",
+    maturityDate: "2028-01-04",
+    priorLoanBalance: 8636.59,
+    netProceeds: 19563.41,
+    currentBalance: 18147.01,
+    currentBalanceAsOf: "2026-08-31",
+    notes:
+      "Prior loan balance line paid off the remainder of stripe_capital_1. Confirmed via signed loan agreement. Repayment happens automatically from daily Stripe sales - never appears as a separate bank withdrawal, it reduces the deposit amount instead. currentBalance computed from totalToRepay minus repayments logged through August 2026 — update as new statements come in.",
+  },
+  {
+    id: "square_loan_1",
+    lender: "Square Financial Services, Inc.",
+    loanType: "merchant_cash_advance",
+    status: "CLOSED",
+    originationDate: "2024-12-23",
+    closedDate: "2026-07-30",
+    loanAmount: 9019.37,
+    feeAmount: null,
+    totalToRepay: null,
+    repaymentRatePct: null,
+    minimumPayment: null,
+    minimumPaymentFrequency: null,
+    repaymentStartDate: null,
+    maturityDate: null,
+    priorLoanBalance: null,
+    netProceeds: 9019.37,
+    currentBalance: 0,
+    currentBalanceAsOf: "2026-07-30",
+    notes:
+      "Terms not fully documented - reconstructed from Square's transaction export. Repayments ran Dec 2024-Jul 2026 (~$500-1,275/month via automatic withholding from daily Square sales, never a separate bank withdrawal). No repayments found after 2026-07-30. CONFIRMED closed by square_loan_2's agreement, which shows Prior Loan Balance: $0.00.",
+  },
+  {
+    id: "square_loan_2",
+    lender: "Square Financial Services, Inc.",
+    loanType: "merchant_cash_advance",
+    status: "OPEN",
+    originationDate: "2026-08-14",
+    closedDate: null,
+    loanAmount: 2180.0,
+    feeAmount: 218.0,
+    totalToRepay: 2398.0,
+    repaymentRatePct: 19.98,
+    minimumPayment: 599.5,
+    minimumPaymentFrequency: "monthly",
+    repaymentStartDate: "2026-08-18",
+    maturityDate: "2026-12-14",
+    priorLoanBalance: 0.0,
+    netProceeds: 2180.0,
+    currentBalance: 2398.0,
+    currentBalanceAsOf: "2026-08-14",
+    notes:
+      "Confirmed via signed loan agreement. 4-month term. First minimum payment due 2026-09-14, then every month. Repayment happens automatically via 19.98% withholding from daily Square sales - will not appear as a separate bank withdrawal.",
+  },
+  {
+    id: "affirm_equipment",
+    lender: "Affirm",
+    loanType: "equipment_installment",
+    status: "OPEN",
+    originationDate: null,
+    closedDate: null,
+    loanAmount: null,
+    feeAmount: null,
+    totalToRepay: null,
+    repaymentRatePct: null,
+    minimumPayment: 183.33,
+    minimumPaymentFrequency: "monthly",
+    repaymentStartDate: null,
+    maturityDate: null,
+    priorLoanBalance: null,
+    netProceeds: null,
+    currentBalance: 183.33,
+    currentBalanceAsOf: "2026-08-31",
+    notes:
+      "Financing for new vacuum equipment, confirmed as a legitimate business expense. Terms/total not documented - only observed as recurring debit-card charges: May $174.48, Jun $92.61, Jul $0, Aug $183.33. Owner reports only one payment left, at the same amount as the current monthly card charge — seeded here as $183.33 (the most recent observed charge); correct it if the true final payment differs.",
+  },
+];
+
+const LOAN_REPAYMENTS: {
+  loanId: string;
+  month: string;
+  interestFeePaid: number | null;
+  principalPaid: number | null;
+  totalPaid: number;
+}[] = [
+  { loanId: "stripe_capital_1", month: "2026-01", interestFeePaid: 190.16, principalPaid: 990.44, totalPaid: 1180.6 },
+  { loanId: "stripe_capital_1", month: "2026-02", interestFeePaid: 509.85, principalPaid: 2655.81, totalPaid: 3165.66 },
+  { loanId: "stripe_capital_1", month: "2026-03", interestFeePaid: 604.24, principalPaid: 3147.48, totalPaid: 3751.72 },
+  { loanId: "stripe_capital_1", month: "2026-04", interestFeePaid: 595.74, principalPaid: 3103.26, totalPaid: 3699.0 },
+  { loanId: "stripe_capital_1", month: "2026-05", interestFeePaid: 639.65, principalPaid: 3331.84, totalPaid: 3971.49 },
+  { loanId: "stripe_capital_1", month: "2026-06", interestFeePaid: 792.87, principalPaid: 4130.03, totalPaid: 4922.9 },
+  { loanId: "stripe_capital_2", month: "2026-07", interestFeePaid: 1776.36, principalPaid: 9463.15, totalPaid: 11239.51 },
+  { loanId: "stripe_capital_2", month: "2026-08", interestFeePaid: 504.04, principalPaid: 3018.44, totalPaid: 3522.48 },
+  { loanId: "mca_2025", month: "2026-01", interestFeePaid: null, principalPaid: null, totalPaid: 3993.95 },
+  { loanId: "mca_2025", month: "2026-02", interestFeePaid: null, principalPaid: null, totalPaid: 3615.0 },
+  { loanId: "mca_2025", month: "2026-03", interestFeePaid: null, principalPaid: null, totalPaid: 4752.95 },
+  { loanId: "square_loan_1", month: "2026-01", interestFeePaid: null, principalPaid: null, totalPaid: 511.2 },
+  { loanId: "square_loan_1", month: "2026-02", interestFeePaid: null, principalPaid: null, totalPaid: 558.4 },
+  { loanId: "square_loan_1", month: "2026-03", interestFeePaid: null, principalPaid: null, totalPaid: 555.98 },
+  { loanId: "square_loan_1", month: "2026-04", interestFeePaid: null, principalPaid: null, totalPaid: 574.38 },
+  { loanId: "square_loan_1", month: "2026-05", interestFeePaid: null, principalPaid: null, totalPaid: 553.67 },
+  { loanId: "square_loan_1", month: "2026-06", interestFeePaid: null, principalPaid: null, totalPaid: 1275.04 },
+  { loanId: "square_loan_1", month: "2026-07", interestFeePaid: null, principalPaid: null, totalPaid: 966.88 },
+  { loanId: "affirm_equipment", month: "2026-05", interestFeePaid: null, principalPaid: null, totalPaid: 174.48 },
+  { loanId: "affirm_equipment", month: "2026-06", interestFeePaid: null, principalPaid: null, totalPaid: 92.61 },
+  { loanId: "affirm_equipment", month: "2026-07", interestFeePaid: null, principalPaid: null, totalPaid: 0.0 },
+  { loanId: "affirm_equipment", month: "2026-08", interestFeePaid: null, principalPaid: null, totalPaid: 183.33 },
+];
+
+// Loans are created once and then left alone — status/currentBalance are
+// meant to be edited by the owner over time (see LoansManager), so re-seeding
+// must never overwrite them the way MonthlyFinancials/OwnerSetting do.
+async function seedLoans() {
+  let loansCreated = 0;
+  for (let i = 0; i < LOANS.length; i++) {
+    const l = LOANS[i];
+    const existing = await prisma.loan.findUnique({ where: { id: l.id } });
+    if (existing) continue;
+    await prisma.loan.create({
+      data: {
+        id: l.id,
+        lender: l.lender,
+        loanType: l.loanType,
+        status: l.status,
+        originationDate: l.originationDate ? new Date(l.originationDate) : null,
+        closedDate: l.closedDate ? new Date(l.closedDate) : null,
+        loanAmount: l.loanAmount,
+        feeAmount: l.feeAmount,
+        totalToRepay: l.totalToRepay,
+        repaymentRatePct: l.repaymentRatePct,
+        minimumPayment: l.minimumPayment,
+        minimumPaymentFrequency: l.minimumPaymentFrequency,
+        repaymentStartDate: l.repaymentStartDate ? new Date(l.repaymentStartDate) : null,
+        maturityDate: l.maturityDate ? new Date(l.maturityDate) : null,
+        priorLoanBalance: l.priorLoanBalance,
+        netProceeds: l.netProceeds,
+        currentBalance: l.currentBalance,
+        currentBalanceAsOf: l.currentBalanceAsOf ? new Date(l.currentBalanceAsOf) : null,
+        notes: l.notes,
+        order: i,
+      },
+    });
+    loansCreated++;
+  }
+  console.log(`Seeded ${loansCreated} new loan(s) (existing ones left untouched).`);
+
+  let repaymentsCreated = 0;
+  for (const r of LOAN_REPAYMENTS) {
+    const existing = await prisma.loanRepayment.findUnique({
+      where: { loanId_month: { loanId: r.loanId, month: r.month } },
+    });
+    if (existing) continue;
+    await prisma.loanRepayment.create({ data: r });
+    repaymentsCreated++;
+  }
+  console.log(`Seeded ${repaymentsCreated} new loan repayment record(s).`);
+}
 
 async function seedOwnerDashboard() {
   for (const m of MONTHLY_FINANCIALS) {
@@ -285,6 +517,7 @@ async function main() {
   await seedAdmin();
   await seedModules();
   await seedOwnerDashboard();
+  await seedLoans();
 }
 
 main()

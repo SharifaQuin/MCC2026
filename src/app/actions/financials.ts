@@ -197,3 +197,46 @@ export async function toggleChecklistTaskStatusAction(taskId: string, newStatus:
   revalidatePath("/financials");
   revalidatePath("/");
 }
+
+// ADMIN only — the owner updates a loan's current balance (and optionally
+// its payment terms) periodically as new statements come in.
+export async function updateLoanBalanceAction(loanId: string, formData: FormData) {
+  await requireOwnerAccess();
+
+  const currentBalance = num(formData, "currentBalance");
+  const minimumPayment = optionalNum(formData, "minimumPayment");
+  const minimumPaymentFrequency = String(formData.get("minimumPaymentFrequency") ?? "").trim() || null;
+
+  await prisma.loan.update({
+    where: { id: loanId },
+    data: {
+      currentBalance,
+      currentBalanceAsOf: new Date(),
+      minimumPayment,
+      minimumPaymentFrequency,
+    },
+  });
+
+  revalidatePath("/financials");
+  revalidatePath("/");
+}
+
+export async function closeLoanAction(loanId: string) {
+  await requireOwnerAccess();
+  await prisma.loan.update({
+    where: { id: loanId },
+    data: { status: "CLOSED", closedDate: new Date(), currentBalance: 0, currentBalanceAsOf: new Date() },
+  });
+  revalidatePath("/financials");
+  revalidatePath("/");
+}
+
+export async function reopenLoanAction(loanId: string) {
+  await requireOwnerAccess();
+  await prisma.loan.update({
+    where: { id: loanId },
+    data: { status: "OPEN", closedDate: null },
+  });
+  revalidatePath("/financials");
+  revalidatePath("/");
+}

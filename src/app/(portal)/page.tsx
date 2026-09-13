@@ -7,8 +7,9 @@ import { loadAdminDashboard } from "@/lib/dashboard";
 import { loadRecruitingDashboard } from "@/lib/recruiting";
 import { loadSalesDashboard } from "@/lib/salesDashboard";
 import { getPendingOnboardingCount } from "@/lib/onboarding";
-import { getLatestMonthlyFinancials, getTeamGoals, getChecklistTasksForRole } from "@/lib/financials";
+import { getLatestMonthlyFinancials, getTeamGoals, getChecklistTasksForRole, getOpenLoans } from "@/lib/financials";
 import { reachedGrowthStages } from "@/lib/checklistDisplay";
+import { estimateLoanPayoff } from "@/lib/loans";
 import ChecklistSidebar from "@/components/ChecklistSidebar";
 
 function Stat({ label, value, href }: { label: string; value: number | string; href?: string }) {
@@ -50,13 +51,14 @@ export default async function HomePage() {
   const hasSalesAccess = hasDepartmentAccess(session.role, grants, "SALES").canView;
   const isAdmin = session.role === "ADMIN";
 
-  const [training, recruiting, sales, latestFinancials, teamGoals, checklistTasks] = await Promise.all([
+  const [training, recruiting, sales, latestFinancials, teamGoals, checklistTasks, openLoans] = await Promise.all([
     loadAdminDashboard(),
     loadRecruitingDashboard(),
     hasSalesAccess ? loadSalesDashboard() : Promise.resolve(null),
     isAdmin ? getLatestMonthlyFinancials() : Promise.resolve(null),
     getTeamGoals(),
     getChecklistTasksForRole(session.role),
+    isAdmin ? getOpenLoans() : Promise.resolve([]),
   ]);
 
   const growthStaircase = (teamGoals.growth_staircase_monthly_revenue as number[] | undefined) ?? [];
@@ -103,6 +105,42 @@ export default async function HomePage() {
                 <Stat label="Variance to Target" value={money(latestFinancials.varianceToTarget)} />
                 <Stat label="Owner Draw" value={money(latestFinancials.ownerDraw)} />
                 <Stat label="Ending Bank Balance" value={money(latestFinancials.endingBankBalance)} />
+              </div>
+            </section>
+          )}
+
+          {isAdmin && openLoans.length > 0 && (
+            <section className="rounded-lg border border-neutral-200 bg-white p-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-medium text-neutral-900">Loans</h2>
+                <Link href="/financials" className="text-sm text-brand-700 hover:underline">
+                  Manage loans →
+                </Link>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {openLoans.map((loan) => {
+                  const payoff = estimateLoanPayoff({
+                    currentBalance: loan.currentBalance,
+                    minimumPayment: loan.minimumPayment,
+                    minimumPaymentFrequency: loan.minimumPaymentFrequency,
+                  });
+                  return (
+                    <div key={loan.id} className="rounded-md bg-neutral-50 p-3">
+                      <p className="text-sm font-medium text-neutral-900">{loan.lender}</p>
+                      <p className="mt-0.5 text-lg font-semibold text-neutral-900">
+                        {loan.currentBalance !== null ? money(loan.currentBalance) : "—"}
+                        <span className="ml-1 text-xs font-normal text-neutral-500">owed</span>
+                      </p>
+                      <p className="mt-0.5 text-xs text-neutral-500">
+                        {payoff && payoff.periodsRemaining > 0
+                          ? `Est. payoff ${payoff.expectedPayoffDate.toLocaleDateString()}`
+                          : payoff && payoff.periodsRemaining === 0
+                            ? "Paid off"
+                            : "Add a payment amount to estimate payoff"}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
             </section>
           )}
