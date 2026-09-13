@@ -8,7 +8,8 @@ import { loadRecruitingDashboard } from "@/lib/recruiting";
 import { loadSalesDashboard } from "@/lib/salesDashboard";
 import { getPendingOnboardingCount } from "@/lib/onboarding";
 import { getLatestMonthlyFinancials, getTeamGoals, getChecklistTasksForRole } from "@/lib/financials";
-import ChecklistToggleList from "@/components/ChecklistToggleList";
+import { reachedGrowthStages } from "@/lib/checklistDisplay";
+import ChecklistSidebar from "@/components/ChecklistSidebar";
 
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
@@ -56,6 +57,11 @@ export default async function HomePage() {
   const marketingBudgetMonthly = teamGoals.marketing_budget_monthly as number | undefined;
   const marketingBudgetNote = teamGoals.marketing_budget_note as string | undefined;
 
+  // Only computed for the owner — management never gets the revenue figure
+  // this comparison is based on, just the plain stage list as before.
+  const reachedStages =
+    isAdmin && latestFinancials ? reachedGrowthStages(growthStaircase, latestFinancials.revenueTotal) : null;
+
   const checklistItems = checklistTasks.map((t) => ({
     id: t.id,
     frequency: t.frequency,
@@ -67,147 +73,147 @@ export default async function HomePage() {
     <div>
       <h1 className="mb-6 text-2xl font-semibold">Home</h1>
 
-      {isAdmin && latestFinancials && (
-        <section className="mb-6 rounded-lg border border-neutral-200 bg-white p-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-medium text-neutral-900">
-              Financial Overview — {latestFinancials.monthLabel} {latestFinancials.month.slice(0, 4)}
-            </h2>
-            <Link href="/financials" className="text-sm text-brand-700 hover:underline">
-              View full Financials →
-            </Link>
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Stat label="Revenue" value={money(latestFinancials.revenueTotal)} />
-            <Stat
-              label="Net Profit"
-              value={money(latestFinancials.netProfit)}
-            />
-            <Stat label="Net Margin" value={`${(latestFinancials.netMarginPct * 100).toFixed(1)}%`} />
-            <Stat
-              label="Variance to Target"
-              value={money(latestFinancials.varianceToTarget)}
-            />
-            <Stat label="Owner Draw" value={money(latestFinancials.ownerDraw)} />
-            <Stat label="Ending Bank Balance" value={money(latestFinancials.endingBankBalance)} />
-          </div>
-        </section>
-      )}
+      <div className="grid gap-6 lg:grid-cols-[1fr_300px] lg:items-start">
+        <div className="space-y-6">
+          {isAdmin && latestFinancials && (
+            <section className="rounded-lg border border-neutral-200 bg-white p-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-medium text-neutral-900">
+                  Financial Overview — {latestFinancials.monthLabel} {latestFinancials.month.slice(0, 4)}
+                </h2>
+                <Link href="/financials" className="text-sm text-brand-700 hover:underline">
+                  View full Financials →
+                </Link>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <Stat label="Revenue" value={money(latestFinancials.revenueTotal)} />
+                <Stat label="Net Profit" value={money(latestFinancials.netProfit)} />
+                <Stat label="Net Margin" value={`${(latestFinancials.netMarginPct * 100).toFixed(1)}%`} />
+                <Stat label="Variance to Target" value={money(latestFinancials.varianceToTarget)} />
+                <Stat label="Owner Draw" value={money(latestFinancials.ownerDraw)} />
+                <Stat label="Ending Bank Balance" value={money(latestFinancials.endingBankBalance)} />
+              </div>
+            </section>
+          )}
 
-      <section className="mb-6 rounded-lg border border-neutral-200 bg-white p-6">
-        <h2 className="text-lg font-medium text-neutral-900">Goals</h2>
-        {growthStaircase.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {growthStaircase.map((amount, i) => (
-              <span
-                key={i}
-                className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-600"
-              >
-                Stage {i + 1}: ${amount.toLocaleString()}/mo
-              </span>
-            ))}
-          </div>
-        )}
-        {currentStageStatus && <p className="mt-3 text-sm text-neutral-600">{currentStageStatus}</p>}
-        {profitabilityGoal && <p className="mt-1 text-sm text-neutral-500">{profitabilityGoal}</p>}
-        {marketingBudgetMonthly !== undefined && (
-          <p className="mt-3 text-sm text-neutral-600">
-            Marketing budget: <span className="font-medium">{money(marketingBudgetMonthly)}/mo</span>
-          </p>
-        )}
-        {marketingBudgetNote && <p className="mt-1 text-xs text-neutral-400">{marketingBudgetNote}</p>}
-      </section>
-
-      <section className="mb-6 rounded-lg border border-neutral-200 bg-white p-6">
-        <h2 className="text-lg font-medium text-neutral-900">Checklist</h2>
-        <div className="mt-3">
-          <ChecklistToggleList items={checklistItems} />
-        </div>
-      </section>
-
-      {sales && (
-        <section className="mb-6 rounded-lg border border-neutral-200 bg-white p-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-medium text-neutral-900">Sales</h2>
-            {sales.goal > 0 && (
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-medium ${
-                  sales.revenueTowardGoal >= sales.goal
-                    ? "bg-green-100 text-green-800"
-                    : "bg-amber-100 text-amber-800"
-                }`}
-              >
-                {sales.revenueTowardGoal >= sales.goal
-                  ? "Goal hit this month! 🎉"
-                  : `${money(sales.revenueRemaining)} to hit this month's goal`}
-              </span>
+          <section className="rounded-lg border border-neutral-200 bg-white p-6">
+            <h2 className="text-lg font-medium text-neutral-900">Goals</h2>
+            {growthStaircase.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {growthStaircase.map((amount, i) => {
+                  const reached = reachedStages?.[i] ?? false;
+                  return (
+                    <span
+                      key={i}
+                      className={`rounded-full px-3 py-1 text-xs font-medium ${
+                        reached ? "bg-green-100 text-green-800" : "bg-neutral-100 text-neutral-600"
+                      }`}
+                    >
+                      Stage {i + 1}: ${amount.toLocaleString()}/mo{reached ? " ✓" : ""}
+                    </span>
+                  );
+                })}
+              </div>
             )}
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-6">
-            <Stat
-              label={sales.actuals.entered ? "Actual Revenue" : "Won This Month"}
-              value={money(sales.revenueTowardGoal)}
-            />
-            <Stat label="Monthly Goal" value={sales.goal > 0 ? money(sales.goal) : "Not set"} />
-            <Stat
-              label="Cleanings Needed"
-              value={
-                sales.goal > 0 && sales.revenueTowardGoal < sales.goal
-                  ? String(sales.cleaningsNeeded)
-                  : "0"
-              }
-            />
-            <Stat label="Profit So Far" value={sales.actuals.entered ? money(sales.actuals.profit) : "—"} />
-            <Stat label="Pending Quotes" value={sales.pendingCount} />
-            <Stat
-              label="Win Rate"
-              value={sales.winRate === null ? "—" : `${Math.round(sales.winRate * 100)}%`}
-            />
-          </div>
-          <Link href="/sales" className="mt-5 inline-block text-sm text-brand-700 hover:underline">
-            View full Sales dashboard →
-          </Link>
-        </section>
-      )}
+            {currentStageStatus && <p className="mt-3 text-sm text-neutral-600">{currentStageStatus}</p>}
+            {profitabilityGoal && <p className="mt-1 text-sm text-neutral-500">{profitabilityGoal}</p>}
+            {marketingBudgetMonthly !== undefined && (
+              <p className="mt-3 text-sm text-neutral-600">
+                Marketing budget: <span className="font-medium">{money(marketingBudgetMonthly)}/mo</span>
+              </p>
+            )}
+            {marketingBudgetNote && <p className="mt-1 text-xs text-neutral-400">{marketingBudgetNote}</p>}
+          </section>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <section className="rounded-lg border border-neutral-200 bg-white p-6">
-          <h2 className="text-lg font-medium text-neutral-900">Training</h2>
-          <p className="mt-1 text-sm text-neutral-500">
-            Onboarding, modules, certification, and field evaluations.
-          </p>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <Stat label="Total Employees" value={training.totalEmployees} />
-            <Stat label="In Training" value={training.inTraining} />
-            <Stat label="Completed All Training" value={training.completedAll} />
-            <Stat label="Pending Certification" value={training.pendingCertifications.length} />
-          </div>
-          <Link
-            href="/admin"
-            className="mt-5 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-          >
-            View Training Dashboard
-          </Link>
-        </section>
+          {sales && (
+            <section className="rounded-lg border border-neutral-200 bg-white p-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-medium text-neutral-900">Sales</h2>
+                {sales.goal > 0 && (
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-medium ${
+                      sales.revenueTowardGoal >= sales.goal
+                        ? "bg-green-100 text-green-800"
+                        : "bg-amber-100 text-amber-800"
+                    }`}
+                  >
+                    {sales.revenueTowardGoal >= sales.goal
+                      ? "Goal hit this month! 🎉"
+                      : `${money(sales.revenueRemaining)} to hit this month's goal`}
+                  </span>
+                )}
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-6">
+                <Stat
+                  label={sales.actuals.entered ? "Actual Revenue" : "Won This Month"}
+                  value={money(sales.revenueTowardGoal)}
+                />
+                <Stat label="Monthly Goal" value={sales.goal > 0 ? money(sales.goal) : "Not set"} />
+                <Stat
+                  label="Cleanings Needed"
+                  value={
+                    sales.goal > 0 && sales.revenueTowardGoal < sales.goal
+                      ? String(sales.cleaningsNeeded)
+                      : "0"
+                  }
+                />
+                <Stat label="Profit So Far" value={sales.actuals.entered ? money(sales.actuals.profit) : "—"} />
+                <Stat label="Pending Quotes" value={sales.pendingCount} />
+                <Stat
+                  label="Win Rate"
+                  value={sales.winRate === null ? "—" : `${Math.round(sales.winRate * 100)}%`}
+                />
+              </div>
+              <Link href="/sales" className="mt-5 inline-block text-sm text-brand-700 hover:underline">
+                View full Sales dashboard →
+              </Link>
+            </section>
+          )}
 
-        <section className="rounded-lg border border-neutral-200 bg-white p-6">
-          <h2 className="text-lg font-medium text-neutral-900">Recruiting</h2>
-          <p className="mt-1 text-sm text-neutral-500">
-            Job postings, applicants, and the hiring pipeline.
-          </p>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <Stat label="Active Applicants" value={recruiting.active} />
-            <Stat label="Interviews Scheduled" value={recruiting.scheduledInterviews} />
-            <Stat label="Awaiting Scheduling" value={recruiting.awaitingScheduling} />
-            <Stat label="Hired" value={recruiting.hired} />
+          <div className="grid gap-6 md:grid-cols-2">
+            <section className="rounded-lg border border-neutral-200 bg-white p-6">
+              <h2 className="text-lg font-medium text-neutral-900">Training</h2>
+              <p className="mt-1 text-sm text-neutral-500">
+                Onboarding, modules, certification, and field evaluations.
+              </p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <Stat label="Total Employees" value={training.totalEmployees} />
+                <Stat label="In Training" value={training.inTraining} />
+                <Stat label="Completed All Training" value={training.completedAll} />
+                <Stat label="Pending Certification" value={training.pendingCertifications.length} />
+              </div>
+              <Link
+                href="/admin"
+                className="mt-5 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+              >
+                View Training Dashboard
+              </Link>
+            </section>
+
+            <section className="rounded-lg border border-neutral-200 bg-white p-6">
+              <h2 className="text-lg font-medium text-neutral-900">Recruiting</h2>
+              <p className="mt-1 text-sm text-neutral-500">
+                Job postings, applicants, and the hiring pipeline.
+              </p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <Stat label="Active Applicants" value={recruiting.active} />
+                <Stat label="Interviews Scheduled" value={recruiting.scheduledInterviews} />
+                <Stat label="Awaiting Scheduling" value={recruiting.awaitingScheduling} />
+                <Stat label="Hired" value={recruiting.hired} />
+              </div>
+              <Link
+                href="/recruiting"
+                className="mt-5 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+              >
+                View Recruiting Pipeline
+              </Link>
+            </section>
           </div>
-          <Link
-            href="/recruiting"
-            className="mt-5 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-          >
-            View Recruiting Pipeline
-          </Link>
-        </section>
+        </div>
+
+        <aside className="lg:sticky lg:top-28">
+          <ChecklistSidebar items={checklistItems} isAdmin={isAdmin} />
+        </aside>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import { getSession, clearSessionCookie } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { resolveUserDepartments } from "@/lib/departments";
 import Nav from "@/components/Nav";
+import GoalProgressBar from "@/components/GoalProgressBar";
 
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -24,7 +25,10 @@ export default async function PortalLayout({ children }: { children: React.React
 
   return (
     <div className="min-h-screen">
-      <Nav session={session} departments={departments} />
+      <div className="sticky top-0 z-20 print:static">
+        <Nav session={session} departments={departments} />
+        <GoalProgressBar session={session} departments={departments} />
+      </div>
       <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
     </div>
   );

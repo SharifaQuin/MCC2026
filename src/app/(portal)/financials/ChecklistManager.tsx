@@ -7,11 +7,12 @@ import {
   deleteChecklistTaskAction,
   toggleChecklistTaskStatusAction,
 } from "@/app/actions/financials";
-import type { ChecklistTaskStatus } from "@prisma/client";
+import { splitChecklistTasks } from "@/lib/checklistDisplay";
+import type { ChecklistFrequency, ChecklistTaskStatus } from "@prisma/client";
 
 export interface ChecklistRow {
   id: string;
-  frequency: string;
+  frequency: ChecklistFrequency;
   task: string;
   owner: string;
   visibility: string;
@@ -93,12 +94,14 @@ function AddSubmitButton() {
 
 export default function ChecklistManager({ tasks }: { tasks: ChecklistRow[] }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const { active, archived } = splitChecklistTasks(tasks);
 
   return (
     <div>
       <div className="mb-3 flex items-center justify-between">
         <p className="text-xs text-neutral-500">
-          {tasks.length} task{tasks.length === 1 ? "" : "s"}
+          {active.length} active task{active.length === 1 ? "" : "s"}
         </p>
         <button
           type="button"
@@ -153,10 +156,31 @@ export default function ChecklistManager({ tasks }: { tasks: ChecklistRow[] }) {
       )}
 
       <div className="space-y-2">
-        {tasks.map((t) => (
-          <TaskRow key={t.id} task={t} />
-        ))}
+        {active.length === 0 ? (
+          <p className="text-sm text-neutral-400">Nothing active right now.</p>
+        ) : (
+          active.map((t) => <TaskRow key={t.id} task={t} />)
+        )}
       </div>
+
+      {archived.length > 0 && (
+        <div className="mt-4 border-t border-neutral-100 pt-3">
+          <button
+            type="button"
+            onClick={() => setShowArchived((s) => !s)}
+            className="text-xs font-medium text-neutral-500 hover:text-neutral-700"
+          >
+            {showArchived ? "Hide" : "Show"} archived ({archived.length})
+          </button>
+          {showArchived && (
+            <div className="mt-2 space-y-2 opacity-70">
+              {archived.map((t) => (
+                <TaskRow key={t.id} task={t} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
