@@ -155,35 +155,46 @@ function TaskRow({ task }: { task: ChecklistRow }) {
             </select>
           </div>
 
-          <div onClick={(e) => e.stopPropagation()}>
-            <label className="mb-1 block text-xs font-medium text-neutral-600">Due date</label>
-            <div className="flex gap-2">
-              <input
-                type="date"
-                value={dateDraft}
-                onChange={(e) => setDateDraft(e.target.value)}
-                className="rounded-md border border-neutral-300 px-2 py-1.5 text-xs"
-              />
-              <button
-                type="button"
-                disabled={pending || dateDraft === (task.targetDate ? task.targetDate.slice(0, 10) : "")}
-                onClick={saveDate}
-                className="rounded-md bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-40"
-              >
-                {pending ? "Saving..." : "Save"}
-              </button>
-              {dateDraft && (
+          {task.frequency === "MONTHLY" ? (
+            <p className="text-xs text-neutral-500">
+              Due date: automatically the last day of the month — no need to set one.
+            </p>
+          ) : task.frequency === "DAILY" || task.frequency === "WEEKLY" ? (
+            <p className="text-xs text-neutral-500">
+              {task.frequency === "DAILY" ? "Daily" : "Weekly"} tasks don't use a due date — resetting each period is
+              their deadline.
+            </p>
+          ) : (
+            <div onClick={(e) => e.stopPropagation()}>
+              <label className="mb-1 block text-xs font-medium text-neutral-600">Due date</label>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={dateDraft}
+                  onChange={(e) => setDateDraft(e.target.value)}
+                  className="rounded-md border border-neutral-300 px-2 py-1.5 text-xs"
+                />
                 <button
                   type="button"
-                  disabled={pending}
-                  onClick={() => setDateDraft("")}
-                  className="text-xs text-neutral-500 hover:underline disabled:opacity-40"
+                  disabled={pending || dateDraft === (task.targetDate ? task.targetDate.slice(0, 10) : "")}
+                  onClick={saveDate}
+                  className="rounded-md bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-40"
                 >
-                  Clear
+                  {pending ? "Saving..." : "Save"}
                 </button>
-              )}
+                {dateDraft && (
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => setDateDraft("")}
+                    className="text-xs text-neutral-500 hover:underline disabled:opacity-40"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           <div onClick={(e) => e.stopPropagation()}>
             <label className="mb-1 block text-xs font-medium text-neutral-600">Notes</label>
@@ -444,6 +455,10 @@ export default function ChecklistManager({ tasks }: { tasks: ChecklistRow[] }) {
           <div>
             <label className="mb-1 block text-xs font-medium text-neutral-600">Target date (optional)</label>
             <input type="date" name="targetDate" className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm" />
+            <p className="mt-1 text-[11px] text-neutral-400">
+              One-Time/Milestone only — defaults to 3 days out if left blank. Monthly is always due month-end;
+              Daily/Weekly don&apos;t use a due date.
+            </p>
           </div>
           <div className="col-span-2 md:col-span-4">
             <AddSubmitButton />

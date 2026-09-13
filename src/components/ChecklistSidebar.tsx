@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { addChecklistTaskAction, toggleChecklistTaskStatusAction } from "@/app/actions/financials";
-import { splitChecklistTasks, groupByCategory, getDueStatus } from "@/lib/checklistDisplay";
+import { splitChecklistTasks, groupByCategory, getDueStatus, getEffectiveTargetDate } from "@/lib/checklistDisplay";
 import type { ChecklistCategory, ChecklistFrequency, ChecklistTaskStatus } from "@prisma/client";
 
 export interface ChecklistItem {
@@ -85,9 +85,10 @@ function Row({ item }: { item: ChecklistItem }) {
       {expanded && (
         <div className="mt-1 rounded-md bg-neutral-50 px-2 py-1.5 text-xs text-neutral-500">
           {item.notes ? <p>{item.notes}</p> : <p className="italic text-neutral-400">No notes yet.</p>}
-          {item.targetDate && (
-            <p className="mt-1 text-neutral-400">Target: {new Date(item.targetDate).toLocaleDateString()}</p>
-          )}
+          {(() => {
+            const due = getEffectiveTargetDate(item);
+            return due ? <p className="mt-1 text-neutral-400">Target: {due.toLocaleDateString()}</p> : null;
+          })()}
         </div>
       )}
     </div>

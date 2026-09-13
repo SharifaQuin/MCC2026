@@ -30,6 +30,20 @@ function optionalNum(formData: FormData, field: string): number | null {
   return value;
 }
 
+// New One-Time/Milestone tasks default to a 3-day due date when none is
+// given explicitly (tighter than the one-time 7-day backfill everything
+// else got, per the owner's "keep on top of things going forward" ask).
+// Monthly is always computed as month-end and Daily/Weekly never use a due
+// date at all (see getEffectiveTargetDate in lib/checklistDisplay.ts), so
+// neither needs anything stored here.
+function defaultTargetDateFor(frequency: string, explicit: Date | null): Date | null {
+  if (explicit) return explicit;
+  if (frequency === "ONE_TIME" || frequency === "MILESTONE") {
+    return new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  }
+  return null;
+}
+
 // ADMIN only — every field is entered directly rather than derived from the
 // others (see the note on the MonthlyFinancials model): her source
 // spreadsheet's opex_total doesn't equal a simple sum of its own line items,
@@ -144,7 +158,7 @@ export async function addChecklistTaskAction(formData: FormData) {
       visibility,
       category,
       notes,
-      targetDate: targetDateRaw ? new Date(targetDateRaw) : null,
+      targetDate: defaultTargetDateFor(frequency, targetDateRaw ? new Date(targetDateRaw) : null),
       order: count,
     },
   });
@@ -169,6 +183,7 @@ export async function bulkAddChecklistTasksAction(
 
   const owner: ChecklistOwner = visibility === "TEAM" ? "TEAM" : "OWNER";
   const startOrder = await prisma.checklistTask.count();
+  const targetDate = defaultTargetDateFor(frequency, null);
 
   await prisma.checklistTask.createMany({
     data: cleaned.map((item, i) => ({
@@ -177,6 +192,7 @@ export async function bulkAddChecklistTasksAction(
       owner,
       visibility,
       category: item.category,
+      targetDate,
       order: startOrder + i,
     })),
   });

@@ -49,18 +49,39 @@ export function reachedGrowthStages(staircase: number[], revenue: number): boole
   return staircase.map((amount) => revenue >= amount);
 }
 
+// The due date a task actually reads as, given its frequency — not
+// necessarily what's stored. Monthly tasks are always due the last day of
+// the current month, recalculated automatically same as effectiveStatus
+// (no manual due date makes sense there). Daily/Weekly tasks already reset
+// themselves every period — that reset IS their deadline — so they never
+// have a due date at all. Only One-Time/Milestone tasks use whatever's
+// actually stored in targetDate.
+export function getEffectiveTargetDate(
+  task: { frequency: ChecklistFrequency; targetDate: string | Date | null },
+  now: Date = new Date()
+): Date | null {
+  if (task.frequency === "MONTHLY") {
+    return new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  }
+  if (task.frequency === "DAILY" || task.frequency === "WEEKLY") {
+    return null;
+  }
+  return task.targetDate ? new Date(task.targetDate) : null;
+}
+
 export type DueStatus = "OVERDUE" | "DUE_SOON" | null;
 
 // A due-date flag shown right on the task — no email, no scheduled job,
 // just computed at read time same as effectiveStatus. Done tasks never show
 // a flag regardless of date. "Due soon" covers today and the next 2 days.
 export function getDueStatus(
-  task: { targetDate: string | Date | null; effectiveStatus: ChecklistTaskStatus },
+  task: { frequency: ChecklistFrequency; targetDate: string | Date | null; effectiveStatus: ChecklistTaskStatus },
   now: Date = new Date()
 ): DueStatus {
-  if (!task.targetDate || task.effectiveStatus === "DONE") return null;
+  if (task.effectiveStatus === "DONE") return null;
+  const due = getEffectiveTargetDate(task, now);
+  if (!due) return null;
 
-  const due = new Date(task.targetDate);
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const startOfDue = new Date(due.getFullYear(), due.getMonth(), due.getDate());
   const daysUntilDue = Math.round((startOfDue.getTime() - startOfToday.getTime()) / 86400000);
