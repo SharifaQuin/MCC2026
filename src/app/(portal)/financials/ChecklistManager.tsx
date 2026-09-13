@@ -4,13 +4,14 @@ import { useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import {
   addChecklistTaskAction,
+  bulkAddChecklistTasksAction,
   deleteChecklistTaskAction,
   setChecklistTaskCategoryAction,
   toggleChecklistTaskStatusAction,
   updateChecklistTaskNotesAction,
 } from "@/app/actions/financials";
-import { splitChecklistTasks, groupByCategory } from "@/lib/checklistDisplay";
-import type { ChecklistCategory, ChecklistFrequency, ChecklistTaskStatus } from "@prisma/client";
+import { splitChecklistTasks, groupByCategory, guessChecklistCategory, CATEGORY_LABELS } from "@/lib/checklistDisplay";
+import type { ChecklistCategory, ChecklistFrequency, ChecklistTaskStatus, ChecklistVisibility } from "@prisma/client";
 
 export interface ChecklistRow {
   id: string;
@@ -166,8 +167,146 @@ function AddSubmitButton() {
   );
 }
 
+interface BulkItem {
+  task: string;
+  category: ChecklistCategory;
+}
+
+// Paste a list of tasks, one per line -> each gets a guessed category from
+// its text (keyword match, not real AI) -> review/correct any guess before
+// creating them all at once. Frequency and visibility apply to the whole
+// batch rather than being guessed per line.
+function BulkAddPanel({ onDone }: { onDone: () => void }) {
+  const [pending, startTransition] = useTransition();
+  const [text, setText] = useState("");
+  const [frequency, setFrequency] = useState("ONE_TIME");
+  const [visibility, setVisibility] = useState<ChecklistVisibility>("OWNER_ONLY");
+  const [preview, setPreview] = useState<BulkItem[] | null>(null);
+
+  function buildPreview() {
+    const items = text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((task) => ({ task, category: guessChecklistCategory(task) }));
+    setPreview(items);
+  }
+
+  function updateCategory(index: number, category: ChecklistCategory) {
+    setPreview((p) => p && p.map((item, i) => (i === index ? { ...item, category } : item)));
+  }
+
+  function confirm() {
+    if (!preview || preview.length === 0) return;
+    startTransition(async () => {
+      await bulkAddChecklistTasksAction(preview, frequency, visibility);
+      onDone();
+    });
+  }
+
+  if (preview) {
+    return (
+      <div className="mb-4 rounded-md border border-neutral-200 p-4">
+        <p className="mb-3 text-xs text-neutral-500">
+          {preview.length} task{preview.length === 1 ? "" : "s"} — check the guessed categories, fix any that are
+          wrong, then add them.
+        </p>
+        <div className="mb-4 space-y-2">
+          {preview.map((item, i) => (
+            <div key={i} className="flex items-center gap-2 rounded-md bg-neutral-50 p-2">
+              <p className="min-w-0 flex-1 truncate text-xs text-neutral-800">{item.task}</p>
+              <select
+                value={item.category}
+                onChange={(e) => updateCategory(i, e.target.value as ChecklistCategory)}
+                className="shrink-0 rounded-md border border-neutral-300 px-2 py-1 text-xs"
+              >
+                {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={confirm}
+            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+          >
+            {pending ? "Adding..." : `Add ${preview.length} task${preview.length === 1 ? "" : "s"}`}
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => setPreview(null)}
+            className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-4 space-y-3 rounded-md border border-neutral-200 p-4">
+      <div>
+        <label className="mb-1 block text-xs font-medium text-neutral-600">
+          Tasks (one per line)
+        </label>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={6}
+          placeholder={"Renew business insurance\nFollow up with 3 pending quotes\nSchedule Q4 team review"}
+          className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-neutral-600">Frequency (all tasks)</label>
+          <select
+            value={frequency}
+            onChange={(e) => setFrequency(e.target.value)}
+            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+          >
+            <option value="DAILY">Daily</option>
+            <option value="WEEKLY">Weekly</option>
+            <option value="MONTHLY">Monthly</option>
+            <option value="ONE_TIME">One-Time</option>
+            <option value="MILESTONE">Milestone</option>
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-neutral-600">Visible to (all tasks)</label>
+          <select
+            value={visibility}
+            onChange={(e) => setVisibility(e.target.value as ChecklistVisibility)}
+            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+          >
+            <option value="OWNER_ONLY">Owner only</option>
+            <option value="TEAM">Team</option>
+          </select>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={buildPreview}
+        disabled={!text.trim()}
+        className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-40"
+      >
+        Preview categories
+      </button>
+    </div>
+  );
+}
+
 export default function ChecklistManager({ tasks }: { tasks: ChecklistRow[] }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [showBulkAdd, setShowBulkAdd] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const { active, archived } = splitChecklistTasks(tasks);
   const activeGroups = groupByCategory(active);
@@ -179,14 +318,31 @@ export default function ChecklistManager({ tasks }: { tasks: ChecklistRow[] }) {
         <p className="text-xs text-neutral-500">
           {active.length} active task{active.length === 1 ? "" : "s"}
         </p>
-        <button
-          type="button"
-          onClick={() => setShowAdd((s) => !s)}
-          className="text-xs font-medium text-brand-700 hover:underline"
-        >
-          {showAdd ? "Cancel" : "+ Add a task"}
-        </button>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setShowAdd((s) => !s);
+              setShowBulkAdd(false);
+            }}
+            className="text-xs font-medium text-brand-700 hover:underline"
+          >
+            {showAdd ? "Cancel" : "+ Add a task"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowBulkAdd((s) => !s);
+              setShowAdd(false);
+            }}
+            className="text-xs font-medium text-brand-700 hover:underline"
+          >
+            {showBulkAdd ? "Cancel" : "+ Bulk add"}
+          </button>
+        </div>
       </div>
+
+      {showBulkAdd && <BulkAddPanel onDone={() => setShowBulkAdd(false)} />}
 
       {showAdd && (
         <form

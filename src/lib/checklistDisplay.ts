@@ -48,3 +48,45 @@ export function splitChecklistTasks<
 export function reachedGrowthStages(staircase: number[], revenue: number): boolean[] {
   return staircase.map((amount) => revenue >= amount);
 }
+
+// Keyword lists checked in this order (first match wins) — deliberately
+// excludes ambiguous words like "payroll", which in this checklist's history
+// has meant financial reconciliation (Management/Admin), not an HR task.
+const CATEGORY_KEYWORDS: { category: ChecklistCategory; keywords: string[] }[] = [
+  {
+    category: "MARKETING",
+    keywords: ["marketing", "lead", "leads", "campaign", "advertis", "social media", "seo", "brand", "promo"],
+  },
+  {
+    category: "SALES",
+    keywords: ["sales", "quote", "quotes", "revenue", "pricing", "pipeline", "conversion", "client win", "deal"],
+  },
+  {
+    category: "HR",
+    keywords: [
+      "hire",
+      "hiring",
+      "recruit",
+      "employee",
+      "onboarding",
+      "onboard",
+      "interview",
+      "certification",
+      "certify",
+      "training",
+      "staff",
+    ],
+  },
+];
+
+// Best-effort category guess from a task's text, for bulk-adding a pasted
+// list of tasks without making the owner pick a category for each one by
+// hand. Falls back to Management/Admin — same as the field's own default —
+// when nothing matches; any guess can be corrected afterward with one click.
+export function guessChecklistCategory(taskText: string): ChecklistCategory {
+  const lower = taskText.toLowerCase();
+  for (const { category, keywords } of CATEGORY_KEYWORDS) {
+    if (keywords.some((kw) => lower.includes(kw))) return category;
+  }
+  return "MANAGEMENT";
+}

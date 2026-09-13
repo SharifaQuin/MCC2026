@@ -153,6 +153,37 @@ export async function addChecklistTaskAction(formData: FormData) {
   revalidatePath("/");
 }
 
+// ADMIN only — creates several tasks at once from a pasted list, each with
+// its own (already-guessed, possibly owner-corrected) category, sharing one
+// frequency/visibility for the whole batch.
+export async function bulkAddChecklistTasksAction(
+  items: { task: string; category: ChecklistCategory }[],
+  frequency: string,
+  visibility: ChecklistVisibility
+) {
+  await requireOwnerAccess();
+
+  const cleaned = items.map((i) => ({ ...i, task: i.task.trim() })).filter((i) => i.task);
+  if (cleaned.length === 0) return;
+
+  const owner: ChecklistOwner = visibility === "TEAM" ? "TEAM" : "OWNER";
+  const startOrder = await prisma.checklistTask.count();
+
+  await prisma.checklistTask.createMany({
+    data: cleaned.map((item, i) => ({
+      frequency: frequency as never,
+      task: item.task,
+      owner,
+      visibility,
+      category: item.category,
+      order: startOrder + i,
+    })),
+  });
+
+  revalidatePath("/financials");
+  revalidatePath("/");
+}
+
 // ADMIN only — re-tag which category subsection a task shows under.
 export async function setChecklistTaskCategoryAction(taskId: string, category: ChecklistCategory) {
   await requireOwnerAccess();
