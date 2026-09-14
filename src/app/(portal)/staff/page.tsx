@@ -123,7 +123,12 @@ export default async function StaffDashboardPage() {
       </div>
 
       <div>
-        <h2 className="mb-3 text-lg font-medium">Staff Directory</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-medium">Staff Directory</h2>
+          <Link href="/staff/departed" className="text-sm font-medium text-brand-700 hover:underline">
+            View All Departed Employees →
+          </Link>
+        </div>
         <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-neutral-200 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">

@@ -136,3 +136,32 @@ export async function getStaffDashboardStats() {
     payrollDisputes,
   };
 }
+
+// Every departed employee, any role — not limited to STAFF_ROLES (a
+// departed ADMIN or manager still belongs here) and not limited to a
+// trailing window like getTurnoverStats. The Staff directory only shows
+// active people and the turnover view only covers the last 90 days, so
+// this is the one place to actually find someone who left a while ago.
+export async function getAllDepartedEmployees() {
+  const rows = await prisma.user.findMany({
+    where: { lastDay: { not: null } },
+    orderBy: { lastDay: "desc" },
+    select: {
+      id: true,
+      employeeId: true,
+      name: true,
+      email: true,
+      role: true,
+      hireDate: true,
+      lastDay: true,
+      departureReason: true,
+      rehireEligible: true,
+      exitInterviewCompletedAt: true,
+    },
+  });
+
+  return rows.map((r) => ({
+    ...r,
+    tenureDays: r.hireDate && r.lastDay ? Math.round((r.lastDay.getTime() - r.hireDate.getTime()) / (1000 * 60 * 60 * 24)) : null,
+  }));
+}
