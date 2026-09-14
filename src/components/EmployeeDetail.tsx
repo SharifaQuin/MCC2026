@@ -14,6 +14,7 @@ import HireDateForm from "@/components/HireDateForm";
 import PairingPanel from "@/components/PairingPanel";
 import PromotionPanel, { type PromotionAssessmentRow } from "@/components/PromotionPanel";
 import PayReviewPanel, { type PayReviewAssessmentRow } from "@/components/PayReviewPanel";
+import ExportToOneDriveButton from "@/components/ExportToOneDriveButton";
 import MilestonePanel, { type MilestoneTimelineEntryView } from "@/components/MilestonePanel";
 import EmployeeSummaryCard from "@/components/EmployeeSummaryCard";
 import PersonnelActionFormPanel, { type PafRow } from "@/components/PersonnelActionFormPanel";
@@ -420,6 +421,17 @@ export function EmployeeDetailView({
             documents={complianceDocuments}
             canManage={viewerRole === "ADMIN" || viewerRole === "SERVICE_MANAGER"}
           />
+        </section>
+      )}
+
+      {showHrTools && viewerRole === "ADMIN" && (
+        <section>
+          <h2 className="mb-2 text-lg font-medium">Document Export</h2>
+          <p className="mb-3 text-xs text-neutral-500">
+            Backs up every signed personnel document, signed onboarding document, and uploaded
+            compliance document on file for this employee to OneDrive.
+          </p>
+          <ExportToOneDriveButton employeeId={user.id} />
         </section>
       )}
 
