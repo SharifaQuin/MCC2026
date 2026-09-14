@@ -1,32 +1,37 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
-import { LEAD_SOURCE_LABELS, LEAD_STAGE_LABELS } from "@/lib/leads";
+import { LEAD_SOURCE_LABELS, LEAD_STAGE_LABELS, getSalesTeamMembers } from "@/lib/leads";
 import LeadStageControls from "./LeadStageControls";
 import LeadCommunicationPanel from "./LeadCommunicationPanel";
 import LeadDealDetailsForm from "./LeadDealDetailsForm";
 import LeadActivityFeed from "./LeadActivityFeed";
+import AssignLeadForm from "./AssignLeadForm";
 
 export default async function LeadDetailPage({ params }: { params: { id: string } }) {
   const { canEdit } = await requireDepartmentAccess("SALES");
 
-  const lead = await prisma.lead.findUnique({
-    where: { id: params.id },
-    include: {
-      communications: {
-        orderBy: { createdAt: "desc" },
-        include: { sentBy: { select: { name: true } } },
+  const [lead, teamMembers] = await Promise.all([
+    prisma.lead.findUnique({
+      where: { id: params.id },
+      include: {
+        communications: {
+          orderBy: { createdAt: "desc" },
+          include: { sentBy: { select: { name: true } } },
+        },
+        notes: {
+          orderBy: { createdAt: "desc" },
+          include: { author: { select: { name: true } } },
+        },
+        stageChanges: {
+          orderBy: { createdAt: "desc" },
+          include: { changedBy: { select: { name: true } } },
+        },
+        assignedTo: { select: { name: true } },
       },
-      notes: {
-        orderBy: { createdAt: "desc" },
-        include: { author: { select: { name: true } } },
-      },
-      stageChanges: {
-        orderBy: { createdAt: "desc" },
-        include: { changedBy: { select: { name: true } } },
-      },
-    },
-  });
+    }),
+    getSalesTeamMembers(),
+  ]);
 
   if (!lead) {
     return <p className="text-neutral-500">Lead not found.</p>;
@@ -79,9 +84,18 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
           </h1>
           <p className="text-neutral-500">{LEAD_SOURCE_LABELS[lead.source] ?? lead.source}</p>
         </div>
-        <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700">
-          {LEAD_STAGE_LABELS[lead.stage]}
-        </span>
+        <div className="flex flex-col items-end gap-2">
+          <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700">
+            {LEAD_STAGE_LABELS[lead.stage]}
+          </span>
+          {canEdit ? (
+            <AssignLeadForm leadId={lead.id} assignedToId={lead.assignedToId} teamMembers={teamMembers} />
+          ) : (
+            <span className="text-xs text-neutral-400">
+              Assigned to: {lead.assignedTo?.name ?? "Unassigned"}
+            </span>
+          )}
+        </div>
       </div>
 
       {lead.stage === "LOST" && lead.lostReason && (
@@ -167,10 +181,17 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
           </p>
         )}
         <Link
-          href="/sales/pricing-tool"
+          href={{
+            pathname: "/sales/pricing-tool",
+            query: {
+              leadName: `${lead.firstName} ${lead.lastName}`,
+              ...(lead.address ? { leadAddress: lead.address } : {}),
+              ...(lead.serviceInterest ? { leadService: lead.serviceInterest } : {}),
+            },
+          }}
           className="mt-3 inline-block text-sm text-brand-700 hover:underline"
         >
-          Open Pricing &amp; Quotes Tool →
+          Start Quote in Pricing Tool →
         </Link>
       </div>
 

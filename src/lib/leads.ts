@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { LeadStage, LeadSource } from "@prisma/client";
 import { sendEmail } from "@/lib/email";
 import { postSlackDMToOwner } from "@/lib/slack";
+import { csvEscape } from "@/lib/export";
 
 export const LEAD_SOURCE_LABELS: Record<string, string> = {
   WEBSITE_FORM: "Website Form",
@@ -113,17 +114,20 @@ function currentMonthKey(now: Date = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
+export interface AttentionLead {
+  id: string;
+  firstName: string;
+  lastName: string;
+  stage: LeadStage;
+  reason: "new" | "overdue_followup";
+  since: string; // createdAt for "new", followUpDueAt for "overdue_followup"
+}
+
 export interface LeadKpis {
   avgResponseHours: number | null; // NEW_INQUIRY -> firstContactedAt, last 30 days
   pipelineValue: number; // sum of estimatedValue for leads not yet Won/Lost
   openLeadCount: number;
-  staleFollowUps: {
-    id: string;
-    firstName: string;
-    lastName: string;
-    stage: LeadStage;
-    followUpDueAt: string;
-  }[];
+  needsAttention: AttentionLead[];
   bySource: {
     source: string;
     label: string;
@@ -138,30 +142,40 @@ export interface LeadKpis {
 export async function loadLeadKpis(): Promise<LeadKpis> {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-  const [respondedLeads, openLeads, staleLeads, monthSpend, leadsThisMonth] = await Promise.all([
-    prisma.lead.findMany({
-      where: { firstContactedAt: { not: null }, createdAt: { gte: thirtyDaysAgo } },
-      select: { createdAt: true, firstContactedAt: true },
-    }),
-    prisma.lead.findMany({
-      where: { stage: { notIn: ["WON", "LOST"] } },
-      select: { estimatedValue: true },
-    }),
-    prisma.lead.findMany({
-      where: {
-        stage: { notIn: ["WON", "LOST"] },
-        followUpDueAt: { not: null, lt: new Date() },
-      },
-      select: { id: true, firstName: true, lastName: true, stage: true, followUpDueAt: true },
-      orderBy: { followUpDueAt: "asc" },
-    }),
-    prisma.leadSourceSpend.findMany({ where: { monthKey: currentMonthKey() } }),
-    prisma.lead.groupBy({
-      by: ["source", "stage"],
-      _count: true,
-      where: { createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } },
-    }),
-  ]);
+  const [respondedLeads, openLeads, newUncontacted, overdueFollowUps, monthSpend, leadsThisMonth] =
+    await Promise.all([
+      prisma.lead.findMany({
+        where: { firstContactedAt: { not: null }, createdAt: { gte: thirtyDaysAgo } },
+        select: { createdAt: true, firstContactedAt: true },
+      }),
+      prisma.lead.findMany({
+        where: { stage: { notIn: ["WON", "LOST"] } },
+        select: { estimatedValue: true },
+      }),
+      // Every New Inquiry needs a first response, regardless of age — unlike
+      // overdue follow-ups, this doesn't wait for someone to have set a due
+      // date, since a brand-new lead nobody has touched yet is exactly the
+      // case a due date wouldn't exist for.
+      prisma.lead.findMany({
+        where: { stage: "NEW_INQUIRY" },
+        select: { id: true, firstName: true, lastName: true, stage: true, createdAt: true },
+        orderBy: { createdAt: "asc" },
+      }),
+      prisma.lead.findMany({
+        where: {
+          stage: { notIn: ["NEW_INQUIRY", "WON", "LOST"] },
+          followUpDueAt: { not: null, lt: new Date() },
+        },
+        select: { id: true, firstName: true, lastName: true, stage: true, followUpDueAt: true },
+        orderBy: { followUpDueAt: "asc" },
+      }),
+      prisma.leadSourceSpend.findMany({ where: { monthKey: currentMonthKey() } }),
+      prisma.lead.groupBy({
+        by: ["source", "stage"],
+        _count: true,
+        where: { createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } },
+      }),
+    ]);
 
   const avgResponseHours = respondedLeads.length
     ? respondedLeads.reduce(
@@ -196,19 +210,47 @@ export async function loadLeadKpis(): Promise<LeadKpis> {
     };
   });
 
-  return {
-    avgResponseHours,
-    pipelineValue,
-    openLeadCount: openLeads.length,
-    staleFollowUps: staleLeads.map((l) => ({
+  const needsAttention: AttentionLead[] = [
+    ...newUncontacted.map((l) => ({
       id: l.id,
       firstName: l.firstName,
       lastName: l.lastName,
       stage: l.stage,
-      followUpDueAt: l.followUpDueAt!.toISOString(),
+      reason: "new" as const,
+      since: l.createdAt.toISOString(),
     })),
+    ...overdueFollowUps.map((l) => ({
+      id: l.id,
+      firstName: l.firstName,
+      lastName: l.lastName,
+      stage: l.stage,
+      reason: "overdue_followup" as const,
+      since: l.followUpDueAt!.toISOString(),
+    })),
+  ].sort((a, b) => new Date(a.since).getTime() - new Date(b.since).getTime());
+
+  return {
+    avgResponseHours,
+    pipelineValue,
+    openLeadCount: openLeads.length,
+    needsAttention,
     bySource,
   };
+}
+
+// Proactive Slack nudge (src/lib/leadDigestScheduler.ts) so overdue/
+// uncontacted leads don't sit unnoticed until someone happens to open the
+// Sales dashboard — mirrors buildHrDigestMessage's format.
+export function buildLeadDigestMessage(items: AttentionLead[]): string {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const lines = items.map((item) => {
+    const label =
+      item.reason === "new"
+        ? `New — not yet contacted since ${new Date(item.since).toLocaleDateString()}`
+        : `Follow-up overdue since ${new Date(item.since).toLocaleDateString()}`;
+    return `• <${appUrl}/sales/leads/${item.id}|${item.firstName} ${item.lastName}> — ${label}`;
+  });
+  return [":email: *Leads Needing Attention*", "", ...lines].join("\n");
 }
 
 export async function getLeadSourceSpend(monthKey: string = currentMonthKey()) {
@@ -288,6 +330,37 @@ export async function getActiveLeadFormFields() {
   return prisma.leadFormField.findMany({ orderBy: { order: "asc" } });
 }
 
+// All-time conversion funnel by source — complements the Sales dashboard's
+// this-month Source ROI table (spend-focused) with a longer-view "which
+// sources actually turn into paying jobs" answer, mirroring the Recruiting
+// pipeline's Applicants-by-Source table.
+export async function getLeadFunnelBySource() {
+  const rows = await prisma.lead.groupBy({ by: ["source", "stage"], _count: true });
+
+  const bySource = new Map<string, { total: number; won: number; lost: number; open: number }>();
+  for (const row of rows) {
+    const entry = bySource.get(row.source) ?? { total: 0, won: 0, lost: 0, open: 0 };
+    entry.total += row._count;
+    if (row.stage === "WON") entry.won += row._count;
+    else if (row.stage === "LOST") entry.lost += row._count;
+    else entry.open += row._count;
+    bySource.set(row.source, entry);
+  }
+
+  return Array.from(bySource.entries())
+    .map(([source, stats]) => ({
+      source,
+      label: LEAD_SOURCE_LABELS[source] ?? source,
+      total: stats.total,
+      open: stats.open,
+      won: stats.won,
+      lost: stats.lost,
+      winRatePct:
+        stats.won + stats.lost > 0 ? Math.round((stats.won / (stats.won + stats.lost)) * 100) : 0,
+    }))
+    .sort((a, b) => b.total - a.total);
+}
+
 // Lost leads are pulled off the active pipeline board (same treatment as
 // Rejected/Benched applicants), but stay fully on file — this is the one
 // place to browse all of them, since the board itself only shows a count.
@@ -317,5 +390,87 @@ export async function getLostLeads() {
       lostAt: lostChange?.createdAt ?? l.updatedAt,
       lostByName: lostChange?.changedBy?.name ?? null,
     };
+  });
+}
+
+export async function buildLeadExportCsv(): Promise<string> {
+  const leads = await prisma.lead.findMany({ orderBy: { createdAt: "desc" } });
+
+  const headers = [
+    "First Name",
+    "Last Name",
+    "Email",
+    "Phone",
+    "Address",
+    "Source",
+    "Stage",
+    "Service Interest",
+    "Estimated Value",
+    "Quote Reference",
+    "Lost Reason",
+    "Created At",
+    "First Contacted At",
+    "Follow-up Due",
+  ];
+
+  const lines = [headers.join(",")];
+  for (const l of leads) {
+    lines.push(
+      [
+        csvEscape(l.firstName),
+        csvEscape(l.lastName),
+        csvEscape(l.email),
+        csvEscape(l.phone),
+        csvEscape(l.address),
+        csvEscape(LEAD_SOURCE_LABELS[l.source] ?? l.source),
+        csvEscape(LEAD_STAGE_LABELS[l.stage] ?? l.stage),
+        csvEscape(l.serviceInterest),
+        csvEscape(l.estimatedValue),
+        csvEscape(l.quoteKey),
+        csvEscape(l.lostReason),
+        csvEscape(l.createdAt.toISOString()),
+        csvEscape(l.firstContactedAt ? l.firstContactedAt.toISOString() : null),
+        csvEscape(l.followUpDueAt ? l.followUpDueAt.toISOString() : null),
+      ].join(",")
+    );
+  }
+
+  return lines.join("\n");
+}
+
+// Direction A of the Lead <-> Pricing Tool Won/Lost sync (direction B lives
+// in src/app/api/sales/storage/route.ts, triggered when the quote itself
+// changes) — called when a Lead's own stage moves to Won/Lost so its linked
+// quote (if any) reflects the same outcome. Best-effort: a missing or
+// malformed quote record just means there's nothing to sync.
+export async function syncQuoteStatusForLead(
+  quoteKey: string | null,
+  status: "won" | "lost"
+): Promise<void> {
+  if (!quoteKey) return;
+  const key = `quote:${quoteKey}`;
+  const row = await prisma.salesToolData.findUnique({ where: { key } });
+  if (!row) return;
+  try {
+    const data = JSON.parse(row.value) as { status?: string; wonAt?: string | null };
+    if (data.status === status) return;
+    data.status = status;
+    if (status === "won") data.wonAt = new Date().toISOString();
+    await prisma.salesToolData.update({ where: { key }, data: { value: JSON.stringify(data) } });
+  } catch {
+    // Malformed quote JSON — best-effort sync, skip silently.
+  }
+}
+
+// Eligible assignees for a lead — anyone with Sales department access, plus
+// Admins (who implicitly have every department per resolveUserDepartments).
+export async function getSalesTeamMembers() {
+  return prisma.user.findMany({
+    where: {
+      active: true,
+      OR: [{ role: "ADMIN" }, { departmentAccess: { some: { department: "SALES" } } }],
+    },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
   });
 }

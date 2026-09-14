@@ -158,6 +158,7 @@ model User {
   sentLeadCommunications LeadCommunication[]
   leadNotesWritten LeadNote[]
   leadStageChangesMade LeadStageChange[]
+  assignedLeads Lead[] @relation("LeadAssignedTo")
   hiredFromApplicant Applicant? @relation("ApplicantHiredUser")
   applicantsViewed Applicant[] @relation("ApplicantViewedBy")
   onboardingAssignments OnboardingAssignment[]
@@ -936,6 +937,8 @@ model Lead {
   // [{label, value}], keyed by label rather than a live FK so relabeling or
   // deleting a LeadFormField later never corrupts a past lead's answers.
   customFields Json?
+  assignedToId String?
+  assignedTo   User?    @relation("LeadAssignedTo", fields: [assignedToId], references: [id])
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -945,6 +948,7 @@ model Lead {
 
   @@index([stage])
   @@index([source])
+  @@index([assignedToId])
 }
 
 // Append-only activity log for internal notes — replaces a single

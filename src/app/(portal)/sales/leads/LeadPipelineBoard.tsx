@@ -13,6 +13,7 @@ interface Card {
   serviceInterest: string | null;
   estimatedValue: number | null;
   stage: LeadStage;
+  assignedToName: string | null;
 }
 
 function LeadCard({ lead }: { lead: Card }) {
@@ -34,6 +35,9 @@ function LeadCard({ lead }: { lead: Card }) {
         <p className="mt-1 text-xs text-neutral-400">
           ${lead.estimatedValue.toLocaleString()}
         </p>
+      )}
+      {lead.assignedToName && (
+        <p className="mt-1 truncate text-xs text-neutral-400">{lead.assignedToName}</p>
       )}
       {primary && (
         <button

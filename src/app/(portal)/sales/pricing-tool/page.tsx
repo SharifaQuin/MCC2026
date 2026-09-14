@@ -4,14 +4,18 @@ import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
 export default async function SalesPricingToolPage({
   searchParams,
 }: {
-  searchParams: Promise<{ quote?: string }>;
+  searchParams: Promise<{ quote?: string; leadName?: string; leadAddress?: string; leadService?: string }>;
 }) {
   await requireDepartmentAccess("SALES");
-  const { quote } = await searchParams;
+  const { quote, leadName, leadAddress, leadService } = await searchParams;
 
-  const src = quote
-    ? `/api/sales/pricing-tool?quote=${encodeURIComponent(quote)}`
-    : "/api/sales/pricing-tool";
+  const query = new URLSearchParams();
+  if (quote) query.set("quote", quote);
+  if (leadName) query.set("leadName", leadName);
+  if (leadAddress) query.set("leadAddress", leadAddress);
+  if (leadService) query.set("leadService", leadService);
+  const qs = query.toString();
+  const src = `/api/sales/pricing-tool${qs ? `?${qs}` : ""}`;
 
   return (
     <div>

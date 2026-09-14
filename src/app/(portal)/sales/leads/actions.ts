@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
 import { sendEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
+import { syncQuoteStatusForLead } from "@/lib/leads";
 import type { LeadStage, LeadSource } from "@prisma/client";
 
 const VALID_LEAD_SOURCES = new Set(["PHONE_CALL", "WALK_IN", "REFERRAL", "OTHER"]);
@@ -25,6 +26,7 @@ export async function setLeadStageAction(leadId: string, stage: LeadStage) {
   await prisma.leadStageChange.create({
     data: { leadId, fromStage: current.stage, toStage: stage, changedById: session.sub },
   });
+  if (stage === "WON") await syncQuoteStatusForLead(current.quoteKey, "won");
 
   revalidatePath(`/sales/leads/${leadId}`);
   revalidatePath("/sales/leads");
@@ -42,6 +44,7 @@ export async function markLeadLostAction(leadId: string, lostReason: string) {
   await prisma.leadStageChange.create({
     data: { leadId, fromStage: current.stage, toStage: "LOST", changedById: session.sub },
   });
+  await syncQuoteStatusForLead(current.quoteKey, "lost");
   revalidatePath(`/sales/leads/${leadId}`);
   revalidatePath("/sales/leads");
   revalidatePath("/sales");
@@ -95,10 +98,13 @@ export async function setLeadDealDetailsAction(leadId: string, formData: FormDat
   const followUpDateRaw = String(formData.get("followUpDate") ?? "");
   const followUpDueAt = followUpDateRaw ? new Date(followUpDateRaw) : null;
 
-  await prisma.lead.update({
+  const lead = await prisma.lead.update({
     where: { id: leadId },
     data: { estimatedValue, quoteKey, followUpDueAt },
   });
+  if (lead.stage === "WON" || lead.stage === "LOST") {
+    await syncQuoteStatusForLead(quoteKey, lead.stage === "WON" ? "won" : "lost");
+  }
   revalidatePath(`/sales/leads/${leadId}`);
   revalidatePath("/sales/leads");
 }
@@ -168,4 +174,15 @@ export async function logLeadReplyAction(leadId: string, channel: "EMAIL" | "SMS
   });
 
   revalidatePath(`/sales/leads/${leadId}`);
+}
+
+export async function setLeadAssignmentAction(leadId: string, assignedToId: string) {
+  const { canEdit } = await requireDepartmentAccess("SALES");
+  if (!canEdit) return;
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { assignedToId: assignedToId || null },
+  });
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath("/sales/leads");
 }

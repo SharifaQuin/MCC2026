@@ -207,20 +207,23 @@ export default async function SalesPage() {
                   : `${leadKpis.avgResponseHours.toFixed(1)} hrs`
             }
           />
-          <Stat label="Overdue Follow-ups" value={String(leadKpis.staleFollowUps.length)} />
+          <Stat label="Needs Attention" value={String(leadKpis.needsAttention.length)} />
         </div>
 
-        {leadKpis.staleFollowUps.length > 0 && (
+        {leadKpis.needsAttention.length > 0 && (
           <div className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-4">
-            <p className="mb-2 font-medium text-amber-800">Overdue follow-ups</p>
+            <p className="mb-2 font-medium text-amber-800">Needs attention</p>
             <div className="flex flex-wrap gap-2 text-sm">
-              {leadKpis.staleFollowUps.map((l) => (
+              {leadKpis.needsAttention.map((l) => (
                 <Link
                   key={l.id}
                   href={`/sales/leads/${l.id}`}
                   className="rounded-full bg-white px-3 py-1 font-medium text-amber-800 hover:underline"
                 >
-                  {l.firstName} {l.lastName} ({new Date(l.followUpDueAt).toLocaleDateString()})
+                  {l.firstName} {l.lastName}{" "}
+                  {l.reason === "new"
+                    ? `— not yet contacted (${new Date(l.since).toLocaleDateString()})`
+                    : `— follow-up overdue (${new Date(l.since).toLocaleDateString()})`}
                 </Link>
               ))}
             </div>

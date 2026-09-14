@@ -42,7 +42,7 @@ export async function loadEmployeeExportRows() {
   });
 }
 
-function csvEscape(value: string | number | null): string {
+export function csvEscape(value: string | number | null): string {
   if (value === null || value === undefined) return "";
   const str = String(value);
   if (str.includes(",") || str.includes('"') || str.includes("\n")) {

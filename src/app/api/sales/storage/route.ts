@@ -41,6 +41,39 @@ export async function POST(request: Request) {
         create: { key: body.key, value: body.value },
         update: { value: body.value },
       });
+
+      // Two-way sync with the Lead pipeline: a quote marked Won/Lost inside
+      // the pricing tool moves its linked Lead (by quoteKey) to match,
+      // logging a stage-history entry the same as a manual move would.
+      // Never downgrades a Lead that's already Won/Lost from some other
+      // change, and does nothing if the quote isn't linked to any lead.
+      if (body.key.startsWith("quote:")) {
+        try {
+          const quoteData = JSON.parse(body.value) as { status?: string };
+          if (quoteData.status === "won" || quoteData.status === "lost") {
+            const quoteId = body.key.slice("quote:".length);
+            const lead = await prisma.lead.findFirst({ where: { quoteKey: quoteId } });
+            if (lead && lead.stage !== "WON" && lead.stage !== "LOST") {
+              const toStage = quoteData.status === "won" ? "WON" : "LOST";
+              await prisma.lead.update({
+                where: { id: lead.id },
+                data: {
+                  stage: toStage,
+                  ...(toStage === "LOST" && !lead.lostReason
+                    ? { lostReason: "Quote marked Lost in Pricing Tool" }
+                    : {}),
+                },
+              });
+              await prisma.leadStageChange.create({
+                data: { leadId: lead.id, fromStage: lead.stage, toStage, changedById: session.sub },
+              });
+            }
+          }
+        } catch {
+          // Malformed quote JSON — best-effort sync, skip silently.
+        }
+      }
+
       return Response.json({ key: body.key, value: body.value, shared: true });
     }
 

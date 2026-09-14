@@ -20,6 +20,7 @@ export async function register() {
 
   const { runWeeklyUpdateSchedulerTick } = await import("@/lib/weeklyUpdateScheduler");
   const { runHrDigestSchedulerTick } = await import("@/lib/hrDigestScheduler");
+  const { runLeadDigestSchedulerTick } = await import("@/lib/leadDigestScheduler");
 
   setInterval(() => {
     runWeeklyUpdateSchedulerTick().catch((err) => {
@@ -27,6 +28,9 @@ export async function register() {
     });
     runHrDigestSchedulerTick().catch((err) => {
       console.error("[hrDigestScheduler] tick failed:", err);
+    });
+    runLeadDigestSchedulerTick().catch((err) => {
+      console.error("[leadDigestScheduler] tick failed:", err);
     });
   }, 60_000);
 }

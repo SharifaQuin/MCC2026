@@ -3961,5 +3961,29 @@ pfShowView = function(name){
 };
 
 </script>
+
+<!-- Prefill from the Lead pipeline's "Start Quote" link — a fully separate,
+     additive block so it can't interfere with anything above. Only fills in
+     the New Quote (Pricing Calculator) tab's client name/address/service;
+     it never touches the ?quote= load-existing-quote flow. -->
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const params = new URLSearchParams(window.location.search);
+  const leadName = params.get('leadName');
+  const leadAddress = params.get('leadAddress');
+  const leadService = params.get('leadService');
+  if(!leadName && !leadAddress && !leadService) return;
+
+  const nameEl = document.getElementById('f-name');
+  const addressEl = document.getElementById('f-address');
+  const serviceEl = document.getElementById('f-service');
+  if(nameEl && leadName) nameEl.value = leadName;
+  if(addressEl && leadAddress) addressEl.value = leadAddress;
+  if(serviceEl && leadService){
+    serviceEl.value = leadService;
+    if(typeof renderIncludedPreview === 'function') renderIncludedPreview();
+  }
+});
+</script>
 </body>
 </html>
