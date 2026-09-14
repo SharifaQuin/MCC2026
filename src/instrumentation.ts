@@ -19,10 +19,14 @@ export async function register() {
   globalForScheduler.__weeklyUpdateSchedulerStarted = true;
 
   const { runWeeklyUpdateSchedulerTick } = await import("@/lib/weeklyUpdateScheduler");
+  const { runHrDigestSchedulerTick } = await import("@/lib/hrDigestScheduler");
 
   setInterval(() => {
     runWeeklyUpdateSchedulerTick().catch((err) => {
       console.error("[weeklyUpdateScheduler] tick failed:", err);
+    });
+    runHrDigestSchedulerTick().catch((err) => {
+      console.error("[hrDigestScheduler] tick failed:", err);
     });
   }, 60_000);
 }

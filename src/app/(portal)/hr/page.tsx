@@ -5,6 +5,7 @@ import { loadAdminDashboard } from "@/lib/dashboard";
 import { loadRecruitingDashboard } from "@/lib/recruiting";
 import { getStaffDashboardStats } from "@/lib/staff";
 import { getHrTodayAttentionItems } from "@/lib/hrToday";
+import SendHrDigestButton from "@/components/SendHrDigestButton";
 
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
@@ -33,7 +34,10 @@ export default async function HROverviewPage() {
 
       {attentionItems.length > 0 && (
         <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-5">
-          <p className="mb-3 font-medium text-amber-900">Needs Attention Today</p>
+          <div className="mb-3 flex items-center justify-between">
+            <p className="font-medium text-amber-900">Needs Attention Today</p>
+            {session.role === "ADMIN" && <SendHrDigestButton />}
+          </div>
           <div className="flex flex-wrap gap-2">
             {attentionItems.map((item) => (
               <Link

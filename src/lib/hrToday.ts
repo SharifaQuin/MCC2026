@@ -67,3 +67,9 @@ export async function getHrTodayAttentionItems(): Promise<HrTodayItem[]> {
 
   return items.filter((item) => item.count > 0);
 }
+
+export function buildHrDigestMessage(items: HrTodayItem[]): string {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const lines = items.map((item) => `• ${item.label}: *${item.count}*`);
+  return [":clipboard: *HR Needs Attention Today*", "", ...lines, "", `${appUrl}/hr`].join("\n");
+}
