@@ -13,6 +13,7 @@ import AttendancePanel from "@/components/AttendancePanel";
 import HireDateForm from "@/components/HireDateForm";
 import PairingPanel from "@/components/PairingPanel";
 import PromotionPanel, { type PromotionAssessmentRow } from "@/components/PromotionPanel";
+import PayReviewPanel, { type PayReviewAssessmentRow } from "@/components/PayReviewPanel";
 import MilestonePanel, { type MilestoneTimelineEntryView } from "@/components/MilestonePanel";
 import EmployeeSummaryCard from "@/components/EmployeeSummaryCard";
 import PersonnelActionFormPanel, { type PafRow } from "@/components/PersonnelActionFormPanel";
@@ -112,6 +113,22 @@ export async function loadEmployeeDetail(userId: string) {
     assessedAt: a.assessedAt.toISOString(),
   }));
 
+  const payReviewAssessmentRows = await prisma.payReviewAssessment.findMany({
+    where: { employeeId: userId },
+    include: { reviewedBy: { select: { name: true } } },
+    orderBy: { reviewedAt: "desc" },
+  });
+  const payReviewAssessments = payReviewAssessmentRows.map((a) => ({
+    id: a.id,
+    currentPay: a.currentPay,
+    recommendedPay: a.recommendedPay,
+    justification: a.justification,
+    decision: a.decision,
+    effectiveDate: a.effectiveDate ? a.effectiveDate.toISOString() : null,
+    reviewedByName: a.reviewedBy.name,
+    reviewedAt: a.reviewedAt.toISOString(),
+  }));
+
   const milestoneReviewRows = await prisma.milestoneReview.findMany({
     where: { employeeId: userId },
   });
@@ -206,6 +223,7 @@ export async function loadEmployeeDetail(userId: string) {
     pairHistory,
     pairingCandidates,
     promotionAssessments,
+    payReviewAssessments,
     milestoneTimeline,
     recentSeriousAttendanceCount,
     pafs,
@@ -241,6 +259,7 @@ export function EmployeeDetailView({
     pairHistory,
     pairingCandidates,
     promotionAssessments,
+    payReviewAssessments,
     milestoneTimeline,
     recentSeriousAttendanceCount,
     pafs,
@@ -364,6 +383,13 @@ export function EmployeeDetailView({
             assessments={visiblePromotionAssessments}
             canSetPayDifferential={viewerRole === "ADMIN"}
           />
+        </section>
+      )}
+
+      {showHrTools && viewerRole === "ADMIN" && (
+        <section>
+          <h2 className="mb-3 text-lg font-medium">Pay Reviews</h2>
+          <PayReviewPanel employeeId={user.id} assessments={payReviewAssessments} />
         </section>
       )}
 

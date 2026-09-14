@@ -158,6 +158,9 @@ model User {
   promotionAssessments       PromotionAssessment[] @relation("PromotionAssessmentEmployee")
   promotionAssessmentsMade   PromotionAssessment[] @relation("PromotionAssessmentAssessedBy")
 
+  payReviewAssessments     PayReviewAssessment[] @relation("PayReviewAssessmentEmployee")
+  payReviewAssessmentsMade PayReviewAssessment[] @relation("PayReviewAssessmentReviewedBy")
+
   milestoneReviews       MilestoneReview[] @relation("MilestoneReviewEmployee")
   milestoneReviewsMade   MilestoneReview[] @relation("MilestoneReviewReviewedBy")
 
@@ -1045,6 +1048,37 @@ model PromotionAssessment {
   @@index([employeeId])
 }
 
+enum PayReviewDecision {
+  APPROVED
+  DENIED
+  DEFERRED
+}
+
+// A structured raise/pay-review record, mirroring PromotionAssessment —
+// the assessment is the evaluation, and an Approved decision auto-generates
+// a linked draft PAY_CHANGE PAF that actually authorizes payroll to act.
+// ADMIN-only end to end (creation, viewing, deletion): unlike Promotion,
+// there's no partial view for a SERVICE_MANAGER since every field here is
+// comp data.
+model PayReviewAssessment {
+  id             String            @id @default(cuid())
+  employeeId     String
+  employee       User              @relation("PayReviewAssessmentEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  currentPay     Float
+  recommendedPay Float
+  justification  String            @db.Text
+  decision       PayReviewDecision
+  effectiveDate  DateTime?
+  reviewedById   String
+  reviewedBy     User              @relation("PayReviewAssessmentReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt     DateTime          @default(now())
+  createdAt      DateTime          @default(now())
+
+  linkedPaf PersonnelActionForm?
+
+  @@index([employeeId])
+}
+
 enum MilestoneCheckpoint {
   DAY_30
   DAY_60
@@ -1112,6 +1146,8 @@ model PersonnelActionForm {
   reason             String?              @db.Text
   linkedAssessmentId String?              @unique
   linkedAssessment   PromotionAssessment? @relation(fields: [linkedAssessmentId], references: [id], onDelete: SetNull)
+  linkedPayReviewId  String?              @unique
+  linkedPayReview    PayReviewAssessment? @relation(fields: [linkedPayReviewId], references: [id], onDelete: SetNull)
   status             PafStatus            @default(DRAFT)
   createdById        String
   createdBy          User                 @relation("PafCreatedBy", fields: [createdById], references: [id])
