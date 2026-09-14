@@ -12,6 +12,7 @@ export interface BulkInviteResult {
   name: string;
   email: string;
   inviteUrl?: string;
+  addedWithoutInvite?: boolean;
   error?: string;
 }
 
@@ -50,7 +51,7 @@ export async function bulkInviteAction(
     return { error: "The CSV file is empty." };
   }
 
-  // Allow an optional header row (e.g. "name,email,role").
+  // Allow an optional header row (e.g. "name,email,role,hireDate").
   if (rows[0][0]?.toLowerCase() === "name" && rows[0][1]?.toLowerCase() === "email") {
     rows = rows.slice(1);
   }
@@ -58,6 +59,11 @@ export async function bulkInviteAction(
   if (rows.length === 0) {
     return { error: "No employee rows found in the CSV." };
   }
+
+  // Unchecked = add everyone to the roster now, invite each of them later —
+  // the same choice the single Invite form offers, just applied to the
+  // whole batch (e.g. importing an already-hired roster).
+  const sendInviteNow = formData.get("sendInviteNow") !== null;
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const results: BulkInviteResult[] = [];
@@ -67,9 +73,15 @@ export async function bulkInviteAction(
     const email = (row[1] ?? "").toLowerCase();
     const roleRaw = (row[2] ?? "TRAINEE").toUpperCase();
     const role = VALID_ROLES.has(roleRaw) ? (roleRaw as "TRAINEE" | "TRAINER") : "TRAINEE";
+    const hireDateRaw = (row[3] ?? "").trim();
+    const hireDate = hireDateRaw ? new Date(hireDateRaw) : null;
 
     if (!name || !email) {
       results.push({ name, email, error: "Missing name or email." });
+      continue;
+    }
+    if (hireDateRaw && Number.isNaN(hireDate?.getTime())) {
+      results.push({ name, email, error: `Invalid hire date "${hireDateRaw}" (use YYYY-MM-DD).` });
       continue;
     }
 
@@ -79,7 +91,7 @@ export async function bulkInviteAction(
       continue;
     }
 
-    const inviteToken = generateInviteToken();
+    const inviteToken = sendInviteNow ? generateInviteToken() : null;
     const employeeId = await generateNextEmployeeId();
     const newUser = await prisma.user.create({
       data: {
@@ -87,14 +99,19 @@ export async function bulkInviteAction(
         email,
         name,
         role,
+        hireDate,
         inviteToken,
-        inviteExpiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
+        inviteExpiresAt: sendInviteNow ? new Date(Date.now() + 1000 * 60 * 60 * 24 * 7) : null,
         invitedBy: session.sub,
       },
     });
     if (role === "TRAINEE") await assignDefaultOnboardingDocuments(newUser.id);
 
-    results.push({ name, email, inviteUrl: `${appUrl}/invite/${inviteToken}` });
+    results.push(
+      sendInviteNow
+        ? { name, email, inviteUrl: `${appUrl}/invite/${inviteToken}` }
+        : { name, email, addedWithoutInvite: true }
+    );
   }
 
   revalidatePath("/admin/employees");

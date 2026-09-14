@@ -34,10 +34,16 @@ export default function BulkInviteForm() {
             className="block w-full text-sm"
           />
           <p className="mt-1 text-xs text-neutral-500">
-            Columns: name, email, role (role is optional — Trainee or Trainer, defaults to
-            Trainee). A header row is fine and will be skipped automatically.
+            Columns: name, email, role, hireDate (role is optional — Trainee or Trainer,
+            defaults to Trainee; hireDate is optional, YYYY-MM-DD). A header row is fine and
+            will be skipped automatically.
           </p>
         </div>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="sendInviteNow" defaultChecked className="h-4 w-4" />
+          Send invite links now (uncheck to just add everyone to the roster and invite each
+          person later)
+        </label>
         {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
         <SubmitButton />
       </form>
@@ -77,6 +83,8 @@ export default function BulkInviteForm() {
                             {copiedIndex === i ? "Copied!" : "Copy"}
                           </button>
                         </div>
+                      ) : row.addedWithoutInvite ? (
+                        <span className="text-xs text-blue-700">Added to roster (no invite sent)</span>
                       ) : (
                         <span className="text-xs text-red-600">{row.error}</span>
                       )}
