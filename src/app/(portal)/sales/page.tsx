@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
 import { loadSalesDashboard } from "@/lib/salesDashboard";
+import { loadLeadKpis } from "@/lib/leads";
 import { setSalesGoalAction, setSalesActualsAction } from "@/app/(portal)/sales/actions";
+import AdSpendForm from "./AdSpendForm";
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
@@ -16,7 +18,7 @@ const money = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDi
 
 export default async function SalesPage() {
   const { canEdit } = await requireDepartmentAccess("SALES");
-  const dash = await loadSalesDashboard();
+  const [dash, leadKpis] = await Promise.all([loadSalesDashboard(), loadLeadKpis()]);
 
   const goalHit = dash.goal > 0 && dash.revenueTowardGoal >= dash.goal;
 
@@ -179,6 +181,96 @@ export default async function SalesPage() {
             </ul>
           </div>
         )}
+      </section>
+
+      <section className="mt-6 rounded-lg border border-neutral-200 bg-white p-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-medium text-neutral-900">Lead Pipeline</h2>
+          <Link
+            href="/sales/leads"
+            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            Open Lead Pipeline
+          </Link>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <Stat label="Open Leads" value={String(leadKpis.openLeadCount)} />
+          <Stat label="Pipeline Value" value={money(leadKpis.pipelineValue)} accent />
+          <Stat
+            label="Avg. Response Time"
+            value={
+              leadKpis.avgResponseHours === null
+                ? "—"
+                : leadKpis.avgResponseHours < 1
+                  ? `${Math.round(leadKpis.avgResponseHours * 60)} min`
+                  : `${leadKpis.avgResponseHours.toFixed(1)} hrs`
+            }
+          />
+          <Stat label="Overdue Follow-ups" value={String(leadKpis.staleFollowUps.length)} />
+        </div>
+
+        {leadKpis.staleFollowUps.length > 0 && (
+          <div className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-4">
+            <p className="mb-2 font-medium text-amber-800">Overdue follow-ups</p>
+            <div className="flex flex-wrap gap-2 text-sm">
+              {leadKpis.staleFollowUps.map((l) => (
+                <Link
+                  key={l.id}
+                  href={`/sales/leads/${l.id}`}
+                  className="rounded-full bg-white px-3 py-1 font-medium text-amber-800 hover:underline"
+                >
+                  {l.firstName} {l.lastName} ({new Date(l.followUpDueAt).toLocaleDateString()})
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-6 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+          <p className="mb-3 text-sm font-medium text-neutral-900">Source ROI (this month)</p>
+          {leadKpis.bySource.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-neutral-200 text-xs uppercase tracking-wide text-neutral-500">
+                  <tr>
+                    <th className="py-2 pr-4">Source</th>
+                    <th className="py-2 pr-4">Leads</th>
+                    <th className="py-2 pr-4">Won</th>
+                    <th className="py-2 pr-4">Spend</th>
+                    <th className="py-2 pr-4">Cost / Lead</th>
+                    <th className="py-2 pr-4">Cost / Won</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leadKpis.bySource.map((s) => (
+                    <tr key={s.source} className="border-b border-neutral-100 last:border-0">
+                      <td className="py-2 pr-4 font-medium text-neutral-900">{s.label}</td>
+                      <td className="py-2 pr-4 text-neutral-600">{s.leadCount}</td>
+                      <td className="py-2 pr-4 text-neutral-600">{s.wonCount}</td>
+                      <td className="py-2 pr-4 text-neutral-600">{money(s.amountSpent)}</td>
+                      <td className="py-2 pr-4 text-neutral-600">
+                        {s.costPerLead === null ? "—" : money(s.costPerLead)}
+                      </td>
+                      <td className="py-2 pr-4 text-neutral-600">
+                        {s.costPerWon === null ? "—" : money(s.costPerWon)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-neutral-500">
+              No leads or ad spend logged yet this month.
+            </p>
+          )}
+          {canEdit && (
+            <div className="mt-4">
+              <AdSpendForm />
+            </div>
+          )}
+        </div>
       </section>
 
       <div className="mt-6 grid gap-6 md:grid-cols-2">

@@ -155,6 +155,7 @@ model User {
 
   departmentAccess DepartmentAccess[]
   sentCommunications CommunicationLog[]
+  sentLeadCommunications LeadCommunication[]
   hiredFromApplicant Applicant? @relation("ApplicantHiredUser")
   applicantsViewed Applicant[] @relation("ApplicantViewedBy")
   onboardingAssignments OnboardingAssignment[]
@@ -889,16 +890,87 @@ enum ChecklistTaskStatus {
 // A logged sales lead — table only for now. The full lead-capture form
 // (under Sales), conversion tracking, and the KPI rollup feeding this
 // dashboard are a separate, larger build to be scoped on its own.
+enum LeadSource {
+  WEBSITE_FORM
+  PHONE_CALL
+  WALK_IN
+  REFERRAL
+  GOOGLE_ADS
+  FACEBOOK_ADS
+  OTHER
+}
+
+enum LeadStage {
+  NEW_INQUIRY
+  CONTACTED
+  QUOTED
+  WON
+  LOST
+}
+
+// A prospective client who hasn't (yet) become a paying job — separate from
+// Applicant (job candidates) even though the pipeline shape rhymes, and
+// separate from the Sales pricing tool's quotes (SalesToolData "quote:<id>"
+// JSON blobs, not a real relation — quoteKey is just that key, stored as a
+// plain string so a lead can point at a quote without a real FK).
 model Lead {
-  id           String   @id @default(cuid())
-  date         DateTime
-  clientName   String
-  leadSource   String?
-  clientType   String?
-  converted    String?
-  monthlyValue Float?
-  notes        String?  @db.Text
-  createdAt    DateTime @default(now())
+  id               String    @id @default(cuid())
+  firstName        String
+  lastName         String
+  email            String
+  phone            String
+  address          String?
+  source           LeadSource @default(OTHER)
+  sourceDetail     String?
+  serviceInterest  String?
+  message          String?   @db.Text
+  stage            LeadStage @default(NEW_INQUIRY)
+  estimatedValue   Float?
+  quoteKey         String?
+  lostReason       String?
+  followUpDueAt    DateTime?
+  firstContactedAt DateTime?
+  notes            String?   @db.Text
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  communications LeadCommunication[]
+
+  @@index([stage])
+  @@index([source])
+}
+
+// Parallel to CommunicationLog (applicants) — kept as its own model rather
+// than making CommunicationLog.applicantId polymorphic, so the working,
+// tested applicant communication feature can't be put at risk by this change.
+model LeadCommunication {
+  id           String        @id @default(cuid())
+  leadId       String
+  lead         Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  channel      CommChannel
+  direction    CommDirection @default(OUTBOUND)
+  subject      String?
+  body         String        @db.Text
+  status       CommStatus    @default(SENT)
+  errorMessage String?       @db.Text
+  sentById     String?
+  sentBy       User?         @relation(fields: [sentById], references: [id])
+  createdAt    DateTime      @default(now())
+
+  @@index([leadId, createdAt])
+}
+
+// Manual monthly ad-spend entry per source, for the Source ROI KPI (cost per
+// lead / cost per won job) — there's no ad-platform integration, so this is
+// entered by hand the same way Sales' revenue goal and actuals already are.
+model LeadSourceSpend {
+  id          String     @id @default(cuid())
+  source      LeadSource
+  monthKey    String
+  amountSpent Float
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([source, monthKey])
 }
 
 enum LoanStatus {
