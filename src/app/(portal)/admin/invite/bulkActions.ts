@@ -44,8 +44,14 @@ export async function bulkInviteAction(
     return { error: "Not authorized." };
   }
 
+  // Avoid a bare `instanceof File` check — the global File constructor
+  // isn't available on every Node.js runtime Next.js might be deployed to
+  // (it only became a Node global in v20+), and referencing it throws a
+  // ReferenceError before this line even runs its own logic. FormData
+  // entries are only ever a string or a File, so ruling out string is
+  // enough to know it's a file.
   const file = formData.get("csvFile");
-  if (!(file instanceof File) || file.size === 0) {
+  if (!file || typeof file === "string" || file.size === 0) {
     return { error: "Please choose a CSV file to upload." };
   }
 
