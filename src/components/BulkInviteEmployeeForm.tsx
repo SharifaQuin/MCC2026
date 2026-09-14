@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
-import { bulkInviteAction, BulkInviteState } from "./bulkActions";
+import { bulkInviteAction, BulkInviteState } from "@/app/actions/employeeBulkInvite";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -17,7 +17,7 @@ function SubmitButton() {
   );
 }
 
-export default function BulkInviteForm() {
+export default function BulkInviteEmployeeForm() {
   const [state, formAction] = useFormState<BulkInviteState, FormData>(bulkInviteAction, {});
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
@@ -34,9 +34,12 @@ export default function BulkInviteForm() {
             className="block w-full text-sm"
           />
           <p className="mt-1 text-xs text-neutral-500">
-            Columns: name, email, role, hireDate (role is optional — Trainee or Trainer,
-            defaults to Trainee; hireDate is optional, YYYY-MM-DD). A header row is fine and
-            will be skipped automatically.
+            Columns: name, email, role, hireDate, phone, address, employmentType, officeLocation,
+            crewType, managerName. Only name and email are required — role defaults to Trainee,
+            employmentType is Full-time or Part-time. A header row is fine and will be skipped
+            automatically. Re-uploading a row whose email already exists fills in any of those
+            extra columns on their existing profile instead of erroring (it never changes their
+            name, role, or hire date).
           </p>
         </div>
         <label className="flex items-center gap-2 text-sm">
@@ -85,6 +88,8 @@ export default function BulkInviteForm() {
                         </div>
                       ) : row.addedWithoutInvite ? (
                         <span className="text-xs text-blue-700">Added to roster (no invite sent)</span>
+                      ) : row.updated ? (
+                        <span className="text-xs text-green-700">Updated existing profile</span>
                       ) : (
                         <span className="text-xs text-red-600">{row.error}</span>
                       )}

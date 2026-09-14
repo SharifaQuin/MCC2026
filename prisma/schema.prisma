@@ -29,6 +29,11 @@ enum Language {
   ES
 }
 
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+}
+
 enum ProgressStatus {
   NOT_STARTED
   IN_PROGRESS
@@ -94,6 +99,18 @@ model User {
   // on the Staff dashboard. Backfilled from createdAt for existing users;
   // editable afterward since that's rarely their true start date.
   hireDate         DateTime?
+  phone            String?
+  address          String?
+  employmentType   EmploymentType?
+  // Free-text, not a fixed enum — a single-location business today, but
+  // meant to grow into multiple physical locations/crew groupings without
+  // a migration each time a new one is added.
+  officeLocation   String?
+  crewType         String?
+  // Free-text name, not a relation to another User — MCC's roster includes
+  // managers (e.g. the owner's own manager) who may not have an account in
+  // this system at all, so this just records whatever name was on file.
+  managerName      String?
   failedLoginAttempts Int    @default(0)
   lockedUntil      DateTime?
   createdAt        DateTime  @default(now())

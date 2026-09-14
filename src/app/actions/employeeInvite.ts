@@ -58,7 +58,7 @@ export async function inviteAction(
   });
   if (role === "TRAINEE") await assignDefaultOnboardingDocuments(newUser.id);
 
-  revalidatePath("/admin/employees");
+  revalidatePath("/staff");
 
   if (!sendInviteNow) {
     return { addedWithoutInvite: true };

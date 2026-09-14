@@ -11,6 +11,7 @@ import CertificationPanel from "@/components/CertificationPanel";
 import ComplaintsPanel from "@/components/ComplaintsPanel";
 import AttendancePanel from "@/components/AttendancePanel";
 import HireDateForm from "@/components/HireDateForm";
+import EmployeeProfileForm from "@/components/EmployeeProfileForm";
 import PairingPanel from "@/components/PairingPanel";
 import PromotionPanel, { type PromotionAssessmentRow } from "@/components/PromotionPanel";
 import PayReviewPanel, { type PayReviewAssessmentRow } from "@/components/PayReviewPanel";
@@ -350,6 +351,23 @@ export function EmployeeDetailView({
             userId={user.id}
             hireDate={user.hireDate ? user.hireDate.toISOString() : null}
             yearsOfService={user.hireDate ? yearsOfService(user.hireDate) : null}
+          />
+        </section>
+      )}
+
+      {showHrTools && (
+        <section>
+          <h2 className="mb-3 text-lg font-medium">Contact &amp; Employment Info</h2>
+          <EmployeeProfileForm
+            userId={user.id}
+            fields={{
+              phone: user.phone,
+              address: user.address,
+              employmentType: user.employmentType,
+              officeLocation: user.officeLocation,
+              crewType: user.crewType,
+              managerName: user.managerName,
+            }}
           />
         </section>
       )}

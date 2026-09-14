@@ -20,23 +20,22 @@ export default async function AdminEmployeesPage({
   const data = await loadEmployeeSummaries();
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-1 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Employees</h1>
-        <div className="flex gap-3">
-          <a
-            href="/api/admin/employees/export"
-            className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-          >
-            Export CSV
-          </a>
-          <Link
-            href="/admin/invite"
-            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-          >
-            Invite Employee
-          </Link>
-        </div>
+        <a
+          href="/api/admin/employees/export"
+          className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+        >
+          Export CSV
+        </a>
       </div>
+      <p className="mb-6 text-sm text-neutral-500">
+        To add a new employee, use{" "}
+        <Link href="/staff" className="text-brand-700 hover:underline">
+          Staff → + Add Employee
+        </Link>
+        .
+      </p>
       <EmployeeListView
         data={data}
         basePath="/admin/employees"

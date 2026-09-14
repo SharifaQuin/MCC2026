@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getStaffDashboardStats, getStaffDirectory, getTurnoverStats, yearsOfService } from "@/lib/staff";
+import AddEmployeePanel from "@/components/AddEmployeePanel";
 
 function Stat({
   label,
@@ -123,11 +124,14 @@ export default async function StaffDashboardPage() {
       </div>
 
       <div>
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-medium">Staff Directory</h2>
           <Link href="/staff/departed" className="text-sm font-medium text-brand-700 hover:underline">
             View All Departed Employees →
           </Link>
+        </div>
+        <div className="mb-4">
+          <AddEmployeePanel />
         </div>
         <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
           <table className="w-full text-left text-sm">

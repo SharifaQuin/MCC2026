@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
-import { inviteAction, InviteState } from "./actions";
+import { inviteAction, InviteState } from "@/app/actions/employeeInvite";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -17,7 +17,7 @@ function SubmitButton() {
   );
 }
 
-export default function InviteForm() {
+export default function InviteEmployeeForm() {
   const [state, formAction] = useFormState<InviteState, FormData>(inviteAction, {});
   const [copied, setCopied] = useState(false);
 

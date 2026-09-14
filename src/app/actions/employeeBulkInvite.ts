@@ -7,12 +7,14 @@ import { generateInviteToken } from "@/lib/tokens";
 import { isAdminOrServiceManager } from "@/lib/session";
 import { assignDefaultOnboardingDocuments } from "@/lib/onboarding";
 import { generateNextEmployeeId } from "@/lib/employeeId";
+import type { EmploymentType } from "@prisma/client";
 
 export interface BulkInviteResult {
   name: string;
   email: string;
   inviteUrl?: string;
   addedWithoutInvite?: boolean;
+  updated?: boolean;
   error?: string;
 }
 
@@ -24,6 +26,39 @@ export interface BulkInviteState {
 const VALID_ROLES = new Set(["TRAINEE", "TRAINER"]);
 const MAX_ROWS = 500;
 
+// A real CSV line parser, not a naive comma-split — addresses (one of the
+// optional columns below) routinely contain commas themselves, and Excel
+// quotes those fields ("621 E. Chestnut Apt 23, Santa Ana, CA 92701").
+function parseCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += char;
+      }
+    } else if (char === '"') {
+      inQuotes = true;
+    } else if (char === ",") {
+      cells.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
 function parseCsv(text: string): string[][] {
   // Strip a UTF-8 BOM — Excel commonly adds one when "saving as CSV", which
   // would otherwise make the header-row check below silently fail to match.
@@ -32,7 +67,14 @@ function parseCsv(text: string): string[][] {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
-    .map((line) => line.split(",").map((cell) => cell.trim()));
+    .map(parseCsvLine);
+}
+
+function parseEmploymentType(raw: string): EmploymentType | null {
+  const normalized = raw.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (normalized === "full_time") return "FULL_TIME";
+  if (normalized === "part_time") return "PART_TIME";
+  return null;
 }
 
 export async function bulkInviteAction(
@@ -61,7 +103,7 @@ export async function bulkInviteAction(
     return { error: "The CSV file is empty." };
   }
 
-  // Allow an optional header row (e.g. "name,email,role,hireDate").
+  // Allow an optional header row (e.g. "name,email,role,hireDate,phone,...").
   if (rows[0][0]?.toLowerCase() === "name" && rows[0][1]?.toLowerCase() === "email") {
     rows = rows.slice(1);
   }
@@ -90,6 +132,12 @@ export async function bulkInviteAction(
     const role = VALID_ROLES.has(roleRaw) ? (roleRaw as "TRAINEE" | "TRAINER") : "TRAINEE";
     const hireDateRaw = (row[3] ?? "").trim();
     const hireDate = hireDateRaw ? new Date(hireDateRaw) : null;
+    const phone = (row[4] ?? "").trim() || null;
+    const address = (row[5] ?? "").trim() || null;
+    const employmentType = row[6] ? parseEmploymentType(row[6]) : null;
+    const officeLocation = (row[7] ?? "").trim() || null;
+    const crewType = (row[8] ?? "").trim() || null;
+    const managerName = (row[9] ?? "").trim() || null;
 
     if (!name || !email) {
       results.push({ name, email, error: "Missing name or email." });
@@ -110,7 +158,25 @@ export async function bulkInviteAction(
     try {
       const existing = await prisma.user.findUnique({ where: { email } });
       if (existing) {
-        results.push({ name, email, error: "An account with this email already exists." });
+        // Re-uploading the same roster later (e.g. once you've added phone
+        // numbers/addresses to it) enriches the existing account instead of
+        // just erroring — but only these profile-detail fields, and only
+        // where the row actually has a value, never identity/security
+        // fields like name, role, or hire date.
+        const enrichment = {
+          ...(phone ? { phone } : {}),
+          ...(address ? { address } : {}),
+          ...(employmentType ? { employmentType } : {}),
+          ...(officeLocation ? { officeLocation } : {}),
+          ...(crewType ? { crewType } : {}),
+          ...(managerName ? { managerName } : {}),
+        };
+        if (Object.keys(enrichment).length === 0) {
+          results.push({ name, email, error: "An account with this email already exists." });
+          continue;
+        }
+        await prisma.user.update({ where: { email }, data: enrichment });
+        results.push({ name, email, updated: true });
         continue;
       }
 
@@ -123,6 +189,12 @@ export async function bulkInviteAction(
           name,
           role,
           hireDate,
+          phone,
+          address,
+          employmentType,
+          officeLocation,
+          crewType,
+          managerName,
           inviteToken,
           inviteExpiresAt: sendInviteNow ? new Date(Date.now() + 1000 * 60 * 60 * 24 * 7) : null,
           invitedBy: session.sub,
@@ -144,7 +216,7 @@ export async function bulkInviteAction(
     }
   }
 
-  revalidatePath("/admin/employees");
+  revalidatePath("/staff");
 
   return { results };
 }
