@@ -58,9 +58,14 @@ export default async function ApplicantDetailPage({
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href="/recruiting/applicants" className="text-sm text-brand-700 hover:underline">
-        ← Back to Applicants
-      </Link>
+      <div className="flex items-center gap-4">
+        <Link href="/recruiting" className="text-sm text-brand-700 hover:underline">
+          ← Back to Pipeline
+        </Link>
+        <Link href="/recruiting/applicants" className="text-sm text-brand-700 hover:underline">
+          ← Back to Applicants
+        </Link>
+      </div>
 
       {searchParams.duplicate === "1" && (
         <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
