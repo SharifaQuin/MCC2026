@@ -22,9 +22,13 @@ export interface BulkInviteState {
 }
 
 const VALID_ROLES = new Set(["TRAINEE", "TRAINER"]);
+const MAX_ROWS = 500;
 
 function parseCsv(text: string): string[][] {
-  return text
+  // Strip a UTF-8 BOM — Excel commonly adds one when "saving as CSV", which
+  // would otherwise make the header-row check below silently fail to match.
+  const cleaned = text.replace(/^﻿/, "");
+  return cleaned
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
@@ -59,6 +63,11 @@ export async function bulkInviteAction(
   if (rows.length === 0) {
     return { error: "No employee rows found in the CSV." };
   }
+  if (rows.length > MAX_ROWS) {
+    return {
+      error: `This file has ${rows.length} rows — please split it into batches of ${MAX_ROWS} or fewer. (If you didn't expect that many rows, the file may not be a plain CSV — re-save it as "CSV (Comma delimited)" rather than an Excel workbook.)`,
+    };
+  }
 
   // Unchecked = add everyone to the roster now, invite each of them later —
   // the same choice the single Invite form offers, just applied to the
@@ -80,38 +89,53 @@ export async function bulkInviteAction(
       results.push({ name, email, error: "Missing name or email." });
       continue;
     }
+    if (!email.includes("@")) {
+      results.push({ name, email, error: `"${email}" doesn't look like a valid email address.` });
+      continue;
+    }
     if (hireDateRaw && Number.isNaN(hireDate?.getTime())) {
       results.push({ name, email, error: `Invalid hire date "${hireDateRaw}" (use YYYY-MM-DD).` });
       continue;
     }
 
-    const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing) {
-      results.push({ name, email, error: "An account with this email already exists." });
-      continue;
+    // A single malformed or unexpected row (bad encoding, a stray control
+    // character from a re-saved spreadsheet, a DB hiccup) shouldn't crash
+    // the whole batch — report it and keep going.
+    try {
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (existing) {
+        results.push({ name, email, error: "An account with this email already exists." });
+        continue;
+      }
+
+      const inviteToken = sendInviteNow ? generateInviteToken() : null;
+      const employeeId = await generateNextEmployeeId();
+      const newUser = await prisma.user.create({
+        data: {
+          employeeId,
+          email,
+          name,
+          role,
+          hireDate,
+          inviteToken,
+          inviteExpiresAt: sendInviteNow ? new Date(Date.now() + 1000 * 60 * 60 * 24 * 7) : null,
+          invitedBy: session.sub,
+        },
+      });
+      if (role === "TRAINEE") await assignDefaultOnboardingDocuments(newUser.id);
+
+      results.push(
+        sendInviteNow
+          ? { name, email, inviteUrl: `${appUrl}/invite/${inviteToken}` }
+          : { name, email, addedWithoutInvite: true }
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      const friendly = message.includes("invalid byte sequence")
+        ? "This row has a character that can't be saved (often from pasting out of Word or a reformatted spreadsheet) — try retyping the name and re-uploading just this row."
+        : "Something went wrong saving this row — try retyping it and re-uploading just this row.";
+      results.push({ name, email, error: friendly });
     }
-
-    const inviteToken = sendInviteNow ? generateInviteToken() : null;
-    const employeeId = await generateNextEmployeeId();
-    const newUser = await prisma.user.create({
-      data: {
-        employeeId,
-        email,
-        name,
-        role,
-        hireDate,
-        inviteToken,
-        inviteExpiresAt: sendInviteNow ? new Date(Date.now() + 1000 * 60 * 60 * 24 * 7) : null,
-        invitedBy: session.sub,
-      },
-    });
-    if (role === "TRAINEE") await assignDefaultOnboardingDocuments(newUser.id);
-
-    results.push(
-      sendInviteNow
-        ? { name, email, inviteUrl: `${appUrl}/invite/${inviteToken}` }
-        : { name, email, addedWithoutInvite: true }
-    );
   }
 
   revalidatePath("/admin/employees");
