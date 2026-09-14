@@ -53,7 +53,10 @@ export default async function LeadsPage() {
 
       {lostCount > 0 && (
         <p className="mt-6 text-sm text-neutral-400">
-          {lostCount} lost lead{lostCount === 1 ? "" : "s"} not shown here.
+          <Link href="/sales/leads/lost" className="text-brand-700 hover:underline">
+            {lostCount} lost lead{lostCount === 1 ? "" : "s"}
+          </Link>{" "}
+          not shown here.
         </p>
       )}
     </div>

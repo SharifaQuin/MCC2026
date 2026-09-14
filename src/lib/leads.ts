@@ -287,3 +287,35 @@ export async function setLeadFormConfig(config: LeadFormConfig): Promise<void> {
 export async function getActiveLeadFormFields() {
   return prisma.leadFormField.findMany({ orderBy: { order: "asc" } });
 }
+
+// Lost leads are pulled off the active pipeline board (same treatment as
+// Rejected/Benched applicants), but stay fully on file — this is the one
+// place to browse all of them, since the board itself only shows a count.
+export async function getLostLeads() {
+  const leads = await prisma.lead.findMany({
+    where: { stage: "LOST" },
+    include: {
+      stageChanges: {
+        where: { toStage: "LOST" },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        include: { changedBy: { select: { name: true } } },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  return leads.map((l) => {
+    const lostChange = l.stageChanges[0];
+    return {
+      id: l.id,
+      firstName: l.firstName,
+      lastName: l.lastName,
+      source: l.source,
+      estimatedValue: l.estimatedValue,
+      lostReason: l.lostReason,
+      lostAt: lostChange?.createdAt ?? l.updatedAt,
+      lostByName: lostChange?.changedBy?.name ?? null,
+    };
+  });
+}
