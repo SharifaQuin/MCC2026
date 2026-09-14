@@ -39,7 +39,14 @@ export default async function LeadsPage() {
           </Link>
           <h1 className="mt-1 text-2xl font-semibold">Lead Pipeline</h1>
         </div>
-        {canEdit && <AddLeadPanel />}
+        {canEdit && (
+          <div className="flex items-center gap-3">
+            <Link href="/sales/leads/form-settings" className="text-sm text-brand-700 hover:underline">
+              Form Settings
+            </Link>
+            <AddLeadPanel />
+          </div>
+        )}
       </div>
 
       <LeadPipelineBoard columns={columns} />

@@ -2,10 +2,10 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
 import { LEAD_SOURCE_LABELS, LEAD_STAGE_LABELS } from "@/lib/leads";
-import { saveLeadNotesAction } from "../actions";
 import LeadStageControls from "./LeadStageControls";
 import LeadCommunicationPanel from "./LeadCommunicationPanel";
 import LeadDealDetailsForm from "./LeadDealDetailsForm";
+import LeadActivityFeed from "./LeadActivityFeed";
 
 export default async function LeadDetailPage({ params }: { params: { id: string } }) {
   const { canEdit } = await requireDepartmentAccess("SALES");
@@ -16,6 +16,14 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
       communications: {
         orderBy: { createdAt: "desc" },
         include: { sentBy: { select: { name: true } } },
+      },
+      notes: {
+        orderBy: { createdAt: "desc" },
+        include: { author: { select: { name: true } } },
+      },
+      stageChanges: {
+        orderBy: { createdAt: "desc" },
+        include: { changedBy: { select: { name: true } } },
       },
     },
   });
@@ -35,6 +43,28 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
     createdAt: c.createdAt.toISOString(),
     sentByName: c.sentBy?.name ?? null,
   }));
+
+  const activityEntries = [
+    ...lead.notes.map((n) => ({
+      kind: "note" as const,
+      id: n.id,
+      createdAt: n.createdAt.toISOString(),
+      body: n.body,
+      authorName: n.author?.name ?? null,
+    })),
+    ...lead.stageChanges.map((s) => ({
+      kind: "stageChange" as const,
+      id: s.id,
+      createdAt: s.createdAt.toISOString(),
+      fromStage: s.fromStage,
+      toStage: s.toStage,
+      changedByName: s.changedBy?.name ?? null,
+    })),
+  ];
+
+  const customFields = Array.isArray(lead.customFields)
+    ? (lead.customFields as unknown as { label: string; value: string }[])
+    : [];
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -92,6 +122,12 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
               <dd className="whitespace-pre-wrap">{lead.message}</dd>
             </div>
           )}
+          {customFields.map((f, i) => (
+            <div key={i} className="col-span-2">
+              <dt className="text-neutral-400">{f.label}</dt>
+              <dd className="whitespace-pre-wrap">{f.value}</dd>
+            </div>
+          ))}
         </dl>
       </div>
 
@@ -138,25 +174,17 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
         </Link>
       </div>
 
-      {canEdit && (
-        <form
-          action={saveLeadNotesAction.bind(null, lead.id)}
-          className="rounded-lg border border-neutral-200 bg-white p-4"
-        >
-          <label className="mb-1 block text-sm font-medium text-neutral-700">Internal Notes</label>
-          <textarea
-            name="notes"
-            rows={4}
-            defaultValue={lead.notes ?? ""}
-            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-          />
-          <button
-            type="submit"
-            className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-          >
-            Save Notes
-          </button>
-        </form>
+      {canEdit ? (
+        <LeadActivityFeed leadId={lead.id} entries={activityEntries} />
+      ) : (
+        activityEntries.length > 0 && (
+          <div className="rounded-lg border border-neutral-200 bg-white p-4">
+            <h2 className="mb-3 font-medium text-neutral-900">Activity &amp; Notes</h2>
+            <p className="text-sm text-neutral-500">
+              {activityEntries.length} entr{activityEntries.length === 1 ? "y" : "ies"} — view access only.
+            </p>
+          </div>
+        )
       )}
     </div>
   );

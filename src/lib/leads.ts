@@ -226,3 +226,64 @@ export async function setLeadSourceSpendAmount(
     update: { amountSpent },
   });
 }
+
+// Page copy + toggles for the three built-in "soft" fields on the public
+// lead form (address/service interest/message) — kept in the same
+// SalesToolData key-value store the rest of Sales already uses (goal,
+// actuals), so relabeling or hiding one of these needs no migration. The
+// core fields (name/email/phone) stay fixed: too much of the app — SMS,
+// email, dedup-by-email — depends on them always being present.
+const FORM_CONFIG_KEY = "leadform:config";
+
+export interface LeadFormConfig {
+  headline: string;
+  intro: string;
+  submitLabel: string;
+  addressEnabled: boolean;
+  addressRequired: boolean;
+  addressLabel: string;
+  serviceInterestEnabled: boolean;
+  serviceInterestRequired: boolean;
+  serviceInterestLabel: string;
+  messageEnabled: boolean;
+  messageRequired: boolean;
+  messageLabel: string;
+}
+
+export const DEFAULT_LEAD_FORM_CONFIG: LeadFormConfig = {
+  headline: "Get a Free Cleaning Quote",
+  intro:
+    "Tell us a little about what you need, and someone from Mama's Cleaning Crew will reach out shortly.",
+  submitLabel: "Get My Free Quote",
+  addressEnabled: true,
+  addressRequired: false,
+  addressLabel: "Address",
+  serviceInterestEnabled: true,
+  serviceInterestRequired: false,
+  serviceInterestLabel: "What service are you interested in?",
+  messageEnabled: true,
+  messageRequired: false,
+  messageLabel: "Anything else we should know?",
+};
+
+export async function getLeadFormConfig(): Promise<LeadFormConfig> {
+  const row = await prisma.salesToolData.findUnique({ where: { key: FORM_CONFIG_KEY } });
+  if (!row) return DEFAULT_LEAD_FORM_CONFIG;
+  try {
+    return { ...DEFAULT_LEAD_FORM_CONFIG, ...(JSON.parse(row.value) as Partial<LeadFormConfig>) };
+  } catch {
+    return DEFAULT_LEAD_FORM_CONFIG;
+  }
+}
+
+export async function setLeadFormConfig(config: LeadFormConfig): Promise<void> {
+  await prisma.salesToolData.upsert({
+    where: { key: FORM_CONFIG_KEY },
+    create: { key: FORM_CONFIG_KEY, value: JSON.stringify(config) },
+    update: { value: JSON.stringify(config) },
+  });
+}
+
+export async function getActiveLeadFormFields() {
+  return prisma.leadFormField.findMany({ orderBy: { order: "asc" } });
+}

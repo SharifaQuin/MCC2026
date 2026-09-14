@@ -11,7 +11,7 @@ import type { LeadStage, LeadSource } from "@prisma/client";
 const VALID_LEAD_SOURCES = new Set(["PHONE_CALL", "WALK_IN", "REFERRAL", "OTHER"]);
 
 export async function setLeadStageAction(leadId: string, stage: LeadStage) {
-  const { canEdit } = await requireDepartmentAccess("SALES");
+  const { session, canEdit } = await requireDepartmentAccess("SALES");
   if (!canEdit) return;
 
   const current = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
@@ -22,6 +22,9 @@ export async function setLeadStageAction(leadId: string, stage: LeadStage) {
       ...(stage === "CONTACTED" && !current.firstContactedAt ? { firstContactedAt: new Date() } : {}),
     },
   });
+  await prisma.leadStageChange.create({
+    data: { leadId, fromStage: current.stage, toStage: stage, changedById: session.sub },
+  });
 
   revalidatePath(`/sales/leads/${leadId}`);
   revalidatePath("/sales/leads");
@@ -29,11 +32,15 @@ export async function setLeadStageAction(leadId: string, stage: LeadStage) {
 }
 
 export async function markLeadLostAction(leadId: string, lostReason: string) {
-  const { canEdit } = await requireDepartmentAccess("SALES");
+  const { session, canEdit } = await requireDepartmentAccess("SALES");
   if (!canEdit) return;
+  const current = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
   await prisma.lead.update({
     where: { id: leadId },
     data: { stage: "LOST", lostReason: lostReason.trim() || null },
+  });
+  await prisma.leadStageChange.create({
+    data: { leadId, fromStage: current.stage, toStage: "LOST", changedById: session.sub },
   });
   revalidatePath(`/sales/leads/${leadId}`);
   revalidatePath("/sales/leads");
@@ -43,7 +50,7 @@ export async function markLeadLostAction(leadId: string, lostReason: string) {
 // For phone calls, walk-ins, or referrals — added directly by a manager,
 // skipping the public website form since it wasn't a website inquiry.
 export async function createManualLeadAction(formData: FormData) {
-  const { canEdit } = await requireDepartmentAccess("SALES");
+  const { session, canEdit } = await requireDepartmentAccess("SALES");
   if (!canEdit) return;
 
   const firstName = String(formData.get("firstName") ?? "").trim();
@@ -58,18 +65,24 @@ export async function createManualLeadAction(formData: FormData) {
   if (!firstName || !lastName || !email || !phone) return;
 
   const lead = await prisma.lead.create({
-    data: { firstName, lastName, email, phone, serviceInterest, notes, source, stage: "NEW_INQUIRY" },
+    data: { firstName, lastName, email, phone, serviceInterest, source, stage: "NEW_INQUIRY" },
   });
+  if (notes) {
+    await prisma.leadNote.create({ data: { leadId: lead.id, authorId: session.sub, body: notes } });
+  }
 
   revalidatePath("/sales/leads");
   redirect(`/sales/leads/${lead.id}`);
 }
 
-export async function saveLeadNotesAction(leadId: string, formData: FormData) {
-  const { canEdit } = await requireDepartmentAccess("SALES");
+// Notes are an append-only activity log rather than a single overwritable
+// field, so every entry keeps its own timestamp and author.
+export async function addLeadNoteAction(leadId: string, formData: FormData) {
+  const { session, canEdit } = await requireDepartmentAccess("SALES");
   if (!canEdit) return;
-  const notes = String(formData.get("notes") ?? "");
-  await prisma.lead.update({ where: { id: leadId }, data: { notes } });
+  const body = String(formData.get("body") ?? "").trim();
+  if (!body) return;
+  await prisma.leadNote.create({ data: { leadId, authorId: session.sub, body } });
   revalidatePath(`/sales/leads/${leadId}`);
 }
 

@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { parseLeadSource, notifyNewLead } from "@/lib/leads";
+import { parseLeadSource, notifyNewLead, getLeadFormConfig } from "@/lib/leads";
 
 export async function submitLeadAction(formData: FormData) {
   const firstName = String(formData.get("firstName") ?? "").trim();
@@ -24,6 +24,28 @@ export async function submitLeadAction(formData: FormData) {
     redirect("/lead-form?error=incomplete");
   }
 
+  const [config, fields] = await Promise.all([
+    getLeadFormConfig(),
+    prisma.leadFormField.findMany({ orderBy: { order: "asc" } }),
+  ]);
+
+  if (
+    (config.addressRequired && !address) ||
+    (config.serviceInterestRequired && !serviceInterest) ||
+    (config.messageRequired && !message)
+  ) {
+    redirect("/lead-form?error=incomplete");
+  }
+
+  const customFields: { label: string; value: string }[] = [];
+  for (const field of fields) {
+    const value = String(formData.get(`custom_${field.id}`) ?? "").trim();
+    if (field.required && !value) {
+      redirect("/lead-form?error=incomplete");
+    }
+    if (value) customFields.push({ label: field.label, value });
+  }
+
   const existing = await prisma.lead.findFirst({
     where: { email: { equals: email, mode: "insensitive" }, stage: { notIn: ["WON", "LOST"] } },
   });
@@ -32,7 +54,17 @@ export async function submitLeadAction(formData: FormData) {
   }
 
   const lead = await prisma.lead.create({
-    data: { firstName, lastName, email, phone, address, serviceInterest, message, source },
+    data: {
+      firstName,
+      lastName,
+      email,
+      phone,
+      address,
+      serviceInterest,
+      message,
+      source,
+      customFields: customFields.length > 0 ? customFields : undefined,
+    },
   });
 
   await notifyNewLead(lead);

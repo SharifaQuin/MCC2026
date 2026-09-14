@@ -1,23 +1,26 @@
+import { prisma } from "@/lib/prisma";
+import { getLeadFormConfig } from "@/lib/leads";
 import { submitLeadAction } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
-  incomplete: "Please fill out your name, email, and phone number.",
+  incomplete: "Please fill out your name, email, phone number, and every required field.",
 };
 
-export default function LeadFormPage({
+export default async function LeadFormPage({
   searchParams,
 }: {
   searchParams: { error?: string; src?: string };
 }) {
   const errorMessage = searchParams.error ? ERROR_MESSAGES[searchParams.error] : null;
+  const [config, fields] = await Promise.all([
+    getLeadFormConfig(),
+    prisma.leadFormField.findMany({ orderBy: { order: "asc" } }),
+  ]);
 
   return (
     <div className="mx-auto max-w-xl px-4 py-8">
-      <h1 className="text-2xl font-semibold text-neutral-900">Get a Free Cleaning Quote</h1>
-      <p className="mt-2 text-neutral-600">
-        Tell us a little about what you need, and someone from Mama&apos;s Cleaning Crew will
-        reach out shortly.
-      </p>
+      <h1 className="text-2xl font-semibold text-neutral-900">{config.headline}</h1>
+      <p className="mt-2 text-neutral-600">{config.intro}</p>
 
       {errorMessage && (
         <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -25,7 +28,7 @@ export default function LeadFormPage({
         </div>
       )}
 
-      <form action={submitLeadAction} className="mt-6 space-y-4 rounded-lg border border-neutral-200 bg-white p-6">
+      <form action={submitLeadAction} className="relative mt-6 space-y-4 rounded-lg border border-neutral-200 bg-white p-6">
         <input type="hidden" name="src" value={searchParams.src ?? ""} />
         {/* Honeypot — hidden from real visitors via CSS, not the "hidden" attribute a bot can detect easily. */}
         <div className="absolute -left-[9999px]" aria-hidden="true">
@@ -70,38 +73,99 @@ export default function LeadFormPage({
           </div>
         </div>
 
-        <div>
-          <label className="mb-1 block text-sm font-medium text-neutral-700">Address</label>
-          <input name="address" className="w-full rounded-md border border-neutral-300 px-3 py-2" />
-        </div>
+        {config.addressEnabled && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-neutral-700">
+              {config.addressLabel}
+              {config.addressRequired ? " *" : ""}
+            </label>
+            <input
+              name="address"
+              required={config.addressRequired}
+              className="w-full rounded-md border border-neutral-300 px-3 py-2"
+            />
+          </div>
+        )}
 
-        <div>
-          <label className="mb-1 block text-sm font-medium text-neutral-700">
-            What service are you interested in?
-          </label>
-          <input
-            name="serviceInterest"
-            placeholder="e.g. Standard cleaning, deep clean, move-out clean"
-            className="w-full rounded-md border border-neutral-300 px-3 py-2"
-          />
-        </div>
+        {config.serviceInterestEnabled && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-neutral-700">
+              {config.serviceInterestLabel}
+              {config.serviceInterestRequired ? " *" : ""}
+            </label>
+            <input
+              name="serviceInterest"
+              required={config.serviceInterestRequired}
+              className="w-full rounded-md border border-neutral-300 px-3 py-2"
+            />
+          </div>
+        )}
 
-        <div>
-          <label className="mb-1 block text-sm font-medium text-neutral-700">
-            Anything else we should know?
-          </label>
-          <textarea
-            name="message"
-            rows={3}
-            className="w-full rounded-md border border-neutral-300 px-3 py-2"
-          />
-        </div>
+        {config.messageEnabled && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-neutral-700">
+              {config.messageLabel}
+              {config.messageRequired ? " *" : ""}
+            </label>
+            <textarea
+              name="message"
+              rows={3}
+              required={config.messageRequired}
+              className="w-full rounded-md border border-neutral-300 px-3 py-2"
+            />
+          </div>
+        )}
+
+        {fields.map((field) => (
+          <div key={field.id}>
+            <label className="mb-1 block text-sm font-medium text-neutral-700">
+              {field.label}
+              {field.required ? " *" : ""}
+            </label>
+            {field.fieldType === "TEXTAREA" ? (
+              <textarea
+                name={`custom_${field.id}`}
+                placeholder={field.placeholder ?? ""}
+                required={field.required}
+                rows={3}
+                className="w-full rounded-md border border-neutral-300 px-3 py-2"
+              />
+            ) : field.fieldType === "SELECT" ? (
+              <select
+                name={`custom_${field.id}`}
+                required={field.required}
+                defaultValue=""
+                className="w-full rounded-md border border-neutral-300 px-3 py-2"
+              >
+                <option value="" disabled>
+                  {field.placeholder || "Select..."}
+                </option>
+                {(field.options ?? "")
+                  .split("\n")
+                  .map((o) => o.trim())
+                  .filter(Boolean)
+                  .map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+              </select>
+            ) : (
+              <input
+                name={`custom_${field.id}`}
+                placeholder={field.placeholder ?? ""}
+                required={field.required}
+                className="w-full rounded-md border border-neutral-300 px-3 py-2"
+              />
+            )}
+          </div>
+        ))}
 
         <button
           type="submit"
           className="w-full rounded-md bg-brand-600 px-4 py-3 font-medium text-white hover:bg-brand-700"
         >
-          Get My Free Quote
+          {config.submitLabel}
         </button>
       </form>
     </div>

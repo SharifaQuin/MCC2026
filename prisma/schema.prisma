@@ -156,6 +156,8 @@ model User {
   departmentAccess DepartmentAccess[]
   sentCommunications CommunicationLog[]
   sentLeadCommunications LeadCommunication[]
+  leadNotesWritten LeadNote[]
+  leadStageChangesMade LeadStageChange[]
   hiredFromApplicant Applicant? @relation("ApplicantHiredUser")
   applicantsViewed Applicant[] @relation("ApplicantViewedBy")
   onboardingAssignments OnboardingAssignment[]
@@ -930,14 +932,72 @@ model Lead {
   lostReason       String?
   followUpDueAt    DateTime?
   firstContactedAt DateTime?
-  notes            String?   @db.Text
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  // Snapshot of any custom lead-form-field answers at submission time —
+  // [{label, value}], keyed by label rather than a live FK so relabeling or
+  // deleting a LeadFormField later never corrupts a past lead's answers.
+  customFields Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   communications LeadCommunication[]
+  notes          LeadNote[]
+  stageChanges   LeadStageChange[]
 
   @@index([stage])
   @@index([source])
+}
+
+// Append-only activity log for internal notes — replaces a single
+// overwritable notes field so a timestamp and author survive every entry.
+model LeadNote {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id])
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([leadId, createdAt])
+}
+
+// Who moved a lead between pipeline stages, and when — setLeadStageAction
+// and markLeadLostAction each write one of these on every transition.
+model LeadStageChange {
+  id          String     @id @default(cuid())
+  leadId      String
+  lead        Lead       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  fromStage   LeadStage?
+  toStage     LeadStage
+  changedById String?
+  changedBy   User?      @relation(fields: [changedById], references: [id])
+  createdAt   DateTime   @default(now())
+
+  @@index([leadId, createdAt])
+}
+
+enum LeadFormFieldType {
+  TEXT
+  TEXTAREA
+  SELECT
+}
+
+// Owner-managed extra question on the public lead-capture form, beyond the
+// fixed core fields (name/email/phone, which the rest of the app depends on
+// for notifications, texting, and dedup) and the built-in optional fields
+// (address/service interest/message, toggled via the "leadform:config"
+// SalesToolData key instead of a migration). Answers are snapshotted onto
+// Lead.customFields at submission time, not tied back by a live FK.
+model LeadFormField {
+  id          String            @id @default(cuid())
+  label       String
+  fieldType   LeadFormFieldType @default(TEXT)
+  placeholder String?
+  required    Boolean           @default(false)
+  options     String?           @db.Text // newline-separated choices, SELECT only
+  order       Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 }
 
 // Parallel to CommunicationLog (applicants) — kept as its own model rather
