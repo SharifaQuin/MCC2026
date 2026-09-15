@@ -115,18 +115,19 @@ export default async function LeadFormPage({
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-neutral-700">
-                Approximate Square Footage
+                Approximate Square Footage *
               </label>
               <input
                 type="number"
                 name="squareFootage"
-                min={0}
+                min={1}
                 step={10}
                 placeholder="e.g. 1800"
+                required
                 className="w-full rounded-md border border-neutral-300 px-3 py-2"
               />
               <p className="mt-1 text-xs text-neutral-500">
-                Helps us give you a more accurate quote — leave blank if you&apos;re not sure.
+                Helps us give you a more accurate quote.
               </p>
             </div>
           </>

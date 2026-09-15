@@ -68,7 +68,8 @@ export async function submitLeadAction(formData: FormData) {
   if (
     (config.addressRequired && !address) ||
     (config.serviceInterestRequired && !serviceKey) ||
-    (config.messageRequired && !message)
+    (config.messageRequired && !message) ||
+    (config.serviceInterestEnabled && !squareFootage)
   ) {
     redirect("/lead-form?error=incomplete");
   }
