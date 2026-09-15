@@ -141,6 +141,8 @@ export async function scheduleInterviewCalendarEvent(
       : process.env.RECRUITING_ZOOM_LINK;
     if (zoomLink) {
       bodyLines.push("", `Join Zoom: ${zoomLink}`);
+      const zoomPasscode = process.env.RECRUITING_ZOOM_PASSCODE;
+      if (zoomPasscode) bodyLines.push(`Passcode: ${zoomPasscode}`);
     }
   }
 
@@ -185,7 +187,11 @@ export async function sendInterviewConfirmationEmail(
     const zoomLink = zoomPmi
       ? `https://zoom.us/j/${zoomPmi.replace(/\D/g, "")}`
       : process.env.RECRUITING_ZOOM_LINK;
-    if (zoomLink) bodyLines.push(`Zoom link: ${zoomLink}`);
+    if (zoomLink) {
+      bodyLines.push(`Zoom link: ${zoomLink}`);
+      const zoomPasscode = process.env.RECRUITING_ZOOM_PASSCODE;
+      if (zoomPasscode) bodyLines.push(`Passcode: ${zoomPasscode}`);
+    }
   }
 
   bodyLines.push("", "See you soon!", "", "Mama's Cleaning Crew");
