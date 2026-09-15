@@ -926,6 +926,7 @@ model Lead {
   source           LeadSource @default(OTHER)
   sourceDetail     String?
   serviceInterest  String?
+  squareFootage    Int?
   message          String?   @db.Text
   stage            LeadStage @default(NEW_INQUIRY)
   estimatedValue   Float?

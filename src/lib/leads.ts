@@ -4,6 +4,34 @@ import { sendEmail } from "@/lib/email";
 import { postSlackDMToOwner } from "@/lib/slack";
 import { csvEscape } from "@/lib/export";
 
+// Mirrors the Pricing Calculator's SERVICES/SERVICE_LABELS in
+// src/content/sales-pricing-tool.html exactly (same key strings) — a lead
+// submitted with one of these services gets an auto-generated draft quote
+// (see notifyNewLead's caller in the lead-form action) that opens straight
+// into the calculator, pre-seeded with the same service. "commercial" is
+// the one exception: there's no pricing logic for it in the tool at all,
+// so it's shown for lead capture only — no minimum shown, no auto-quote.
+export const LEAD_SERVICE_OPTIONS: {
+  key: string;
+  label: string;
+  minPrice: number | null;
+  sqftApplicable: boolean;
+  inPricingTool: boolean;
+}[] = [
+  { key: "standard", label: "Standard Clean", minPrice: 200, sqftApplicable: true, inPricingTool: true },
+  { key: "alacarte", label: "A la Carte", minPrice: null, sqftApplicable: false, inPricingTool: true },
+  { key: "deep", label: "Top to Bottom Deep Clean", minPrice: 300, sqftApplicable: true, inPricingTool: true },
+  { key: "movein", label: "Move In / Move Out", minPrice: 350, sqftApplicable: true, inPricingTool: true },
+  { key: "construction", label: "Post Construction", minPrice: null, sqftApplicable: true, inPricingTool: true },
+  { key: "housekeeping", label: "Housekeeping", minPrice: null, sqftApplicable: false, inPricingTool: true },
+  { key: "airbnb", label: "Airbnb Turnover", minPrice: null, sqftApplicable: true, inPricingTool: true },
+  { key: "commercial", label: "Commercial Cleaning", minPrice: null, sqftApplicable: false, inPricingTool: false },
+];
+
+export const LEAD_SERVICE_LABELS: Record<string, string> = Object.fromEntries(
+  LEAD_SERVICE_OPTIONS.map((s) => [s.key, s.label])
+);
+
 export const LEAD_SOURCE_LABELS: Record<string, string> = {
   WEBSITE_FORM: "Website Form",
   PHONE_CALL: "Phone Call",
@@ -251,6 +279,139 @@ export function buildLeadDigestMessage(items: AttentionLead[]): string {
     return `• <${appUrl}/sales/leads/${item.id}|${item.firstName} ${item.lastName}> — ${label}`;
   });
   return [":email: *Leads Needing Attention*", "", ...lines].join("\n");
+}
+
+// Mirrors the Pricing Calculator's CITY_DATA keys in
+// src/content/sales-pricing-tool.html exactly — used to best-effort match
+// a submitted street address to one of its known cities (for the city
+// premium) when auto-generating a quote. Falls back to "Other" (no
+// premium) rather than guessing wrong.
+const PRICING_TOOL_CITIES = [
+  "Corona Del Mar",
+  "Rancho Santa Margarita",
+  "Laguna Beach",
+  "Laguna Niguel",
+  "Irvine",
+  "Huntington Beach",
+  "Costa Mesa",
+  "Newport Beach",
+  "Dana Point",
+  "Mission Viejo",
+  "Lake Forest",
+  "San Clemente",
+  "Aliso Viejo",
+  "San Juan Capistrano",
+  "Laguna Hills",
+  "Tustin",
+];
+
+export function matchCityFromAddress(address: string | null): string {
+  if (!address) return "Other";
+  const lower = address.toLowerCase();
+  const match = PRICING_TOOL_CITIES.find((city) => lower.includes(city.toLowerCase()));
+  return match ?? "Other";
+}
+
+function slugifyQuoteId(clientName: string): string {
+  const base = clientName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+  const mmdd = `${String(new Date().getMonth() + 1).padStart(2, "0")}${String(new Date().getDate()).padStart(2, "0")}`;
+  return `${base || "lead"}-${mmdd}`;
+}
+
+// Auto-creates a draft quote (in the same SalesToolData "quote:<id>" shape
+// the Pricing Calculator's saveQuoteForClient() writes) from a freshly
+// submitted lead, so a real quote already exists and is linked (via the
+// returned id, set as Lead.quoteKey) the moment staff open it — no price is
+// computed here (that stays entirely inside the Pricing Calculator's own
+// formula, so there's exactly one place that formula lives); this just
+// seeds the inputs (service, sqft, city, contact info) so the calculator
+// shows a live number the instant it's opened. Returns null for services
+// with no pricing-tool formula (e.g. Commercial Cleaning).
+export async function createDraftQuoteForLead(lead: {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  address: string | null;
+  message: string | null;
+  serviceKey: string;
+  squareFootage: number | null;
+}): Promise<string | null> {
+  const serviceOption = LEAD_SERVICE_OPTIONS.find((s) => s.key === lead.serviceKey);
+  if (!serviceOption || !serviceOption.inPricingTool) return null;
+
+  const clientName = `${lead.firstName} ${lead.lastName}`.trim();
+  const baseId = slugifyQuoteId(clientName);
+  let id = baseId;
+  // Avoid clobbering an existing quote of the same client-name+date.
+  for (let suffix = 2; await prisma.salesToolData.findUnique({ where: { key: `quote:${id}` } }); suffix++) {
+    id = `${baseId}-${suffix}`;
+  }
+
+  const city = matchCityFromAddress(lead.address);
+  const sqft = serviceOption.sqftApplicable ? lead.squareFootage ?? 1800 : 1800;
+  const today = new Date().toISOString().slice(0, 10);
+  const nowIso = new Date().toISOString();
+
+  const quote = {
+    clientName,
+    id,
+    phone: lead.phone,
+    clientEmail: lead.email,
+    zip: "",
+    city,
+    address: lead.address ?? "",
+    walkthroughDate: "",
+    collectedVia: "leadform",
+    collectedDate: today,
+    service: lead.serviceKey,
+    frequency: "One-Time",
+    low: "",
+    high: "",
+    suggested: "",
+    time: "",
+    timeLowHrs: 0,
+    timeHighHrs: 0,
+    validUntil: "",
+    addons: { linens: false, baseboards: false, laundry: false, fridge: false, oven: false, glass: false, pet: false },
+    mailbox: "",
+    sender: "",
+    homeDetails: { bedrooms: 0, fullBaths: 0, halfBaths: 0, floorTypes: {}, floorDetails: "", notes: lead.message ?? "" },
+    formState: {
+      service: lead.serviceKey,
+      sqft,
+      condition: "moderate",
+      frequency: "onetime",
+      addons: {},
+      areaQty: {},
+      glassDoors: 0,
+      hkHours: 4,
+      hkTerm: "monthly",
+      pcTeamSize: 2,
+      airbnbFreq: 1,
+      airbnbExtraLoads: 0,
+      targetMargin: 21,
+      firstTimeClient: true,
+      bedrooms: 0,
+      fullBaths: 0,
+      halfBaths: 0,
+      floorTypes: {},
+      floorDetails: "",
+      notes: lead.message ?? "",
+      collectedVia: "leadform",
+      collectedDate: today,
+    },
+    savedAt: nowIso,
+    status: "pending",
+    sentAt: null,
+  };
+
+  await prisma.salesToolData.create({ data: { key: `quote:${id}`, value: JSON.stringify(quote) } });
+  return id;
 }
 
 export async function getLeadSourceSpend(monthKey: string = currentMonthKey()) {

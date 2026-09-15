@@ -2,7 +2,36 @@
 
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { parseLeadSource, notifyNewLead, getLeadFormConfig } from "@/lib/leads";
+import {
+  parseLeadSource,
+  notifyNewLead,
+  getLeadFormConfig,
+  LEAD_SERVICE_LABELS,
+  createDraftQuoteForLead,
+} from "@/lib/leads";
+
+// Cloudflare Turnstile — entirely optional. If the site/secret keys aren't
+// configured yet (the owner hasn't signed up), the widget doesn't render
+// and this just skips verification, so the form keeps working either way.
+async function verifyTurnstile(token: string): Promise<boolean> {
+  const secretKey = process.env.TURNSTILE_SECRET_KEY;
+  if (!secretKey) return true;
+  if (!token) return false;
+
+  try {
+    const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ secret: secretKey, response: token }),
+    });
+    const data = (await res.json()) as { success?: boolean };
+    return data.success === true;
+  } catch {
+    // A verification-service outage shouldn't be able to block every
+    // submission — fail open rather than silently losing real leads.
+    return true;
+  }
+}
 
 export async function submitLeadAction(formData: FormData) {
   const firstName = String(formData.get("firstName") ?? "").trim();
@@ -10,7 +39,9 @@ export async function submitLeadAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
   const phone = String(formData.get("phone") ?? "").trim();
   const address = String(formData.get("address") ?? "").trim() || null;
-  const serviceInterest = String(formData.get("serviceInterest") ?? "").trim() || null;
+  const serviceKey = String(formData.get("serviceInterest") ?? "").trim() || null;
+  const squareFootageRaw = String(formData.get("squareFootage") ?? "").trim();
+  const squareFootage = squareFootageRaw ? parseInt(squareFootageRaw, 10) || null : null;
   const message = String(formData.get("message") ?? "").trim() || null;
   const source = parseLeadSource(String(formData.get("src") ?? ""));
 
@@ -18,6 +49,11 @@ export async function submitLeadAction(formData: FormData) {
   // "succeed" so a bot doesn't learn its submission was rejected.
   if (String(formData.get("website") ?? "").trim()) {
     redirect("/lead-form/thank-you");
+  }
+
+  const turnstileOk = await verifyTurnstile(String(formData.get("cf-turnstile-response") ?? ""));
+  if (!turnstileOk) {
+    redirect("/lead-form?error=captcha");
   }
 
   if (!firstName || !lastName || !email || !phone) {
@@ -31,7 +67,7 @@ export async function submitLeadAction(formData: FormData) {
 
   if (
     (config.addressRequired && !address) ||
-    (config.serviceInterestRequired && !serviceInterest) ||
+    (config.serviceInterestRequired && !serviceKey) ||
     (config.messageRequired && !message)
   ) {
     redirect("/lead-form?error=incomplete");
@@ -53,6 +89,8 @@ export async function submitLeadAction(formData: FormData) {
     redirect("/lead-form/thank-you");
   }
 
+  const serviceInterest = serviceKey ? (LEAD_SERVICE_LABELS[serviceKey] ?? serviceKey) : null;
+
   const lead = await prisma.lead.create({
     data: {
       firstName,
@@ -61,11 +99,29 @@ export async function submitLeadAction(formData: FormData) {
       phone,
       address,
       serviceInterest,
+      squareFootage,
       message,
       source,
       customFields: customFields.length > 0 ? customFields : undefined,
     },
   });
+
+  if (serviceKey) {
+    const quoteId = await createDraftQuoteForLead({
+      id: lead.id,
+      firstName,
+      lastName,
+      email,
+      phone,
+      address,
+      message,
+      serviceKey,
+      squareFootage,
+    });
+    if (quoteId) {
+      await prisma.lead.update({ where: { id: lead.id }, data: { quoteKey: quoteId } });
+    }
+  }
 
   await notifyNewLead(lead);
 

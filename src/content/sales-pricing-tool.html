@@ -1437,8 +1437,8 @@ const AREAS = [
 ];
 
 const SPECIALTY = {
-  deep: {name:"Top to Bottom Deep Clean", min:499, heavyHours:4.88},
-  movein: {name:"Move In / Move Out", min:399, heavyHours:4.88},
+  deep: {name:"Top to Bottom Deep Clean", min:300, heavyHours:4.88},
+  movein: {name:"Move In / Move Out", min:350, heavyHours:4.88},
   construction: {name:"Post Construction", min:499, heavyHours2:5.0, heavyHours3:4.0}, // owner estimate (July 2026), not CRM-derived — real 14-job sample was thin & contradicted known job difficulty
 };
 
@@ -1707,11 +1707,11 @@ function computeStandard(){
   const lightHours = STANDARD_BASE_HRS + (state.sqft/1000) * STANDARD_HRS_PER_1000SQFT;
   const baseHours = lightHours * condMult;
   const freqDiscount = FREQUENCY_DISCOUNTS[state.frequency];
-  const corePrice = Math.max(149, baseHours*TEAM_RATE) * (1-freqDiscount);
+  const corePrice = Math.max(200, baseHours*TEAM_RATE) * (1-freqDiscount);
   const {addonFee, addonHours} = computeAddonsFor('standard');
   const price = corePrice + addonFee;
   const hours = baseHours + addonHours;
-  const lowPrice = Math.max(149, price*0.8), highPrice = Math.max(lowPrice, price*1.2);
+  const lowPrice = Math.max(200, price*0.8), highPrice = Math.max(lowPrice, price*1.2);
   const freqLabel = {onetime:'One-Time',monthly:'Monthly',triweekly:'Tri-Weekly',biweekly:'Bi-Weekly',weekly:'Weekly'}[state.frequency];
   return {price, hours, teamSize:2, lowPrice, highPrice,
     note:`Base ${baseHours.toFixed(2)} hrs (real pace data: 1.14 hrs + 0.63 hrs/1,000 sqft, × condition) @ team rate, ${freqLabel} (${freqDiscount>0?'-'+(freqDiscount*100).toFixed(0)+'%':'base rate'}) + $${addonFee} add-ons`,
@@ -3983,6 +3983,44 @@ document.addEventListener('DOMContentLoaded', function(){
     serviceEl.value = leadService;
     if(typeof renderIncludedPreview === 'function') renderIncludedPreview();
   }
+});
+</script>
+
+<!-- Auto-open the Pricing Calculator for a lead-form-submitted draft quote
+     (collectedVia:'leadform', no suggested price yet) — a fully separate,
+     additive block. Polls for `currentQuote` instead of racing the
+     pre-existing ?quote= DOMContentLoaded handler above (async listeners
+     don't guarantee completion order), so it only acts once that handler's
+     own loadQuote() has actually populated currentQuote. Never touches an
+     already-priced quote — those keep opening on the Client Quote Page tab
+     exactly as before. -->
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const id = new URLSearchParams(window.location.search).get('quote');
+  if(!id) return;
+
+  let attempts = 0;
+  const poll = setInterval(function(){
+    attempts++;
+    if(typeof currentQuote !== 'undefined' && currentQuote && currentQuote.id === id){
+      clearInterval(poll);
+      if(currentQuote.collectedVia === 'leadform' && !currentQuote.suggested){
+        const fs = currentQuote.formState || {};
+        if(fs.service) state.service = fs.service;
+        if(fs.sqft) state.sqft = fs.sqft;
+        const cityEl = document.getElementById('city-select');
+        if(cityEl && currentQuote.city && Array.prototype.some.call(cityEl.options, function(o){ return o.value === currentQuote.city; })){
+          cityEl.value = currentQuote.city;
+        }
+        if(typeof switchTab === 'function') switchTab('pricing');
+        if(typeof buildServiceGrid === 'function') buildServiceGrid();
+        if(typeof buildDynamicFields === 'function') buildDynamicFields();
+        if(typeof recalc === 'function') recalc();
+      }
+    } else if(attempts > 40){
+      clearInterval(poll);
+    }
+  }, 100);
 });
 </script>
 </body>

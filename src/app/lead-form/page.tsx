@@ -1,9 +1,10 @@
 import { prisma } from "@/lib/prisma";
-import { getLeadFormConfig } from "@/lib/leads";
+import { getLeadFormConfig, LEAD_SERVICE_OPTIONS } from "@/lib/leads";
 import { submitLeadAction } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   incomplete: "Please fill out your name, email, phone number, and every required field.",
+  captcha: "Please complete the verification checkbox and try again.",
 };
 
 export default async function LeadFormPage({
@@ -12,6 +13,7 @@ export default async function LeadFormPage({
   searchParams: { error?: string; src?: string };
 }) {
   const errorMessage = searchParams.error ? ERROR_MESSAGES[searchParams.error] : null;
+  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || null;
   const [config, fields] = await Promise.all([
     getLeadFormConfig(),
     prisma.leadFormField.findMany({ orderBy: { order: "asc" } }),
@@ -88,17 +90,46 @@ export default async function LeadFormPage({
         )}
 
         {config.serviceInterestEnabled && (
-          <div>
-            <label className="mb-1 block text-sm font-medium text-neutral-700">
-              {config.serviceInterestLabel}
-              {config.serviceInterestRequired ? " *" : ""}
-            </label>
-            <input
-              name="serviceInterest"
-              required={config.serviceInterestRequired}
-              className="w-full rounded-md border border-neutral-300 px-3 py-2"
-            />
-          </div>
+          <>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-neutral-700">
+                {config.serviceInterestLabel}
+                {config.serviceInterestRequired ? " *" : ""}
+              </label>
+              <select
+                name="serviceInterest"
+                required={config.serviceInterestRequired}
+                defaultValue=""
+                className="w-full rounded-md border border-neutral-300 px-3 py-2"
+              >
+                <option value="" disabled>
+                  Select a service...
+                </option>
+                {LEAD_SERVICE_OPTIONS.map((s) => (
+                  <option key={s.key} value={s.key}>
+                    {s.label}
+                    {s.minPrice ? ` (starts at $${s.minPrice})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-neutral-700">
+                Approximate Square Footage
+              </label>
+              <input
+                type="number"
+                name="squareFootage"
+                min={0}
+                step={10}
+                placeholder="e.g. 1800"
+                className="w-full rounded-md border border-neutral-300 px-3 py-2"
+              />
+              <p className="mt-1 text-xs text-neutral-500">
+                Helps us give you a more accurate quote — leave blank if you&apos;re not sure.
+              </p>
+            </div>
+          </>
         )}
 
         {config.messageEnabled && (
@@ -161,6 +192,8 @@ export default async function LeadFormPage({
           </div>
         ))}
 
+        {turnstileSiteKey && <div className="cf-turnstile" data-sitekey={turnstileSiteKey} />}
+
         <button
           type="submit"
           className="w-full rounded-md bg-brand-600 px-4 py-3 font-medium text-white hover:bg-brand-700"
@@ -168,6 +201,10 @@ export default async function LeadFormPage({
           {config.submitLabel}
         </button>
       </form>
+
+      {turnstileSiteKey && (
+        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer />
+      )}
     </div>
   );
 }
