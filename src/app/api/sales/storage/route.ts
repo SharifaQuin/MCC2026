@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { requireSalesApiAccess } from "@/lib/requireSalesApiAccess";
+import { createLeadFromCallInQuote } from "@/lib/leads";
 
 // Backs the pricing/quotes tool's window.storage abstraction (get/set/
 // delete/list by key) with the shared Postgres database instead of browser
@@ -49,9 +50,27 @@ export async function POST(request: Request) {
       // change, and does nothing if the quote isn't linked to any lead.
       if (body.key.startsWith("quote:")) {
         try {
-          const quoteData = JSON.parse(body.value) as { status?: string };
+          const quoteData = JSON.parse(body.value) as {
+            status?: string;
+            collectedVia?: string;
+            clientName?: string;
+            phone?: string;
+            clientEmail?: string;
+            address?: string;
+            service?: string;
+            suggested?: string;
+            formState?: { sqft?: number };
+          };
+          const quoteId = body.key.slice("quote:".length);
+
+          // Auto-create (and link) the Lead the first time a Called-In
+          // quote is saved, so phone inquiries land in the pipeline the
+          // same way web-form leads do automatically — see
+          // createLeadFromCallInQuote for why this runs in the opposite
+          // direction from the web-form flow (quote first, lead second).
+          await createLeadFromCallInQuote(quoteId, quoteData, session.sub);
+
           if (quoteData.status === "won" || quoteData.status === "lost") {
-            const quoteId = body.key.slice("quote:".length);
             const lead = await prisma.lead.findFirst({ where: { quoteKey: quoteId } });
             if (lead && lead.stage !== "WON" && lead.stage !== "LOST") {
               const toStage = quoteData.status === "won" ? "WON" : "LOST";

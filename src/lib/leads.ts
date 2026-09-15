@@ -106,11 +106,16 @@ export async function notifyNewLead(lead: {
   phone: string;
   serviceInterest: string | null;
   message: string | null;
+  source?: LeadSource;
 }) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
   const profileUrl = `${appUrl}/sales/leads/${lead.id}`;
+  const originLine =
+    lead.source === "PHONE_CALL"
+      ? `${lead.firstName} ${lead.lastName} was just logged from a phone call-in.`
+      : `${lead.firstName} ${lead.lastName} just submitted the website lead form.`;
   const summaryLines = [
-    `${lead.firstName} ${lead.lastName} just submitted the website lead form.`,
+    originLine,
     "",
     `Email: ${lead.email}`,
     `Phone: ${lead.phone}`,
@@ -412,6 +417,71 @@ export async function createDraftQuoteForLead(lead: {
 
   await prisma.salesToolData.create({ data: { key: `quote:${id}`, value: JSON.stringify(quote) } });
   return id;
+}
+
+interface CallInQuoteData {
+  clientName?: string;
+  phone?: string;
+  clientEmail?: string;
+  address?: string;
+  service?: string;
+  suggested?: string;
+  collectedVia?: string;
+  formState?: { sqft?: number };
+}
+
+// The reverse of createDraftQuoteForLead: a Called-In quote is created
+// quote-first (a staff member takes the call and builds it straight in the
+// Pricing Tool), so there's no Lead yet to auto-link the way a web-form
+// submission gets one. The first time such a quote is saved with enough
+// info to log a real lead (name, phone, email — skips half-filled drafts),
+// this creates the matching Lead and links it via quoteKey immediately, so
+// phone inquiries land in the pipeline and monthly lead tracking the same
+// way website leads do. No-ops if a Lead is already linked to this quote.
+export async function createLeadFromCallInQuote(quoteId: string, quoteData: CallInQuoteData, authorId: string | null) {
+  if (quoteData.collectedVia !== "calledin") return null;
+  if (!quoteData.clientName || !quoteData.phone || !quoteData.clientEmail) return null;
+
+  const existing = await prisma.lead.findFirst({ where: { quoteKey: quoteId } });
+  if (existing) return existing;
+
+  const nameParts = quoteData.clientName.trim().split(/\s+/);
+  const firstName = nameParts[0];
+  const lastName = nameParts.slice(1).join(" ");
+  const sqft = quoteData.formState?.sqft;
+  const suggested = quoteData.suggested ? parseFloat(quoteData.suggested) : NaN;
+
+  const lead = await prisma.lead.create({
+    data: {
+      firstName,
+      lastName,
+      email: quoteData.clientEmail,
+      phone: quoteData.phone,
+      address: quoteData.address || null,
+      source: "PHONE_CALL",
+      serviceInterest: quoteData.service ? (LEAD_SERVICE_LABELS[quoteData.service] ?? quoteData.service) : null,
+      squareFootage: typeof sqft === "number" && sqft > 0 ? sqft : null,
+      // Starts at Quoted, not the default New Inquiry — a quote already
+      // exists by the time this Lead is created, so "new inquiry" would
+      // misrepresent where the deal actually is (and could wrongly trip
+      // the stale-new-inquiry attention alert).
+      stage: "QUOTED",
+      estimatedValue: Number.isFinite(suggested) ? suggested : null,
+      quoteKey: quoteId,
+    },
+  });
+
+  await prisma.leadNote.create({
+    data: {
+      leadId: lead.id,
+      authorId,
+      body: "Automatically created from a Called-In quote saved in the Pricing Tool.",
+    },
+  });
+
+  await notifyNewLead(lead);
+
+  return lead;
 }
 
 export async function getLeadSourceSpend(monthKey: string = currentMonthKey()) {
