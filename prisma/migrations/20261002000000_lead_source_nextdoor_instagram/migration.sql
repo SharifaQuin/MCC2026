@@ -1,0 +1,3 @@
+-- AlterEnum
+ALTER TYPE "LeadSource" ADD VALUE 'NEXTDOOR';
+ALTER TYPE "LeadSource" ADD VALUE 'INSTAGRAM';

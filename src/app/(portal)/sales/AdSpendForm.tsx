@@ -5,6 +5,8 @@ import { setLeadSourceSpendAction } from "./actions";
 const SOURCE_OPTIONS: { value: string; label: string }[] = [
   { value: "GOOGLE_ADS", label: "Google Ads" },
   { value: "FACEBOOK_ADS", label: "Facebook Ads" },
+  { value: "NEXTDOOR", label: "Nextdoor" },
+  { value: "INSTAGRAM", label: "Instagram" },
   { value: "WEBSITE_FORM", label: "Website Form" },
   { value: "REFERRAL", label: "Referral" },
   { value: "PHONE_CALL", label: "Phone Call" },

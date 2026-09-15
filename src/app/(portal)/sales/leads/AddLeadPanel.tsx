@@ -7,6 +7,8 @@ const SOURCE_OPTIONS: { value: string; label: string }[] = [
   { value: "PHONE_CALL", label: "Phone Call" },
   { value: "WALK_IN", label: "Walk-in" },
   { value: "REFERRAL", label: "Referral" },
+  { value: "NEXTDOOR", label: "Nextdoor" },
+  { value: "INSTAGRAM", label: "Instagram" },
   { value: "OTHER", label: "Other" },
 ];
 

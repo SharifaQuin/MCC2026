@@ -4023,5 +4023,213 @@ document.addEventListener('DOMContentLoaded', function(){
   }, 100);
 });
 </script>
+
+<!-- ── Flat hourly-rate override + combined-services quote email ──
+     Two independent, additive features, kept in one script block:
+
+     1) Hourly override: a checkbox + Hours/Rate fields added to the
+        Pricing Calculator tab. When enabled, it overrides the global
+        computeCurrent() (the single function every price display and
+        the Save flow already call) to return a flat hours×rate total
+        instead of running the sqft/condition formula — so the client
+        sees one flat price, not a range, everywhere that already reads
+        computeCurrent()'s result. Used for a first cleaning being
+        quoted strictly by the hour instead of the usual estimate.
+
+     2) Combined quote email: a new panel on the Client Quote Page tab
+        that loads 2-4 already-saved Quote IDs for the same client and
+        merges them into one email (one line item per service + a
+        total), sent through the existing /api/sales/send-quote route
+        anchored to the first Quote ID for status/sentAt tracking. -->
+<script>
+(function(){
+  // ---------- 1) Hourly-rate override ----------
+  const firstTimeToggle = document.getElementById('first-time-client');
+  const anchorGroup = firstTimeToggle ? firstTimeToggle.closest('.field-group') : null;
+  if(anchorGroup && anchorGroup.parentNode){
+    const wrap = document.createElement('div');
+    wrap.className = 'field-group';
+    wrap.innerHTML = [
+      '<div class="pet-toggle">',
+      '<input type="checkbox" id="hourly-override-toggle">',
+      '<label for="hourly-override-toggle">Quote as flat hourly rate (skip formula)</label>',
+      '</div>',
+      '<div id="hourly-override-fields" style="display:none;gap:10px;margin-top:8px;">',
+      '<div style="flex:1;">',
+      '<label class="field-label">Hours</label>',
+      '<input type="number" id="hourly-override-hours" min="0" step="0.25" placeholder="e.g. 3" style="width:100%;padding:8px;border:1.5px solid var(--paper-dark);border-radius:6px;font-family:\'DM Sans\',sans-serif;">',
+      '</div>',
+      '<div style="flex:1;">',
+      '<label class="field-label">Rate per hour ($)</label>',
+      '<input type="number" id="hourly-override-rate" min="0" step="1" placeholder="e.g. 65" style="width:100%;padding:8px;border:1.5px solid var(--paper-dark);border-radius:6px;font-family:\'DM Sans\',sans-serif;">',
+      '</div>',
+      '</div>',
+      '<div class="note-box">Use this for a first cleaning you\'re quoting strictly by the hour instead of the usual estimate — the client sees one flat price, not a range.</div>',
+    ].join('');
+    anchorGroup.parentNode.insertBefore(wrap, anchorGroup.nextSibling);
+
+    window.__hourlyOverride = { enabled:false, hours:0, rate:0 };
+    const toggle = document.getElementById('hourly-override-toggle');
+    const fieldsBox = document.getElementById('hourly-override-fields');
+    const hoursInput = document.getElementById('hourly-override-hours');
+    const rateInput = document.getElementById('hourly-override-rate');
+
+    function syncOverride(){
+      window.__hourlyOverride.enabled = toggle.checked;
+      window.__hourlyOverride.hours = parseFloat(hoursInput.value) || 0;
+      window.__hourlyOverride.rate = parseFloat(rateInput.value) || 0;
+      fieldsBox.style.display = toggle.checked ? 'flex' : 'none';
+      if(typeof recalc === 'function') recalc();
+    }
+    toggle.addEventListener('change', syncOverride);
+    hoursInput.addEventListener('input', syncOverride);
+    rateInput.addEventListener('input', syncOverride);
+
+    const __origComputeCurrent = computeCurrent;
+    computeCurrent = function(){
+      if(window.__hourlyOverride && window.__hourlyOverride.enabled){
+        const hours = window.__hourlyOverride.hours;
+        const rate = window.__hourlyOverride.rate;
+        const total = hours * rate;
+        return {
+          price: total,
+          hours: hours,
+          teamSize: 2,
+          range: `Flat hourly rate: ${hours} hrs × $${rate}/hr`,
+          note: `${hours} hrs × $${rate}/hr — flat hourly rate (formula estimate skipped)`,
+          cityPremium: 0,
+          firstTimeDiscount: 0,
+        };
+      }
+      return __origComputeCurrent();
+    };
+  }
+
+  // ---------- 2) Combined-services quote email ----------
+  const quoteTab = document.getElementById('tab-quote');
+  if(quoteTab){
+    const panel = document.createElement('div');
+    panel.style.cssText = 'border:2px solid var(--orange);border-radius:10px;padding:16px 20px;margin-bottom:20px;background:var(--orange-lt);';
+    panel.innerHTML = [
+      '<div class="builder-section-title" style="margin-top:0;">Combine Multiple Services Into One Email</div>',
+      '<p style="font-family:\'DM Sans\',sans-serif;font-size:12.5px;color:var(--navy-mid);margin:0 0 10px;">Enter the Quote IDs of 2-4 already-saved quotes for the same client (e.g. one for Standard Clean, one for Deep Clean) to send them together as a single email, each priced separately.</p>',
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">',
+      '<input type="text" id="combine-id-1" placeholder="Quote ID #1" style="flex:1;min-width:140px;padding:8px;border:1.5px solid var(--orange);border-radius:6px;">',
+      '<input type="text" id="combine-id-2" placeholder="Quote ID #2" style="flex:1;min-width:140px;padding:8px;border:1.5px solid var(--orange);border-radius:6px;">',
+      '<input type="text" id="combine-id-3" placeholder="Quote ID #3 (optional)" style="flex:1;min-width:140px;padding:8px;border:1.5px solid var(--orange);border-radius:6px;">',
+      '<input type="text" id="combine-id-4" placeholder="Quote ID #4 (optional)" style="flex:1;min-width:140px;padding:8px;border:1.5px solid var(--orange);border-radius:6px;">',
+      '</div>',
+      '<button type="button" class="btn-generate" id="combine-preview-btn" style="width:auto;">Preview Combined Quote →</button>',
+      '<div id="combine-status" style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--navy-mid);margin-top:8px;"></div>',
+      '<div id="combine-preview-box" style="display:none;margin-top:14px;">',
+      '<textarea id="combine-preview-text" style="width:100%;min-height:260px;font-family:\'DM Mono\',monospace;font-size:11.5px;padding:10px;border:1.5px solid var(--orange);border-radius:6px;"></textarea>',
+      '<button type="button" class="btn-save-quote" id="combine-send-btn" style="margin-top:10px;width:auto;">Send Combined Quote to Client →</button>',
+      '<div id="combine-send-status" style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--navy-mid);margin-top:6px;"></div>',
+      '</div>',
+    ].join('');
+    quoteTab.insertBefore(panel, quoteTab.firstChild);
+
+    let combinedQuotes = [];
+
+    async function loadQuote(id){
+      if(!id) return null;
+      try{
+        const res = await window.storage.get('quote:'+id, true);
+        if(!res || !res.value) return null;
+        return JSON.parse(res.value);
+      }catch(e){ return null; }
+    }
+
+    document.getElementById('combine-preview-btn').addEventListener('click', async function(){
+      const statusEl = document.getElementById('combine-status');
+      const ids = ['combine-id-1','combine-id-2','combine-id-3','combine-id-4']
+        .map(function(elId){ return document.getElementById(elId).value.trim(); })
+        .filter(Boolean);
+
+      if(ids.length < 2){
+        statusEl.textContent = 'Enter at least 2 Quote IDs to combine.';
+        return;
+      }
+
+      statusEl.textContent = 'Loading quotes...';
+      const loaded = [];
+      for(const id of ids){
+        const q = await loadQuote(id);
+        if(!q){ statusEl.textContent = `Could not find a saved quote with ID "${id}" — check it and try again.`; return; }
+        loaded.push(q);
+      }
+
+      const emails = new Set(loaded.map(function(q){ return (q.clientEmail||'').toLowerCase(); }).filter(Boolean));
+      statusEl.textContent = emails.size > 1
+        ? 'Warning: these quotes have different client emails saved — double check you picked the right Quote IDs.'
+        : `Loaded ${loaded.length} quotes for ${loaded[0].clientName || 'this client'}.`;
+
+      combinedQuotes = loaded;
+
+      const hour = new Date().getHours();
+      const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+      const primary = loaded[0];
+      const total = loaded.reduce(function(sum, q){ return sum + (parseFloat(q.suggested) || 0); }, 0);
+
+      const serviceBlocks = loaded.map(function(q){
+        const label = (typeof SERVICE_LABELS !== 'undefined' && SERVICE_LABELS[q.service]) || q.service || '';
+        const cost = parseFloat(q.suggested);
+        const costText = !isNaN(cost) ? `$${cost.toFixed(2)}` : 'Quote pending';
+        const sqft = q.formState && q.formState.sqft;
+        return [
+          `${label} (${q.frequency || 'One-Time'})`,
+          sqft ? `  - Property Size: ${sqft} sqft` : null,
+          `  - Estimated Service Cost: ${costText}`,
+          q.time ? `  - Approximate time of completion: ${q.time}` : null,
+        ].filter(Boolean).join('\n');
+      }).join('\n\n');
+
+      const subject = `Your Mama's Cleaning Crew Quote | ${primary.clientName || 'Valued Client'}`;
+      const body = [
+        `${greeting}, ${primary.clientName || 'there'}`,
+        `Thank you for considering Mama's Cleaning Crew.\nHere is a summary of the services you're interested in:`,
+        serviceBlocks,
+        `Combined Estimated Total: $${total.toFixed(2)}`,
+        `We're happy to book any one of these services individually, or combine them — just let us know what works best for you.`,
+        `Thank you again for the opportunity. If you'd like to move forward, simply respond to this email or give us a call.`,
+        (typeof EMAIL_POLICIES_TEXT !== 'undefined') ? EMAIL_POLICIES_TEXT : '',
+        (typeof EMAIL_CONTACT_TEXT !== 'undefined') ? EMAIL_CONTACT_TEXT : '',
+      ].filter(Boolean).join('\n\n');
+
+      document.getElementById('combine-preview-text').value = subject + '\n\n' + body;
+      document.getElementById('combine-preview-box').style.display = 'block';
+    });
+
+    document.getElementById('combine-send-btn').addEventListener('click', async function(){
+      const sendStatus = document.getElementById('combine-send-status');
+      if(!combinedQuotes.length) return;
+      const primary = combinedQuotes[0];
+      if(!primary.clientEmail){ sendStatus.textContent = 'The first Quote ID has no client email saved — add one and re-save that quote first.'; return; }
+
+      const full = document.getElementById('combine-preview-text').value;
+      const splitIdx = full.indexOf('\n\n');
+      const subject = splitIdx >= 0 ? full.slice(0, splitIdx) : full;
+      const body = splitIdx >= 0 ? full.slice(splitIdx + 2) : '';
+
+      sendStatus.textContent = 'Sending...';
+      try{
+        const res = await fetch('/api/sales/send-quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: primary.id, subject, body }),
+        });
+        const result = await res.json();
+        if(res.ok && result.ok){
+          sendStatus.textContent = `Sent to ${primary.clientEmail} just now.`;
+        } else {
+          sendStatus.textContent = 'Send failed: ' + (result.error || 'unknown error');
+        }
+      }catch(e){
+        sendStatus.textContent = 'Send failed — check your connection and try again.';
+      }
+    });
+  }
+})();
+</script>
 </body>
 </html>

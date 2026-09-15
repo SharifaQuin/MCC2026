@@ -39,23 +39,31 @@ export const LEAD_SOURCE_LABELS: Record<string, string> = {
   REFERRAL: "Referral",
   GOOGLE_ADS: "Google Ads",
   FACEBOOK_ADS: "Facebook Ads",
+  NEXTDOOR: "Nextdoor",
+  INSTAGRAM: "Instagram",
   OTHER: "Other",
 };
 
-const LEAD_SOURCE_ALIASES: Record<string, "GOOGLE_ADS" | "FACEBOOK_ADS" | "REFERRAL"> = {
+const LEAD_SOURCE_ALIASES: Record<string, "GOOGLE_ADS" | "FACEBOOK_ADS" | "REFERRAL" | "NEXTDOOR" | "INSTAGRAM"> = {
   google: "GOOGLE_ADS",
   googleads: "GOOGLE_ADS",
   facebook: "FACEBOOK_ADS",
   fb: "FACEBOOK_ADS",
   facebookads: "FACEBOOK_ADS",
   referral: "REFERRAL",
+  nextdoor: "NEXTDOOR",
+  instagram: "INSTAGRAM",
+  insta: "INSTAGRAM",
+  ig: "INSTAGRAM",
 };
 
 // The public lead form always lives on the website, so it defaults to
 // WEBSITE_FORM — a ?src= query param lets an ad campaign's landing link
 // (pointing at the same embedded form) tag itself instead, the same way
 // job-board postings tag /apply/[slug] via ?src=indeed.
-export function parseLeadSource(raw: string | null | undefined): "WEBSITE_FORM" | "GOOGLE_ADS" | "FACEBOOK_ADS" | "REFERRAL" {
+export function parseLeadSource(
+  raw: string | null | undefined
+): "WEBSITE_FORM" | "GOOGLE_ADS" | "FACEBOOK_ADS" | "REFERRAL" | "NEXTDOOR" | "INSTAGRAM" {
   const key = (raw ?? "").trim().toLowerCase();
   return LEAD_SOURCE_ALIASES[key] ?? "WEBSITE_FORM";
 }
