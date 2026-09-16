@@ -41,6 +41,23 @@ export default async function NewJobPostingPage() {
           />
         </div>
         <div>
+          <label className="mb-1 block text-sm font-medium text-neutral-700">Hiring Track</label>
+          <select
+            name="roleTrack"
+            defaultValue="OTHER"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2"
+          >
+            <option value="LEAD_TECHNICIAN">Lead Cleaning Technician</option>
+            <option value="ASSISTANT_TECHNICIAN">Assistant Cleaning Technician</option>
+            <option value="OTHER">Undecided / Forming a New Pair (Track B)</option>
+          </select>
+          <p className="mt-1 text-xs text-neutral-500">
+            Determines which structured-interview competency scorecard and role-specific
+            questions apply. Choose &quot;Undecided&quot; when hiring for a brand-new pair and
+            you haven&apos;t assigned Lead/Assistant yet.
+          </p>
+        </div>
+        <div>
           <label className="mb-1 block text-sm font-medium text-neutral-700">
             Prescreen Pass Threshold (%)
           </label>

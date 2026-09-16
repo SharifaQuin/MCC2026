@@ -71,6 +71,18 @@ export default async function JobPostingDetailPage({ params }: { params: { id: s
           />
         </div>
         <div>
+          <label className="mb-1 block text-sm font-medium text-neutral-700">Hiring Track</label>
+          <select
+            name="roleTrack"
+            defaultValue={posting.roleTrack}
+            className="w-full rounded-md border border-neutral-300 px-3 py-2"
+          >
+            <option value="LEAD_TECHNICIAN">Lead Cleaning Technician</option>
+            <option value="ASSISTANT_TECHNICIAN">Assistant Cleaning Technician</option>
+            <option value="OTHER">Undecided / Forming a New Pair (Track B)</option>
+          </select>
+        </div>
+        <div>
           <label className="mb-1 block text-sm font-medium text-neutral-700">
             Prescreen Pass Threshold (%)
           </label>

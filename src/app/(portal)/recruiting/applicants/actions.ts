@@ -14,7 +14,22 @@ import {
   rejectionEmailTemplate,
 } from "@/lib/recruiting";
 import { zonedTimeToUtc } from "@/lib/timezone";
-import type { ApplicantStage, ApplicantSource } from "@prisma/client";
+import type {
+  ApplicantStage,
+  ApplicantSource,
+  PhoneScreenOutcome,
+  InterviewRecommendation,
+  ReferenceVerdict,
+} from "@prisma/client";
+
+const VALID_PHONE_SCREEN_OUTCOMES = new Set(["PROCEED", "HOLD", "DECLINE"]);
+const VALID_RECOMMENDATIONS = new Set(["STRONG_HIRE", "HIRE", "NO_HIRE", "STRONG_NO_HIRE"]);
+const VALID_REFERENCE_VERDICTS = new Set([
+  "STRONG_POSITIVE",
+  "GENERALLY_POSITIVE",
+  "MIXED",
+  "NEGATIVE",
+]);
 
 const VALID_APPLICANT_SOURCES = new Set(["CAREERS_PAGE", "INDEED", "ZIPRECRUITER", "REFERRAL", "WALK_IN", "OTHER"]);
 
@@ -149,10 +164,260 @@ export async function createManualApplicantAction(formData: FormData) {
   redirect(`/recruiting/applicants/${applicant.id}`);
 }
 
-export async function saveApplicantNotesAction(applicantId: string, formData: FormData) {
+// Timestamped, authored internal-notes log — mirrors addLeadNoteAction so
+// recruiting notes behave the same way the email/text thread does
+// (append-only, who-said-it-and-when) instead of the old single
+// Applicant.notes field that silently overwrote itself on every edit.
+export async function addApplicantNoteAction(applicantId: string, formData: FormData) {
+  const { session } = await requireRecruitingAccess();
+  const body = String(formData.get("body") ?? "").trim();
+  if (!body) return;
+  await prisma.applicantNote.create({ data: { applicantId, authorId: session.sub, body } });
+  revalidatePath(`/recruiting/applicants/${applicantId}`);
+}
+
+// ── Phone Screen tab ──
+// One combined save: the fixed question-bank answers, the pass/fail
+// criteria checklist, and the outcome/red-flags notes all submit together
+// from a single "Save Phone Screen" button.
+export async function savePhoneScreenAction(
+  applicantId: string,
+  questionIds: string[],
+  criteriaLabels: string[],
+  formData: FormData
+) {
+  const { session } = await requireRecruitingAccess();
+
+  await Promise.all(
+    questionIds.map((questionId) => {
+      const responseText = String(formData.get(`answer_${questionId}`) ?? "").trim() || null;
+      return prisma.phoneScreenAnswer.upsert({
+        where: { applicantId_questionId: { applicantId, questionId } },
+        create: { applicantId, questionId, responseText },
+        update: { responseText },
+      });
+    })
+  );
+
+  const criteriaChecklist = criteriaLabels.map((label, i) => ({
+    label,
+    checked: formData.get(`criteria_${i}`) === "on",
+  }));
+  const languageNote = String(formData.get("languageNote") ?? "").trim() || null;
+  const outcomeRaw = String(formData.get("outcome") ?? "");
+  const outcome = (VALID_PHONE_SCREEN_OUTCOMES.has(outcomeRaw) ? outcomeRaw : null) as PhoneScreenOutcome | null;
+  const redFlagsNotes = String(formData.get("redFlagsNotes") ?? "").trim() || null;
+
+  await prisma.phoneScreenResult.upsert({
+    where: { applicantId },
+    create: {
+      applicantId,
+      criteriaChecklist,
+      languageNote,
+      outcome,
+      redFlagsNotes,
+      completedById: session.sub,
+      completedAt: new Date(),
+    },
+    update: {
+      criteriaChecklist,
+      languageNote,
+      outcome,
+      redFlagsNotes,
+      completedById: session.sub,
+      completedAt: new Date(),
+    },
+  });
+
+  revalidatePath(`/recruiting/applicants/${applicantId}`);
+}
+
+// ── In-Person Interview tab ──
+// The fixed question-bank answers save separately from the scorecard —
+// staff can log what was said during the interview itself, then complete
+// the scorecard afterward (the toolkit calls for scoring within 1 hour,
+// before any panel discussion).
+export async function saveInterviewAnswersAction(
+  applicantId: string,
+  questionIds: string[],
+  formData: FormData
+) {
   await requireRecruitingAccess();
-  const notes = String(formData.get("notes") ?? "");
-  await prisma.applicant.update({ where: { id: applicantId }, data: { notes } });
+
+  await Promise.all(
+    questionIds.map((questionId) => {
+      const responseText = String(formData.get(`answer_${questionId}`) ?? "").trim() || null;
+      return prisma.interviewQuestionAnswer.upsert({
+        where: { applicantId_questionId: { applicantId, questionId } },
+        create: { applicantId, questionId, responseText },
+        update: { responseText },
+      });
+    })
+  );
+
+  revalidatePath(`/recruiting/applicants/${applicantId}`);
+}
+
+// Multiple scorecards per applicant are allowed on purpose — each panelist
+// scores independently before a calibration discussion, rather than
+// averaging scores from one shared form. Pass an existing scorecardId to
+// update it in place (e.g. the same evaluator correcting their own entry).
+export async function saveInterviewScorecardAction(
+  applicantId: string,
+  scorecardId: string | null,
+  competencies: string[],
+  formData: FormData
+) {
+  const { session } = await requireRecruitingAccess();
+
+  const recommendationRaw = String(formData.get("recommendation") ?? "");
+  const recommendation = (VALID_RECOMMENDATIONS.has(recommendationRaw)
+    ? recommendationRaw
+    : null) as InterviewRecommendation | null;
+  const rationale = String(formData.get("rationale") ?? "").trim() || null;
+  const concerns = String(formData.get("concerns") ?? "").trim() || null;
+
+  const scorecard = scorecardId
+    ? await prisma.interviewScorecard.update({
+        where: { id: scorecardId },
+        data: { recommendation, rationale, concerns },
+      })
+    : await prisma.interviewScorecard.create({
+        data: { applicantId, evaluatorId: session.sub, recommendation, rationale, concerns },
+      });
+
+  await Promise.all(
+    competencies.map(async (competency, i) => {
+      const scoreRaw = String(formData.get(`score_${i}`) ?? "");
+      const score = scoreRaw ? Number(scoreRaw) || null : null;
+      const evidence = String(formData.get(`evidence_${i}`) ?? "").trim() || null;
+
+      if (scorecardId) {
+        const existing = await prisma.interviewCompetencyScore.findFirst({
+          where: { scorecardId, competency },
+        });
+        if (existing) {
+          await prisma.interviewCompetencyScore.update({
+            where: { id: existing.id },
+            data: { score, evidence },
+          });
+          return;
+        }
+      }
+      await prisma.interviewCompetencyScore.create({
+        data: { scorecardId: scorecard.id, competency, score, evidence },
+      });
+    })
+  );
+
+  revalidatePath(`/recruiting/applicants/${applicantId}`);
+}
+
+export async function deleteInterviewScorecardAction(applicantId: string, scorecardId: string) {
+  await requireRecruitingAccess();
+  await prisma.interviewScorecard.delete({ where: { id: scorecardId } });
+  revalidatePath(`/recruiting/applicants/${applicantId}`);
+}
+
+// ── Working Session tab ──
+// One combined save for the pre-day checklist + the Lead's end-of-session
+// observation scores and written assessment — one record per applicant,
+// completed once by the Lead who ran the session.
+export async function saveWorkingSessionAction(
+  applicantId: string,
+  checklistLabels: string[],
+  formData: FormData
+) {
+  const { session } = await requireRecruitingAccess();
+
+  const preSessionChecklist = checklistLabels.map((label, i) => ({
+    label,
+    checked: formData.get(`checklist_${i}`) === "on",
+  }));
+
+  const scheduledAtRaw = String(formData.get("scheduledAt") ?? "");
+  const housesToVisit = String(formData.get("housesToVisit") ?? "").trim() || null;
+
+  const scoreFields = [
+    "technical",
+    "paceStamina",
+    "attentionDetail",
+    "clientHome",
+    "coachability",
+    "pairDynamic",
+    "safety",
+  ] as const;
+
+  const scoreData: Record<string, number | string | null> = {};
+  for (const field of scoreFields) {
+    const scoreRaw = String(formData.get(`${field}Score`) ?? "");
+    scoreData[`${field}Score`] = scoreRaw ? Number(scoreRaw) || null : null;
+    scoreData[`${field}Notes`] = String(formData.get(`${field}Notes`) ?? "").trim() || null;
+  }
+
+  const recommendationRaw = String(formData.get("recommendation") ?? "");
+  const recommendation = (VALID_RECOMMENDATIONS.has(recommendationRaw)
+    ? recommendationRaw
+    : null) as InterviewRecommendation | null;
+
+  const data = {
+    scheduledAt: scheduledAtRaw ? new Date(scheduledAtRaw) : null,
+    housesToVisit,
+    preSessionChecklist,
+    leadEvaluatorId: session.sub,
+    ...scoreData,
+    honestAssessment: String(formData.get("honestAssessment") ?? "").trim() || null,
+    concernsRaised: String(formData.get("concernsRaised") ?? "").trim() || null,
+    recommendation,
+  };
+
+  await prisma.workingSessionRecord.upsert({
+    where: { applicantId },
+    create: { applicantId, ...data },
+    update: data,
+  });
+
+  revalidatePath(`/recruiting/applicants/${applicantId}`);
+}
+
+// ── Reference Check tab ──
+// At least two calls are recommended per finalist, so each call is its own
+// row rather than a single record — "Add Reference Check" appends a new one.
+export async function addReferenceCheckAction(applicantId: string, formData: FormData) {
+  const { session } = await requireRecruitingAccess();
+
+  const verdictRaw = String(formData.get("verdict") ?? "");
+  const verdict = (VALID_REFERENCE_VERDICTS.has(verdictRaw) ? verdictRaw : null) as ReferenceVerdict | null;
+  const calledAtRaw = String(formData.get("calledAt") ?? "");
+
+  await prisma.referenceCheck.create({
+    data: {
+      applicantId,
+      referenceName: String(formData.get("referenceName") ?? "").trim() || null,
+      referenceRelationship: String(formData.get("referenceRelationship") ?? "").trim() || null,
+      durationKnown: String(formData.get("durationKnown") ?? "").trim() || null,
+      referencePhone: String(formData.get("referencePhone") ?? "").trim() || null,
+      calledAt: calledAtRaw ? new Date(calledAtRaw) : null,
+      capacityDuration: String(formData.get("capacityDuration") ?? "").trim() || null,
+      responsibilities: String(formData.get("responsibilities") ?? "").trim() || null,
+      strengths: String(formData.get("strengths") ?? "").trim() || null,
+      growthAreas: String(formData.get("growthAreas") ?? "").trim() || null,
+      customerFacing: String(formData.get("customerFacing") ?? "").trim() || null,
+      handledFeedback: String(formData.get("handledFeedback") ?? "").trim() || null,
+      wouldRehire: String(formData.get("wouldRehire") ?? "").trim() || null,
+      anythingElse: String(formData.get("anythingElse") ?? "").trim() || null,
+      verdict,
+      redFlagsSurfaced: String(formData.get("redFlagsSurfaced") ?? "").trim() || null,
+      completedById: session.sub,
+    },
+  });
+
+  revalidatePath(`/recruiting/applicants/${applicantId}`);
+}
+
+export async function deleteReferenceCheckAction(applicantId: string, referenceCheckId: string) {
+  await requireRecruitingAccess();
+  await prisma.referenceCheck.delete({ where: { id: referenceCheckId } });
   revalidatePath(`/recruiting/applicants/${applicantId}`);
 }
 

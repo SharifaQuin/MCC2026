@@ -8,13 +8,16 @@ import { STAGE_LABELS, SCHEDULING_STAGES } from "@/lib/recruiting";
 // Phase 1 keeps stage changes manual — a manager reviews and moves the
 // applicant forward themselves. Automated scheduling/messaging on these
 // transitions comes in a later phase.
+// Prescreen Passed and later can jump straight to scheduling the in-person
+// interview, skipping the phone screen entirely — e.g. a strong referral or
+// walk-in who the manager already wants to just bring in.
 const NEXT_STAGES: Record<string, ApplicantStage[]> = {
   NEW: ["PRESCREEN_PASSED", "PRESCREEN_FAILED"],
-  PRESCREEN_PASSED: ["PHONE_INTERVIEW_SCHEDULED", "REJECTED", "BENCH"],
+  PRESCREEN_PASSED: ["PHONE_INTERVIEW_SCHEDULED", "IN_PERSON_SCHEDULED", "REJECTED", "BENCH"],
   PRESCREEN_FAILED: ["REJECTED", "BENCH", "PRESCREEN_PASSED"],
-  PHONE_INTERVIEW_SCHEDULED: ["PHONE_INTERVIEW_PASSED", "PHONE_INTERVIEW_FAILED"],
+  PHONE_INTERVIEW_SCHEDULED: ["PHONE_INTERVIEW_PASSED", "PHONE_INTERVIEW_FAILED", "IN_PERSON_SCHEDULED"],
   PHONE_INTERVIEW_PASSED: ["IN_PERSON_SCHEDULED", "REJECTED", "BENCH"],
-  PHONE_INTERVIEW_FAILED: ["REJECTED", "BENCH"],
+  PHONE_INTERVIEW_FAILED: ["REJECTED", "BENCH", "IN_PERSON_SCHEDULED"],
   IN_PERSON_SCHEDULED: ["IN_PERSON_PASSED", "IN_PERSON_FAILED"],
   IN_PERSON_PASSED: ["OFFER_SENT", "REJECTED", "BENCH"],
   IN_PERSON_FAILED: ["REJECTED", "BENCH"],

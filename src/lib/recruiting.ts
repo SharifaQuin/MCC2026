@@ -425,3 +425,257 @@ export const PRIMARY_NEXT_STAGE: Record<string, { stage: string; label: string }
   IN_PERSON_PASSED: { stage: "OFFER_SENT", label: "Send Offer (Gusto)" },
   OFFER_SENT: { stage: "HIRED", label: "Mark Hired" },
 };
+
+// ── Hiring Toolkit content (Lead/Assistant Cleaning Technician track) ──
+// Sourced directly from the Mama's Cleaning Crew Hiring & Onboarding Toolkit
+// (Part 4.1, Part 4.3, Form 3/4, Form 5) — the standard bilingual phone-
+// screen script, structured-interview question bank, and scorecards. Seeded
+// onto every new job posting so every candidate for the same posting gets
+// the same questions in the same order (the toolkit's core "consistency is
+// fairness" principle); editable per posting afterward.
+
+export const DEFAULT_PHONE_SCREEN_QUESTIONS: { textEn: string; textEs: string }[] = [
+  {
+    textEn: "Tell me about your cleaning experience over the last two years.",
+    textEs: "Cuénteme sobre su experiencia en limpieza en los últimos dos años.",
+  },
+  {
+    textEn: "What's drawing you to Mama's Cleaning Crew specifically?",
+    textEs: "¿Qué le atrae de Mama's Cleaning Crew específicamente?",
+  },
+  {
+    textEn: "Do you have a reliable vehicle, valid California driver's license, and active insurance?",
+    textEs: "¿Tiene un vehículo confiable, licencia de conducir válida de California y seguro activo?",
+  },
+  {
+    textEn: "Our service area runs from Long Beach to San Clemente. Are you able to travel the full area?",
+    textEs: "Nuestra área de servicio va desde Long Beach hasta San Clemente. ¿Puede viajar a toda el área?",
+  },
+  {
+    textEn: "This role means working the same partner every day, in clients' homes. How does that sound to you?",
+    textEs: "Este puesto significa trabajar con el mismo compañero todos los días, en casas de clientes. ¿Cómo le suena eso?",
+  },
+  { textEn: "What hourly pay are you looking for?", textEs: "¿Qué salario por hora está buscando?" },
+  { textEn: "When could you start if we moved forward?", textEs: "¿Cuándo podría empezar si avanzamos?" },
+  { textEn: "What questions do you have for me?", textEs: "¿Qué preguntas tiene para mí?" },
+];
+
+// The Phone Screen Form's pass/fail hard-requirement checklist — stored as
+// [{label, checked}] on PhoneScreenResult.criteriaChecklist rather than
+// fixed columns, so wording can be tweaked without a migration.
+export const DEFAULT_PHONE_SCREEN_CRITERIA: string[] = [
+  "Available Monday through Friday from 8am to 6pm",
+  "Has reliable transportation to office and job sites",
+  "Comfortable working in customers' homes",
+  "Work authorization confirmed",
+  "Compensation expectations align with role",
+];
+
+export const PHONE_SCREEN_OUTCOME_LABELS: Record<string, string> = {
+  PROCEED: "Proceed to In-Person Interview",
+  HOLD: "Hold — Request Additional Information",
+  DECLINE: "Decline — Does Not Meet Screening Criteria",
+};
+
+interface DefaultInterviewQuestion {
+  competency: string;
+  textEn: string;
+  textEs: string;
+  whatToListenFor: string;
+  roleScope: "ALL" | "LEAD_ONLY" | "ASSISTANT_ONLY";
+}
+
+// 6 core questions (asked of every candidate) + 2 Lead-differentiated + 2
+// Assistant-differentiated (Part 4.3). For a Track B posting (roleTrack
+// OTHER — role not yet decided), the UI shows both differentiated sets, per
+// the toolkit's own instruction: "If unsure (Track B), ask both sets."
+export const DEFAULT_INTERVIEW_QUESTIONS: DefaultInterviewQuestion[] = [
+  {
+    competency: "Attention to Detail / Task Execution",
+    textEn:
+      "Tell me about a time you caught something in a cleaning job that almost got missed. What was it, and how did you catch it?",
+    textEs:
+      "Cuénteme de una vez que encontró algo en un trabajo de limpieza que casi se le pasaba. ¿Qué fue, y cómo lo notó?",
+    whatToListenFor:
+      "Specific example. Describes the detail (not generic). Shows self-check habits. Bonus: describes what they now do differently.",
+    roleScope: "ALL",
+  },
+  {
+    competency: "Integrity & Trust",
+    textEn:
+      "You're cleaning alone in a client's home and you accidentally break something — something that wasn't expensive, and no one would know. Walk me through what you do.",
+    textEs:
+      "Está limpiando solo en casa de un cliente y accidentalmente rompe algo — algo que no era caro, y nadie se daría cuenta. Cuénteme qué hace.",
+    whatToListenFor:
+      "Immediate report. No hesitation. Specific about whom they would tell (Lead, Service Manager, client).",
+    roleScope: "ALL",
+  },
+  {
+    competency: "Partner Compatibility",
+    textEn:
+      "Tell me about a coworker you didn't naturally click with but had to work closely with. How did you handle it?",
+    textEs:
+      "Cuénteme de un compañero de trabajo con quien no se llevaba naturalmente bien pero con quien tuvo que trabajar de cerca. ¿Cómo lo manejó?",
+    whatToListenFor:
+      "No blame. Describes what they did, not what the other person should have done. Signs of perspective-taking.",
+    roleScope: "ALL",
+  },
+  {
+    competency: "Customer Orientation",
+    textEn:
+      "A client is home while you're cleaning, and they keep asking you to add small things to what you're already doing. How do you handle it?",
+    textEs:
+      "Un cliente está en casa mientras usted limpia, y le sigue pidiendo que haga cositas extras fuera del servicio acordado. ¿Cómo lo maneja?",
+    whatToListenFor:
+      "Warmth without overcommitting. Knows when to say yes, when to check. Doesn't get flustered. Doesn't complain about clients.",
+    roleScope: "ALL",
+  },
+  {
+    competency: "Reliability",
+    textEn:
+      "Walk me through what a normal morning looks like for you before work — getting up, getting ready, getting to the office on time.",
+    textEs:
+      "Cuénteme cómo es una mañana normal suya antes del trabajo — levantarse, prepararse, llegar a la oficina a tiempo.",
+    whatToListenFor: "A real routine. Thought about contingencies (traffic, childcare). Not 'I just wake up and come in.'",
+    roleScope: "ALL",
+  },
+  {
+    competency: "Physical Stamina",
+    textEn:
+      "This work is physical — 8 hours of being on your feet, bending, lifting. Tell me about your experience with that kind of work and how you take care of your body.",
+    textEs:
+      "Este trabajo es físico — 8 horas de estar de pie, agachándose, levantando cosas. Cuénteme de su experiencia con ese tipo de trabajo y cómo cuida su cuerpo.",
+    whatToListenFor:
+      "Realistic understanding. Mentions stretching, hydration, rest, pacing. Not dismissive ('I can handle anything').",
+    roleScope: "ALL",
+  },
+  {
+    competency: "Ownership / On-Site Judgment",
+    textEn:
+      "You arrive at a home and the condition is much worse than expected — maybe double the work you were scheduled for. Your partner is looking to you. What do you do first, and what happens next?",
+    textEs:
+      "Llega a una casa y la condición es mucho peor de lo esperado — quizás el doble de trabajo del que estaba programado. Su compañero le mira esperando. ¿Qué hace primero, y qué sigue?",
+    whatToListenFor:
+      "Assesses first, communicates (client + office), adjusts plan, doesn't panic, doesn't shortcut. Good answer: 'I'd look it over, call the office to check the scope, tell my partner what we're doing, and then get moving.'",
+    roleScope: "LEAD_ONLY",
+  },
+  {
+    competency: "Coaching",
+    textEn:
+      "You notice your partner has been rushing through bathrooms and leaving small things undone. It's been happening for a couple of days. How do you bring it up?",
+    textEs:
+      "Nota que su compañero ha estado apurándose en los baños y dejando cositas sin terminar. Ha pasado por un par de días. ¿Cómo se lo habla?",
+    whatToListenFor:
+      "Direct but respectful. Timing (not in front of a client). Specific (not 'you're doing a bad job'). Problem-solving tone. Shows rather than just tells.",
+    roleScope: "LEAD_ONLY",
+  },
+  {
+    competency: "Coachability",
+    textEn:
+      "Tell me about a time someone corrected how you were doing something at work. What happened, and how did you respond?",
+    textEs:
+      "Cuénteme de una vez que alguien le corrigió cómo estaba haciendo algo en el trabajo. ¿Qué pasó, y cómo respondió?",
+    whatToListenFor:
+      "Doesn't get defensive. Can name what they learned. Thanks the person or acknowledges it helped. Applies the correction.",
+    roleScope: "ASSISTANT_ONLY",
+  },
+  {
+    competency: "Initiative",
+    textEn: "You finish your assigned tasks early at a home and your Lead is still working. What do you do?",
+    textEs: "Termina sus tareas asignadas temprano en una casa y su Lead sigue trabajando. ¿Qué hace?",
+    whatToListenFor:
+      "Asks what to do next, looks for what else needs attention, helps with Lead's area, doesn't sit or check phone. Lead-readiness signal: proactively identifies something useful.",
+    roleScope: "ASSISTANT_ONLY",
+  },
+];
+
+// Creates the standard phone-screen + structured-interview question banks
+// on a newly created job posting. Best-effort in the sense that it's only
+// ever called once, right after posting creation — staff can freely edit,
+// reorder, or delete questions afterward per posting.
+export async function seedDefaultHiringQuestions(jobPostingId: string) {
+  await prisma.phoneScreenQuestion.createMany({
+    data: DEFAULT_PHONE_SCREEN_QUESTIONS.map((q, i) => ({
+      jobPostingId,
+      order: i + 1,
+      textEn: q.textEn,
+      textEs: q.textEs,
+    })),
+  });
+  await prisma.interviewQuestion.createMany({
+    data: DEFAULT_INTERVIEW_QUESTIONS.map((q, i) => ({
+      jobPostingId,
+      order: i + 1,
+      competency: q.competency,
+      textEn: q.textEn,
+      textEs: q.textEs,
+      whatToListenFor: q.whatToListenFor,
+      roleScope: q.roleScope,
+    })),
+  });
+}
+
+// Structured Interview Scorecard's competency list (Form 3 for Lead, Form 4
+// for Assistant) — differs by role, hence a lookup rather than fixed
+// columns. Track B (roleTrack OTHER, role not yet decided) defaults to the
+// Lead list: it's the closer superset of generic professional competencies,
+// and role assignment itself happens via the Lead vs. Assistant
+// Differentiation Worksheet before the working session, not this scorecard.
+export const INTERVIEW_SCORECARD_COMPETENCIES: Record<string, string[]> = {
+  LEAD_TECHNICIAN: [
+    "Integrity & Trust",
+    "Reliability & Punctuality",
+    "Customer Orientation",
+    "Quality & Attention to Detail",
+    "Pair Leadership",
+    "Judgment & Problem-Solving",
+  ],
+  ASSISTANT_TECHNICIAN: [
+    "Integrity & Trust",
+    "Reliability & Punctuality",
+    "Customer Orientation",
+    "Coachability",
+    "Work Ethic & Pace",
+    "Pair Compatibility",
+  ],
+  OTHER: [
+    "Integrity & Trust",
+    "Reliability & Punctuality",
+    "Customer Orientation",
+    "Quality & Attention to Detail",
+    "Pair Leadership",
+    "Judgment & Problem-Solving",
+  ],
+};
+
+export const INTERVIEW_RECOMMENDATION_LABELS: Record<string, string> = {
+  STRONG_HIRE: "Strong Hire",
+  HIRE: "Hire",
+  NO_HIRE: "No Hire",
+  STRONG_NO_HIRE: "Strong No Hire",
+};
+
+// Working Session Pre-Day Checklist (Form 5), condensed to the items a
+// recruiter actually checks off before the session — stored as
+// [{label, checked}] on WorkingSessionRecord.preSessionChecklist.
+export const WORKING_SESSION_CHECKLIST_ITEMS: string[] = [
+  "Client(s) notified that an additional person will be observing/participating",
+  "Client(s) given option to opt out (some clients prefer not to have observers)",
+  "Confirm scope of work for the day",
+  "Candidate confidentiality agreement signed",
+  "Candidate provided with company shirt or identifier",
+  "Candidate has reliable transportation to office or first home",
+  "Candidate aware of timing, dress code, and what to bring",
+  "Candidate informed they will be paid at standard hourly rate",
+  "Lead briefed on evaluation criteria",
+  "Lead understands their role: observe, coach as needed, NOT supervise the entire day",
+  "Paid hours arranged in payroll system",
+  "Debrief time scheduled with candidate after session",
+];
+
+export const REFERENCE_VERDICT_LABELS: Record<string, string> = {
+  STRONG_POSITIVE: "Strong positive — supports hiring",
+  GENERALLY_POSITIVE: "Generally positive — minor concerns to discuss",
+  MIXED: "Mixed — significant concerns to weigh",
+  NEGATIVE: "Negative — supports not hiring",
+};

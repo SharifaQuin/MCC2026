@@ -162,6 +162,11 @@ model User {
   hiredFromApplicant Applicant? @relation("ApplicantHiredUser")
   applicantsViewed Applicant[] @relation("ApplicantViewedBy")
   onboardingAssignments OnboardingAssignment[]
+  applicantNotesAuthored ApplicantNote[]
+  phoneScreenResultsCompleted PhoneScreenResult[]
+  interviewScorecards InterviewScorecard[]
+  workingSessionsLed WorkingSessionRecord[]
+  referenceChecksCompleted ReferenceCheck[]
 
   complaintsReceived Complaint[]       @relation("EmployeeComplaints")
   complaintsLogged   Complaint[]       @relation("ComplaintsLogged")
@@ -384,12 +389,18 @@ model JobPosting {
   // Percentage of the max possible prescreen score an applicant needs to
   // auto-pass and move on to scheduling a phone/Zoom interview.
   passThresholdPct Int  @default(70)
+  // Which hiring-toolkit track this posting follows — drives the interview
+  // scorecard's competency list and which role-differentiated phone-screen
+  // / interview questions apply. See JobPostingRoleTrack.
+  roleTrack    JobPostingRoleTrack @default(OTHER)
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  prescreenQuestions PrescreenQuestion[]
-  applicants         Applicant[]
+  prescreenQuestions  PrescreenQuestion[]
+  phoneScreenQuestions PhoneScreenQuestion[]
+  interviewQuestions  InterviewQuestion[]
+  applicants          Applicant[]
 }
 
 model PrescreenQuestion {
@@ -461,8 +472,31 @@ model Applicant {
 
   answers PrescreenAnswer[]
   communications CommunicationLog[]
+  notesLog             ApplicantNote[]
+  phoneScreenAnswers   PhoneScreenAnswer[]
+  phoneScreenResult    PhoneScreenResult?
+  interviewAnswers     InterviewQuestionAnswer[]
+  interviewScorecards  InterviewScorecard[]
+  workingSession       WorkingSessionRecord?
+  referenceChecks      ReferenceCheck[]
 
   @@index([jobPostingId, stage])
+}
+
+// Timestamped, authored internal-notes log — mirrors LeadNote so recruiting
+// notes behave the same way the email/text communication thread does
+// (append-only, who-said-it-and-when), instead of the old single
+// Applicant.notes text field that silently overwrote itself on every edit.
+model ApplicantNote {
+  id          String    @id @default(cuid())
+  applicantId String
+  applicant   Applicant @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  authorId    String?
+  author      User?     @relation(fields: [authorId], references: [id])
+  body        String    @db.Text
+  createdAt   DateTime  @default(now())
+
+  @@index([applicantId, createdAt])
 }
 
 model PrescreenAnswer {
@@ -510,6 +544,237 @@ model CommunicationLog {
   createdAt    DateTime      @default(now())
 
   @@index([applicantId, createdAt])
+}
+
+// Which structured hiring track a posting follows — drives which interview
+// scorecard competency set applies (see INTERVIEW_SCORECARD_COMPETENCIES)
+// and which role-differentiated phone-screen/interview questions show.
+// OTHER covers Track B (forming a brand-new pair) — per the hiring toolkit,
+// when the role isn't decided yet, both Lead- and Assistant-differentiated
+// questions are asked so the answers can help with role assignment.
+enum JobPostingRoleTrack {
+  LEAD_TECHNICIAN
+  ASSISTANT_TECHNICIAN
+  OTHER
+}
+
+// A fixed, competency-mapped phone-screen question bank per job posting —
+// every candidate for the same posting is asked the same questions, in the
+// same order (the hiring toolkit's core consistency principle). Seeded with
+// the standard 15-minute bilingual script when a posting is created;
+// editable per posting afterward.
+model PhoneScreenQuestion {
+  id           String     @id @default(cuid())
+  jobPostingId String
+  jobPosting   JobPosting @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+  order        Int
+  textEn       String     @db.Text
+  textEs       String?    @db.Text
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  answers PhoneScreenAnswer[]
+
+  @@index([jobPostingId, order])
+}
+
+// What the applicant actually said to each phone-screen question, logged by
+// whoever conducted the call — free text, not scored (the phone screen is
+// pass/fail against hard requirements, not a ranking stage).
+model PhoneScreenAnswer {
+  id           String              @id @default(cuid())
+  applicantId  String
+  applicant    Applicant           @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  questionId   String
+  question     PhoneScreenQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  responseText String?             @db.Text
+  updatedAt    DateTime            @updatedAt
+
+  @@unique([applicantId, questionId])
+}
+
+enum PhoneScreenOutcome {
+  PROCEED
+  HOLD
+  DECLINE
+}
+
+// The pass/fail hard-requirement checklist + outcome from the Phone Screen
+// Form — one per applicant. criteriaChecklist holds the requirement rows
+// as [{label, checked}] (mirrors the Working Session pre-day checklist, and
+// the Lead lead-form's customFields Json pattern) so the exact wording can
+// be adjusted without a migration.
+model PhoneScreenResult {
+  id             String              @id @default(cuid())
+  applicantId    String              @unique
+  applicant      Applicant           @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  criteriaChecklist Json?
+  languageNote   String?
+  outcome        PhoneScreenOutcome?
+  redFlagsNotes  String?             @db.Text
+  completedById  String?
+  completedBy    User?               @relation(fields: [completedById], references: [id])
+  completedAt    DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+}
+
+enum InterviewQuestionRole {
+  ALL
+  LEAD_ONLY
+  ASSISTANT_ONLY
+}
+
+// The 45-minute structured in-person interview's fixed question bank — 6
+// core competency questions asked of every candidate, plus role-
+// differentiated questions shown only for the relevant track (or both, for
+// an undecided Track B posting). whatToListenFor surfaces the doc's
+// scoring guidance right next to the question while the interviewer is
+// taking notes.
+model InterviewQuestion {
+  id              String                @id @default(cuid())
+  jobPostingId    String
+  jobPosting      JobPosting            @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+  order           Int
+  competency      String
+  textEn          String                @db.Text
+  textEs          String?               @db.Text
+  whatToListenFor String?               @db.Text
+  roleScope       InterviewQuestionRole @default(ALL)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  answers InterviewQuestionAnswer[]
+
+  @@index([jobPostingId, order])
+}
+
+model InterviewQuestionAnswer {
+  id           String            @id @default(cuid())
+  applicantId  String
+  applicant    Applicant         @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  questionId   String
+  question     InterviewQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  responseText String?           @db.Text
+  updatedAt    DateTime          @updatedAt
+
+  @@unique([applicantId, questionId])
+}
+
+enum InterviewRecommendation {
+  STRONG_HIRE
+  HIRE
+  NO_HIRE
+  STRONG_NO_HIRE
+}
+
+// The competency scorecard completed after the interview (Structured
+// Interview Scorecard — Lead/Assistant forms). Multiple scorecards per
+// applicant are allowed on purpose — the toolkit expects each panelist to
+// score independently before a calibration discussion, rather than
+// averaging scores from a single shared form.
+model InterviewScorecard {
+  id             String                   @id @default(cuid())
+  applicantId    String
+  applicant      Applicant                @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  evaluatorId    String?
+  evaluator      User?                    @relation(fields: [evaluatorId], references: [id])
+  recommendation InterviewRecommendation?
+  rationale      String?                  @db.Text
+  concerns       String?                  @db.Text
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  competencyScores InterviewCompetencyScore[]
+
+  @@index([applicantId, createdAt])
+}
+
+// One row per scored competency on a scorecard (Integrity & Trust, Pair
+// Leadership, etc. — see INTERVIEW_SCORECARD_COMPETENCIES for the exact
+// Lead vs. Assistant lists). A child table rather than fixed columns since
+// the competency set differs by role track.
+model InterviewCompetencyScore {
+  id          String              @id @default(cuid())
+  scorecardId String
+  scorecard   InterviewScorecard  @relation(fields: [scorecardId], references: [id], onDelete: Cascade)
+  competency  String
+  score       Int?
+  evidence    String?             @db.Text
+
+  @@index([scorecardId])
+}
+
+// The paid 3-4 hour working-session (Forms 5 + 6 combined into one record):
+// pre-day checklist, the Lead's end-of-session observation scores, and
+// their written assessment + hire recommendation. One per applicant — the
+// working session is completed once, by the Lead who ran it.
+model WorkingSessionRecord {
+  id                    String                    @id @default(cuid())
+  applicantId           String                    @unique
+  applicant             Applicant                 @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  scheduledAt           DateTime?
+  housesToVisit         String?
+  // [{label, checked}] — the Form 5 pre-day checklist items.
+  preSessionChecklist   Json?
+  leadEvaluatorId       String?
+  leadEvaluator         User?                     @relation(fields: [leadEvaluatorId], references: [id])
+  technicalScore        Int?
+  technicalNotes        String?                   @db.Text
+  paceStaminaScore      Int?
+  paceStaminaNotes      String?                   @db.Text
+  attentionDetailScore  Int?
+  attentionDetailNotes  String?                   @db.Text
+  clientHomeScore       Int?
+  clientHomeNotes       String?                   @db.Text
+  coachabilityScore     Int?
+  coachabilityNotes     String?                   @db.Text
+  pairDynamicScore      Int?
+  pairDynamicNotes      String?                   @db.Text
+  safetyScore           Int?
+  safetyNotes           String?                   @db.Text
+  honestAssessment      String?                   @db.Text
+  concernsRaised         String?                  @db.Text
+  recommendation        InterviewRecommendation?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+}
+
+enum ReferenceVerdict {
+  STRONG_POSITIVE
+  GENERALLY_POSITIVE
+  MIXED
+  NEGATIVE
+}
+
+// One reference call (Reference Check Form, bilingual) — an applicant gets
+// multiple rows here since the toolkit requires at least 2 reference calls
+// per finalist.
+model ReferenceCheck {
+  id                     String            @id @default(cuid())
+  applicantId            String
+  applicant              Applicant         @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  referenceName          String?
+  referenceRelationship  String?
+  durationKnown          String?
+  referencePhone         String?
+  calledAt               DateTime?
+  capacityDuration       String?           @db.Text
+  responsibilities       String?           @db.Text
+  strengths              String?           @db.Text
+  growthAreas            String?           @db.Text
+  customerFacing         String?           @db.Text
+  handledFeedback        String?           @db.Text
+  wouldRehire            String?           @db.Text
+  anythingElse           String?           @db.Text
+  verdict                ReferenceVerdict?
+  redFlagsSurfaced       String?           @db.Text
+  completedById          String?
+  completedBy            User?             @relation(fields: [completedById], references: [id])
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+
+  @@index([applicantId])
 }
 
 // Generic shared key-value store for the Sales pricing/quotes tool — it was

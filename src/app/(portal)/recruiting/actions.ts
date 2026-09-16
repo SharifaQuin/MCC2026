@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
+import { seedDefaultHiringQuestions } from "@/lib/recruiting";
+import type { JobPostingRoleTrack } from "@prisma/client";
+
+const VALID_ROLE_TRACKS = new Set(["LEAD_TECHNICIAN", "ASSISTANT_TECHNICIAN", "OTHER"]);
 
 function slugify(text: string) {
   return (
@@ -22,14 +26,21 @@ export async function createJobPostingAction(formData: FormData) {
   const positionType = String(formData.get("positionType") ?? "").trim() || null;
   const descriptionEn = String(formData.get("descriptionEn") ?? "").trim();
   const passThresholdPct = Number(formData.get("passThresholdPct") ?? 70) || 70;
+  const roleTrackRaw = String(formData.get("roleTrack") ?? "OTHER");
+  const roleTrack = (VALID_ROLE_TRACKS.has(roleTrackRaw) ? roleTrackRaw : "OTHER") as JobPostingRoleTrack;
 
   let slug = slugify(titleEn);
   const existing = await prisma.jobPosting.findUnique({ where: { slug } });
   if (existing) slug = `${slug}-${Date.now().toString().slice(-5)}`;
 
   const posting = await prisma.jobPosting.create({
-    data: { titleEn, positionType, descriptionEn, passThresholdPct, slug },
+    data: { titleEn, positionType, descriptionEn, passThresholdPct, roleTrack, slug },
   });
+
+  // Seed the standard bilingual phone-screen + structured-interview
+  // question banks so every candidate for this posting gets the same
+  // questions in the same order — editable per posting afterward.
+  await seedDefaultHiringQuestions(posting.id);
 
   revalidatePath("/recruiting");
   redirect(`/recruiting/postings/${posting.id}`);
@@ -40,6 +51,9 @@ export async function updateJobPostingAction(id: string, formData: FormData) {
   const titleEn = String(formData.get("titleEn") ?? "").trim();
   if (!titleEn) return;
 
+  const roleTrackRaw = String(formData.get("roleTrack") ?? "OTHER");
+  const roleTrack = (VALID_ROLE_TRACKS.has(roleTrackRaw) ? roleTrackRaw : "OTHER") as JobPostingRoleTrack;
+
   await prisma.jobPosting.update({
     where: { id },
     data: {
@@ -47,6 +61,7 @@ export async function updateJobPostingAction(id: string, formData: FormData) {
       positionType: String(formData.get("positionType") ?? "").trim() || null,
       descriptionEn: String(formData.get("descriptionEn") ?? "").trim(),
       passThresholdPct: Number(formData.get("passThresholdPct") ?? 70) || 70,
+      roleTrack,
       active: formData.get("active") === "on",
     },
   });
