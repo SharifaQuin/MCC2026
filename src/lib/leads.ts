@@ -325,6 +325,15 @@ export function matchCityFromAddress(address: string | null): string {
   return match ?? "Other";
 }
 
+// Pulls a 5-digit ZIP out of a full address string ("123 Main St, Irvine,
+// CA 92618") — depends on the lead form asking for the complete address
+// including city and ZIP, not just a street address.
+export function extractZipFromAddress(address: string | null): string {
+  if (!address) return "";
+  const match = address.match(/\b(\d{5})(?:-\d{4})?\b/);
+  return match ? match[1] : "";
+}
+
 function slugifyQuoteId(clientName: string): string {
   const base = clientName
     .toLowerCase()
@@ -375,7 +384,7 @@ export async function createDraftQuoteForLead(lead: {
     id,
     phone: lead.phone,
     clientEmail: lead.email,
-    zip: "",
+    zip: extractZipFromAddress(lead.address),
     city,
     address: lead.address ?? "",
     walkthroughDate: "",
@@ -538,7 +547,7 @@ export const DEFAULT_LEAD_FORM_CONFIG: LeadFormConfig = {
   submitLabel: "Get My Free Quote",
   addressEnabled: true,
   addressRequired: false,
-  addressLabel: "Address",
+  addressLabel: "Home Address (street, city, and zip code)",
   serviceInterestEnabled: true,
   serviceInterestRequired: false,
   serviceInterestLabel: "What service are you interested in?",

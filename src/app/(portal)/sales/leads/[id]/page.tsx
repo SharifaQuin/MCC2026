@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
-import { LEAD_SOURCE_LABELS, LEAD_STAGE_LABELS, getSalesTeamMembers } from "@/lib/leads";
+import {
+  LEAD_SOURCE_LABELS,
+  LEAD_STAGE_LABELS,
+  LEAD_SERVICE_LABELS,
+  getSalesTeamMembers,
+  extractZipFromAddress,
+} from "@/lib/leads";
 import LeadStageControls from "./LeadStageControls";
 import LeadCommunicationPanel from "./LeadCommunicationPanel";
 import LeadDealDetailsForm from "./LeadDealDetailsForm";
@@ -185,8 +191,18 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
             pathname: "/sales/pricing-tool",
             query: {
               leadName: `${lead.firstName} ${lead.lastName}`,
-              ...(lead.address ? { leadAddress: lead.address } : {}),
-              ...(lead.serviceInterest ? { leadService: lead.serviceInterest } : {}),
+              leadEmail: lead.email,
+              leadPhone: lead.phone,
+              ...(lead.address
+                ? { leadAddress: lead.address, leadZip: extractZipFromAddress(lead.address) }
+                : {}),
+              ...(() => {
+                const serviceKey = lead.serviceInterest
+                  ? Object.entries(LEAD_SERVICE_LABELS).find(([, label]) => label === lead.serviceInterest)?.[0]
+                  : undefined;
+                return serviceKey ? { leadService: serviceKey } : {};
+              })(),
+              ...(lead.squareFootage ? { leadSqft: String(lead.squareFootage) } : {}),
             },
           }}
           className="mt-3 inline-block text-sm text-brand-700 hover:underline"

@@ -84,8 +84,12 @@ export default async function LeadFormPage({
             <input
               name="address"
               required={config.addressRequired}
+              placeholder="e.g. 123 Main St, Irvine, CA 92618"
               className="w-full rounded-md border border-neutral-300 px-3 py-2"
             />
+            <p className="mt-1 text-xs text-neutral-500">
+              Please include the city and zip code — helps us prepare an accurate quote.
+            </p>
           </div>
         )}
 

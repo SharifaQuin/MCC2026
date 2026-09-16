@@ -2006,7 +2006,10 @@ async function saveQuoteForClient(){
   if(!id){
     const today = new Date();
     const mmdd = String(today.getMonth()+1).padStart(2,'0') + String(today.getDate()).padStart(2,'0');
-    id = clientName.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') + '-' + mmdd;
+    // Include the service so the same client getting two different quotes
+    // the same day (e.g. Standard + Deep) get distinct auto-generated IDs
+    // instead of silently overwriting each other under name-date alone.
+    id = clientName.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') + '-' + mmdd + '-' + state.service;
     document.getElementById('save-client-id').value = id;
   } else {
     // Storage keys can't contain spaces, quotes, or slashes — clean up anything typed by hand
@@ -3963,26 +3966,69 @@ pfShowView = function(name){
 </script>
 
 <!-- Prefill from the Lead pipeline's "Start Quote" link — a fully separate,
-     additive block so it can't interfere with anything above. Only fills in
-     the New Quote (Pricing Calculator) tab's client name/address/service;
-     it never touches the ?quote= load-existing-quote flow. -->
+     additive block so it can't interfere with anything above. Fills in the
+     Pricing Calculator's Save Quote box (name/email/phone/address/zip) plus
+     state.service/state.sqft so the suggested price is ready immediately,
+     and also fills the manual New Quote builder tab's fields as a fallback.
+     Runs regardless of whether the lead already has a draft quote — it
+     never touches the ?quote= load-existing-quote flow above. -->
 <script>
 document.addEventListener('DOMContentLoaded', function(){
   const params = new URLSearchParams(window.location.search);
   const leadName = params.get('leadName');
+  const leadEmail = params.get('leadEmail');
+  const leadPhone = params.get('leadPhone');
   const leadAddress = params.get('leadAddress');
+  const leadZip = params.get('leadZip');
   const leadService = params.get('leadService');
+  const leadSqft = params.get('leadSqft');
   if(!leadName && !leadAddress && !leadService) return;
 
+  // Manual New Quote builder tab (Client Quote Page) — fallback fields.
   const nameEl = document.getElementById('f-name');
   const addressEl = document.getElementById('f-address');
   const serviceEl = document.getElementById('f-service');
   if(nameEl && leadName) nameEl.value = leadName;
   if(addressEl && leadAddress) addressEl.value = leadAddress;
-  if(serviceEl && leadService){
+  if(serviceEl && leadService && Array.prototype.some.call(serviceEl.options, function(o){ return o.value === leadService; })){
     serviceEl.value = leadService;
     if(typeof renderIncludedPreview === 'function') renderIncludedPreview();
   }
+
+  // Pricing Calculator's Save Quote box — this is what actually computes
+  // and saves a real suggested price, so this is the primary target.
+  const saveNameEl = document.getElementById('save-client-name');
+  const savePhoneEl = document.getElementById('save-client-phone');
+  const saveEmailEl = document.getElementById('save-client-email');
+  const saveAddressEl = document.getElementById('save-client-address');
+  const saveZipEl = document.getElementById('save-client-zip');
+  if(saveNameEl && leadName) saveNameEl.value = leadName;
+  if(savePhoneEl && leadPhone) savePhoneEl.value = leadPhone;
+  if(saveEmailEl && leadEmail) saveEmailEl.value = leadEmail;
+  if(saveAddressEl && leadAddress) saveAddressEl.value = leadAddress;
+  if(saveZipEl && leadZip) saveZipEl.value = leadZip;
+
+  if(leadService && SERVICES.some(function(s){ return s.id === leadService; })){
+    state.service = leadService;
+  }
+  if(leadSqft){
+    const sqftNum = parseInt(leadSqft, 10);
+    if(sqftNum > 0) state.sqft = sqftNum;
+  }
+  if(leadAddress){
+    const cityEl = document.getElementById('city-select');
+    if(cityEl){
+      const lowerAddress = leadAddress.toLowerCase();
+      const cityMatch = Array.prototype.find.call(cityEl.options, function(o){
+        return o.value !== 'Other' && lowerAddress.includes(o.value.toLowerCase());
+      });
+      if(cityMatch) cityEl.value = cityMatch.value;
+    }
+  }
+  if(typeof switchTab === 'function') switchTab('pricing');
+  if(typeof buildServiceGrid === 'function') buildServiceGrid();
+  if(typeof buildDynamicFields === 'function') buildDynamicFields();
+  if(typeof recalc === 'function') recalc();
 });
 </script>
 
@@ -4012,6 +4058,18 @@ document.addEventListener('DOMContentLoaded', function(){
         if(cityEl && currentQuote.city && Array.prototype.some.call(cityEl.options, function(o){ return o.value === currentQuote.city; })){
           cityEl.value = currentQuote.city;
         }
+        // The lead's contact info is already known — fill the Save Quote
+        // box so staff don't have to retype what the system already has.
+        const nameField = document.getElementById('save-client-name');
+        const phoneField = document.getElementById('save-client-phone');
+        const emailField = document.getElementById('save-client-email');
+        const addressField = document.getElementById('save-client-address');
+        const zipField = document.getElementById('save-client-zip');
+        if(nameField && !nameField.value && currentQuote.clientName) nameField.value = currentQuote.clientName;
+        if(phoneField && !phoneField.value && currentQuote.phone) phoneField.value = currentQuote.phone;
+        if(emailField && !emailField.value && currentQuote.clientEmail) emailField.value = currentQuote.clientEmail;
+        if(addressField && !addressField.value && currentQuote.address) addressField.value = currentQuote.address;
+        if(zipField && !zipField.value && currentQuote.zip) zipField.value = currentQuote.zip;
         if(typeof switchTab === 'function') switchTab('pricing');
         if(typeof buildServiceGrid === 'function') buildServiceGrid();
         if(typeof buildDynamicFields === 'function') buildDynamicFields();
