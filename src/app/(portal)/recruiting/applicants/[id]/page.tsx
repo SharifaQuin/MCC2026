@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
-import { STAGE_LABELS, SCHEDULING_STAGES, INTERVIEW_SCORECARD_COMPETENCIES, DEFAULT_PHONE_SCREEN_CRITERIA, WORKING_SESSION_CHECKLIST_ITEMS } from "@/lib/recruiting";
+import { STAGE_LABELS, SCHEDULING_STAGES, INTERVIEW_SCORECARD_COMPETENCIES, DEFAULT_PHONE_SCREEN_CRITERIA, WORKING_SESSION_CHECKLIST_ITEMS, getOnboardingChecklist } from "@/lib/recruiting";
 import { getMessageTemplates } from "@/lib/messageTemplates";
 import { formatInBusinessTimezone } from "@/lib/timezone";
 import StageControls from "./StageControls";
@@ -12,6 +12,7 @@ import InterviewTab from "./InterviewTab";
 import WorkingSessionTab from "./WorkingSessionTab";
 import ReferencesTab from "./ReferencesTab";
 import ApplicantNotesTab from "./ApplicantNotesTab";
+import OnboardingChecklistTab from "./OnboardingChecklistTab";
 
 export default async function ApplicantDetailPage({
   params,
@@ -65,6 +66,8 @@ export default async function ApplicantDetailPage({
   }
 
   const messageTemplates = await getMessageTemplates("RECRUITING");
+  const onboardingChecklist =
+    applicant.stage === "HIRED" ? await getOnboardingChecklist(applicant.id) : [];
 
   // Stamp "viewed" once, the first time anyone opens this profile — a
   // persistent marker distinct from moving them through the pipeline.
@@ -320,6 +323,15 @@ export default async function ApplicantDetailPage({
       label: "Notes",
       content: <ApplicantNotesTab applicantId={applicant.id} notes={notesEntries} canEdit={canEdit} />,
     },
+    ...(applicant.stage === "HIRED"
+      ? [
+          {
+            id: "onboarding",
+            label: "Onboarding Checklist",
+            content: <OnboardingChecklistTab applicantId={applicant.id} items={onboardingChecklist} />,
+          },
+        ]
+      : []),
   ];
 
   return (

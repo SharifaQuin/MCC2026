@@ -196,6 +196,7 @@ model User {
 
   documentTemplatesCreated DocumentTemplate[] @relation("DocumentTemplateCreatedBy")
   messageTemplatesCreated  MessageTemplate[]  @relation("MessageTemplateCreatedBy")
+  onboardingChecklistCompletions OnboardingChecklistItem[] @relation("OnboardingChecklistCompletedBy")
   signedDocuments          SignedDocument[]   @relation("SignedDocumentEmployee")
   signedDocumentsCreated   SignedDocument[]   @relation("SignedDocumentCreatedBy")
 
@@ -484,8 +485,31 @@ model Applicant {
   interviewScorecards  InterviewScorecard[]
   workingSession       WorkingSessionRecord?
   referenceChecks      ReferenceCheck[]
+  onboardingChecklist  OnboardingChecklistItem[]
 
   @@index([jobPostingId, stage])
+}
+
+// One row per checklist item per applicant, only meaningful once they've
+// reached HIRED. A fixed set of items (ONBOARDING_CHECKLIST_ITEMS in
+// lib/recruiting.ts) is checked off either automatically — from data
+// already tracked elsewhere (reference checks, signed onboarding docs, a
+// hire date, a Pair assignment) — or manually by whoever is walking the new
+// hire through onboarding. completedById is null for an auto-detected item,
+// set to whoever ticked it by hand otherwise.
+model OnboardingChecklistItem {
+  id            String    @id @default(cuid())
+  applicantId   String
+  applicant     Applicant @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  itemKey       String
+  completed     Boolean   @default(false)
+  completedAt   DateTime?
+  completedById String?
+  completedBy   User?     @relation("OnboardingChecklistCompletedBy", fields: [completedById], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([applicantId, itemKey])
 }
 
 // Timestamped, authored internal-notes log — mirrors LeadNote so recruiting

@@ -12,6 +12,7 @@ import {
   scheduleInterviewCalendarEvent,
   sendInterviewConfirmationEmail,
   rejectionEmailTemplate,
+  setOnboardingChecklistItem,
 } from "@/lib/recruiting";
 import { zonedTimeToUtc } from "@/lib/timezone";
 import type {
@@ -419,6 +420,16 @@ export async function addReferenceCheckAction(applicantId: string, formData: For
 export async function deleteReferenceCheckAction(applicantId: string, referenceCheckId: string) {
   await requireRecruitingAccess();
   await prisma.referenceCheck.delete({ where: { id: referenceCheckId } });
+  revalidatePath(`/recruiting/applicants/${applicantId}`);
+}
+
+export async function toggleOnboardingChecklistItemAction(
+  applicantId: string,
+  itemKey: string,
+  completed: boolean
+) {
+  const { session } = await requireRecruitingAccess();
+  await setOnboardingChecklistItem(applicantId, itemKey, completed, session.sub);
   revalidatePath(`/recruiting/applicants/${applicantId}`);
 }
 

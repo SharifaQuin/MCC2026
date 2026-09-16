@@ -778,3 +778,138 @@ export const REFERENCE_VERDICT_LABELS: Record<string, string> = {
   MIXED: "Mixed — significant concerns to weigh",
   NEGATIVE: "Negative — supports not hiring",
 };
+
+// The standard post-Hire onboarding checklist — shown once an applicant
+// reaches the Hired stage. Items marked autoDetectable get checked off on
+// their own the moment the underlying data says they're done (see
+// syncOnboardingChecklist); everything else is a plain manual checkbox.
+export const ONBOARDING_CHECKLIST_ITEMS: { key: string; label: string; autoDetectable: boolean }[] = [
+  { key: "offer_letter", label: "Offer letter signed", autoDetectable: true },
+  { key: "references", label: "Background/references checked", autoDetectable: true },
+  { key: "onboarding_docs", label: "Onboarding paperwork signed (I-9, policies, etc.)", autoDetectable: true },
+  { key: "payroll", label: "Added to payroll system", autoDetectable: false },
+  { key: "uniform", label: "Uniform ordered", autoDetectable: false },
+  { key: "first_day", label: "First day scheduled", autoDetectable: true },
+  { key: "pair_assigned", label: "Trainer/pair assigned", autoDetectable: true },
+];
+
+// Checks each auto-detectable item against the data that already tracks it
+// and marks it completed the moment it's satisfied — never un-completes an
+// item, so a manual override always sticks until the item is unchecked by
+// hand again. No-op for an applicant who isn't hired yet (hiredUserId null).
+async function syncOnboardingChecklist(applicantId: string) {
+  const applicant = await prisma.applicant.findUnique({
+    where: { id: applicantId },
+    select: {
+      hiredUserId: true,
+      referenceChecks: { select: { id: true } },
+    },
+  });
+  if (!applicant?.hiredUserId) return;
+  const hiredUserId = applicant.hiredUserId;
+
+  const [hiredUser, onboardingAssignments, offerLetterSigned, activePair, existingRows] = await Promise.all([
+    prisma.user.findUnique({ where: { id: hiredUserId }, select: { hireDate: true } }),
+    prisma.onboardingAssignment.findMany({ where: { userId: hiredUserId }, select: { signedAt: true } }),
+    prisma.signedDocument.findFirst({
+      where: {
+        employeeId: hiredUserId,
+        signedAt: { not: null },
+        template: { title: { contains: "offer", mode: "insensitive" } },
+      },
+      select: { id: true },
+    }),
+    prisma.pair.findFirst({
+      where: { active: true, OR: [{ leadId: hiredUserId }, { assistantId: hiredUserId }] },
+      select: { id: true },
+    }),
+    prisma.onboardingChecklistItem.findMany({ where: { applicantId }, select: { itemKey: true, completed: true } }),
+  ]);
+
+  const alreadyCompleted = new Set(existingRows.filter((r) => r.completed).map((r) => r.itemKey));
+
+  const autoSatisfied: Record<string, boolean> = {
+    offer_letter: !!offerLetterSigned,
+    references: applicant.referenceChecks.length >= 2,
+    onboarding_docs: onboardingAssignments.length > 0 && onboardingAssignments.every((a) => a.signedAt),
+    first_day: !!hiredUser?.hireDate,
+    pair_assigned: !!activePair,
+  };
+
+  for (const item of ONBOARDING_CHECKLIST_ITEMS) {
+    if (!item.autoDetectable) continue;
+    if (alreadyCompleted.has(item.key)) continue;
+    if (!autoSatisfied[item.key]) continue;
+
+    await prisma.onboardingChecklistItem.upsert({
+      where: { applicantId_itemKey: { applicantId, itemKey: item.key } },
+      create: { applicantId, itemKey: item.key, completed: true, completedAt: new Date() },
+      update: { completed: true, completedAt: new Date() },
+    });
+  }
+}
+
+export interface OnboardingChecklistItemView {
+  key: string;
+  label: string;
+  autoDetectable: boolean;
+  completed: boolean;
+  completedAt: string | null;
+  completedByName: string | null;
+}
+
+// Syncs auto-detectable items, then returns the full checklist (auto items
+// plus manual-only items) in a fixed display order for the applicant's
+// Onboarding tab. Returns an empty array for an applicant who isn't hired.
+export async function getOnboardingChecklist(applicantId: string): Promise<OnboardingChecklistItemView[]> {
+  const applicant = await prisma.applicant.findUnique({
+    where: { id: applicantId },
+    select: { hiredUserId: true },
+  });
+  if (!applicant?.hiredUserId) return [];
+
+  await syncOnboardingChecklist(applicantId);
+
+  const rows = await prisma.onboardingChecklistItem.findMany({
+    where: { applicantId },
+    include: { completedBy: { select: { name: true } } },
+  });
+  const rowsByKey = new Map(rows.map((r) => [r.itemKey, r]));
+
+  return ONBOARDING_CHECKLIST_ITEMS.map((item) => {
+    const row = rowsByKey.get(item.key);
+    return {
+      key: item.key,
+      label: item.label,
+      autoDetectable: item.autoDetectable,
+      completed: row?.completed ?? false,
+      completedAt: row?.completedAt ? row.completedAt.toISOString() : null,
+      completedByName: row?.completedBy?.name ?? null,
+    };
+  });
+}
+
+export async function setOnboardingChecklistItem(
+  applicantId: string,
+  itemKey: string,
+  completed: boolean,
+  completedById: string
+) {
+  if (!ONBOARDING_CHECKLIST_ITEMS.some((item) => item.key === itemKey)) return;
+
+  await prisma.onboardingChecklistItem.upsert({
+    where: { applicantId_itemKey: { applicantId, itemKey } },
+    create: {
+      applicantId,
+      itemKey,
+      completed,
+      completedAt: completed ? new Date() : null,
+      completedById: completed ? completedById : null,
+    },
+    update: {
+      completed,
+      completedAt: completed ? new Date() : null,
+      completedById: completed ? completedById : null,
+    },
+  });
+}
