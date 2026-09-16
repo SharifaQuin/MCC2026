@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { hashPassword } from "../src/lib/password";
 import { generateNextEmployeeId } from "../src/lib/employeeId";
+import { seedDefaultHiringQuestions } from "../src/lib/recruiting";
 
 const prisma = new PrismaClient();
 
@@ -537,11 +538,35 @@ async function seedOwnerDashboard() {
   }
 }
 
+// Backfills the standard phone-screen + structured-interview question banks
+// onto any job posting that predates that feature (new postings already
+// seed these at creation time — see createJobPostingAction). Idempotent:
+// only touches postings with zero questions of either kind, so it's safe
+// to run on every deploy.
+async function seedHiringQuestionsBackfill() {
+  const postings = await prisma.jobPosting.findMany({
+    select: {
+      id: true,
+      titleEn: true,
+      _count: { select: { phoneScreenQuestions: true, interviewQuestions: true } },
+    },
+  });
+
+  let seeded = 0;
+  for (const posting of postings) {
+    if (posting._count.phoneScreenQuestions > 0 || posting._count.interviewQuestions > 0) continue;
+    await seedDefaultHiringQuestions(posting.id);
+    seeded++;
+  }
+  console.log(`Backfilled hiring questions onto ${seeded} job posting(s) (${postings.length} total).`);
+}
+
 async function main() {
   await seedAdmin();
   await seedModules();
   await seedOwnerDashboard();
   await seedLoans();
+  await seedHiringQuestionsBackfill();
 }
 
 main()
