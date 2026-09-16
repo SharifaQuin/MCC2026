@@ -477,26 +477,61 @@ interface CallInQuoteData {
   formState?: { sqft?: number };
 }
 
-// The reverse of createDraftQuoteForLead: a Called-In quote is created
-// quote-first (a staff member takes the call and builds it straight in the
-// Pricing Tool), so there's no Lead yet to auto-link the way a web-form
-// submission gets one. The first time such a quote is saved with enough
-// info to log a real lead (name, phone, email — skips half-filled drafts),
-// this creates the matching Lead and links it via quoteKey immediately, so
-// phone inquiries land in the pipeline and monthly lead tracking the same
-// way website leads do. No-ops if a Lead is already linked to this quote.
-export async function createLeadFromCallInQuote(quoteId: string, quoteData: CallInQuoteData, authorId: string | null) {
-  if (quoteData.collectedVia !== "calledin") return null;
-  if (!quoteData.clientName || !quoteData.phone || !quoteData.clientEmail) return null;
+// The reverse of createDraftQuoteForLead: a quote built from scratch in the
+// Pricing Tool (Called-In, Walkthrough, or Other — any collection method,
+// not just phone calls) has no Lead yet to auto-link the way a web-form
+// submission gets one. Every time such a quote is saved, this makes sure a
+// matching Lead exists and is linked via quoteKey, so no quote can be saved
+// "in the quotes" without also landing on the Sales pipeline/dashboard.
+// Reuses an existing Lead by email instead of creating a duplicate when one
+// already exists (e.g. a repeat client, or a lead that already came in
+// through the web form). No-ops (returns null) once there's genuinely not
+// enough info yet to do anything useful with — a half-filled draft with no
+// name, or a brand-new client with no email or phone to create a Lead for.
+export async function syncLeadFromQuote(quoteId: string, quoteData: CallInQuoteData, authorId: string | null) {
+  if (!quoteData.clientName) return null;
 
-  const existing = await prisma.lead.findFirst({ where: { quoteKey: quoteId } });
-  if (existing) return existing;
+  // Already linked to this exact quote — nothing to do.
+  const linked = await prisma.lead.findFirst({ where: { quoteKey: quoteId } });
+  if (linked) return linked;
 
   const nameParts = quoteData.clientName.trim().split(/\s+/);
   const firstName = nameParts[0];
   const lastName = nameParts.slice(1).join(" ");
   const sqft = quoteData.formState?.sqft;
   const suggested = quoteData.suggested ? parseFloat(quoteData.suggested) : NaN;
+  const serviceInterest = quoteData.service ? (LEAD_SERVICE_LABELS[quoteData.service] ?? quoteData.service) : null;
+  const squareFootage = typeof sqft === "number" && sqft > 0 ? sqft : null;
+
+  if (quoteData.clientEmail) {
+    const existingByEmail = await prisma.lead.findFirst({
+      where: { email: { equals: quoteData.clientEmail, mode: "insensitive" } },
+      orderBy: { createdAt: "desc" },
+    });
+    if (existingByEmail) {
+      const updated = await prisma.lead.update({
+        where: { id: existingByEmail.id },
+        data: {
+          quoteKey: existingByEmail.quoteKey ?? quoteId,
+          phone: existingByEmail.phone || quoteData.phone || existingByEmail.phone,
+          address: existingByEmail.address || quoteData.address || null,
+          serviceInterest: existingByEmail.serviceInterest || serviceInterest,
+        },
+      });
+      await prisma.leadNote.create({
+        data: {
+          leadId: updated.id,
+          authorId,
+          body: "Automatically linked to a new quote saved in the Pricing Tool for this same email address.",
+        },
+      });
+      return updated;
+    }
+  }
+
+  // No existing Lead to link — only create a new one once there's enough
+  // contact info to actually reach the person (both are required on Lead).
+  if (!quoteData.phone || !quoteData.clientEmail) return null;
 
   const lead = await prisma.lead.create({
     data: {
@@ -506,8 +541,8 @@ export async function createLeadFromCallInQuote(quoteId: string, quoteData: Call
       phone: quoteData.phone,
       address: quoteData.address || null,
       source: "PHONE_CALL",
-      serviceInterest: quoteData.service ? (LEAD_SERVICE_LABELS[quoteData.service] ?? quoteData.service) : null,
-      squareFootage: typeof sqft === "number" && sqft > 0 ? sqft : null,
+      serviceInterest,
+      squareFootage,
       // Starts at Quoted, not the default New Inquiry — a quote already
       // exists by the time this Lead is created, so "new inquiry" would
       // misrepresent where the deal actually is (and could wrongly trip
@@ -522,7 +557,7 @@ export async function createLeadFromCallInQuote(quoteId: string, quoteData: Call
     data: {
       leadId: lead.id,
       authorId,
-      body: "Automatically created from a Called-In quote saved in the Pricing Tool.",
+      body: "Automatically created from a quote saved in the Pricing Tool.",
     },
   });
 

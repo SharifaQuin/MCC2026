@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { requireSalesApiAccess } from "@/lib/requireSalesApiAccess";
-import { createLeadFromCallInQuote } from "@/lib/leads";
+import { syncLeadFromQuote } from "@/lib/leads";
 
 // Backs the pricing/quotes tool's window.storage abstraction (get/set/
 // delete/list by key) with the shared Postgres database instead of browser
@@ -63,12 +63,12 @@ export async function POST(request: Request) {
           };
           const quoteId = body.key.slice("quote:".length);
 
-          // Auto-create (and link) the Lead the first time a Called-In
-          // quote is saved, so phone inquiries land in the pipeline the
-          // same way web-form leads do automatically — see
-          // createLeadFromCallInQuote for why this runs in the opposite
-          // direction from the web-form flow (quote first, lead second).
-          await createLeadFromCallInQuote(quoteId, quoteData, session.sub);
+          // Auto-create (or link) the matching Lead every time a quote is
+          // saved, so no quote can exist without also landing on the Sales
+          // pipeline/dashboard — see syncLeadFromQuote for why this runs in
+          // the opposite direction from the web-form flow (quote first,
+          // lead second).
+          await syncLeadFromQuote(quoteId, quoteData, session.sub);
 
           if (quoteData.status === "won" || quoteData.status === "lost") {
             const lead = await prisma.lead.findFirst({ where: { quoteKey: quoteId } });
@@ -88,8 +88,12 @@ export async function POST(request: Request) {
               });
             }
           }
-        } catch {
-          // Malformed quote JSON — best-effort sync, skip silently.
+        } catch (error) {
+          // Best-effort sync — a failure here should never break saving the
+          // quote itself, but it should be visible in server logs instead
+          // of silently vanishing (a quote that never gets a Lead linked
+          // is otherwise indistinguishable from one that worked fine).
+          console.error(`Lead sync failed for ${body.key}:`, error);
         }
       }
 
