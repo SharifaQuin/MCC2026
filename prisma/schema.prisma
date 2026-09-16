@@ -195,6 +195,7 @@ model User {
   pafsApproved   PersonnelActionForm[] @relation("PafApprovedBy")
 
   documentTemplatesCreated DocumentTemplate[] @relation("DocumentTemplateCreatedBy")
+  messageTemplatesCreated  MessageTemplate[]  @relation("MessageTemplateCreatedBy")
   signedDocuments          SignedDocument[]   @relation("SignedDocumentEmployee")
   signedDocumentsCreated   SignedDocument[]   @relation("SignedDocumentCreatedBy")
 
@@ -384,6 +385,10 @@ model JobPosting {
   id           String   @id @default(cuid())
   slug         String   @unique
   titleEn      String
+  // Optional Spanish translation of the title — falls back to titleEn
+  // wherever a bilingual applicant-facing message needs the position name
+  // (e.g. the in-person interview confirmation email) and this isn't set.
+  titleEs      String?
   positionType String?
   descriptionEn String  @db.Text
   // Percentage of the max possible prescreen score an applicant needs to
@@ -524,6 +529,30 @@ enum CommDirection {
 enum CommStatus {
   SENT
   FAILED
+}
+
+enum MessageTemplateScope {
+  SALES
+  RECRUITING
+}
+
+// A canned email/text a team member can pick from instead of writing the
+// same outreach from scratch every time — e.g. "Thanks for Your Inquiry" or
+// "Reminder: Upcoming Interview". Body/subject support {{firstName}} and
+// (RECRUITING scope) {{position}} tokens, filled in client-side when picked.
+model MessageTemplate {
+  id          String               @id @default(cuid())
+  scope       MessageTemplateScope
+  channel     CommChannel
+  name        String
+  subject     String?
+  body        String               @db.Text
+  createdById String?
+  createdBy   User?                @relation("MessageTemplateCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([scope, channel])
 }
 
 // Every email/text tied to an applicant, regardless of which manager sent

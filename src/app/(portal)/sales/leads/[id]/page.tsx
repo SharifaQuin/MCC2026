@@ -8,6 +8,7 @@ import {
   getSalesTeamMembers,
   extractZipFromAddress,
 } from "@/lib/leads";
+import { getMessageTemplates } from "@/lib/messageTemplates";
 import LeadStageControls from "./LeadStageControls";
 import LeadCommunicationPanel from "./LeadCommunicationPanel";
 import LeadDealDetailsForm from "./LeadDealDetailsForm";
@@ -17,7 +18,7 @@ import AssignLeadForm from "./AssignLeadForm";
 export default async function LeadDetailPage({ params }: { params: { id: string } }) {
   const { canEdit } = await requireDepartmentAccess("SALES");
 
-  const [lead, teamMembers] = await Promise.all([
+  const [lead, teamMembers, messageTemplates] = await Promise.all([
     prisma.lead.findUnique({
       where: { id: params.id },
       include: {
@@ -37,6 +38,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
       },
     }),
     getSalesTeamMembers(),
+    getMessageTemplates("SALES"),
   ]);
 
   if (!lead) {
@@ -152,7 +154,12 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
       </div>
 
       <div className="mb-6">
-        <LeadCommunicationPanel leadId={lead.id} history={commHistory} />
+        <LeadCommunicationPanel
+          leadId={lead.id}
+          history={commHistory}
+          templates={messageTemplates}
+          firstName={lead.firstName}
+        />
       </div>
 
       {canEdit && (

@@ -561,12 +561,109 @@ async function seedHiringQuestionsBackfill() {
   console.log(`Backfilled hiring questions onto ${seeded} job posting(s) (${postings.length} total).`);
 }
 
+// One-time default for the interview-logistics OwnerSetting row — only
+// created if it doesn't exist yet, so it never overwrites an address/phone/
+// arrival-instructions edit made afterward in the /recruiting/settings UI.
+const INTERVIEW_LOGISTICS_KEY = "recruiting:interviewLogistics";
+
+async function seedInterviewLogistics() {
+  const existing = await prisma.ownerSetting.findUnique({ where: { key: INTERVIEW_LOGISTICS_KEY } });
+  if (existing) {
+    console.log("Interview logistics already set, skipping.");
+    return;
+  }
+
+  await prisma.ownerSetting.create({
+    data: {
+      key: INTERVIEW_LOGISTICS_KEY,
+      value: {
+        address: "1504 Brookhollow Dr. #120\nSanta Ana, CA 92705",
+        phone: "949-485-4440",
+        arrivalInstructionsEn:
+          "When you arrive, you'll see building 1504. Our office door is directly in the middle and you'll see our company sign in the window. Please ring the door bell and someone will be with you momentarily.",
+        arrivalInstructionsEs:
+          "Al llegar, verá el edificio 1504. La puerta de nuestra oficina se encuentra justo en el centro y verá el letrero de la empresa en el escaparate; por favor, toque el timbre y alguien le atenderá en un momento.",
+      },
+    },
+  });
+  console.log("Seeded default interview logistics.");
+}
+
+// Starter message templates for the team's picker in the Sales/Recruiting
+// Communication panels — idempotent by (scope, channel, name), so re-runs
+// never duplicate and never touch a template someone has since edited.
+async function seedMessageTemplates() {
+  const starters: {
+    scope: "SALES" | "RECRUITING";
+    channel: "EMAIL" | "SMS";
+    name: string;
+    subject?: string;
+    body: string;
+  }[] = [
+    {
+      scope: "SALES",
+      channel: "EMAIL",
+      name: "Thanks for Your Inquiry",
+      subject: "Thanks for reaching out to Mama's Cleaning Crew!",
+      body: "Hi {{firstName}},\n\nThank you for reaching out to Mama's Cleaning Crew! We'd love to help get your home sparkling clean.\n\nI'll follow up shortly with a few quick questions so we can put together an accurate quote for you. In the meantime, feel free to reply here with any questions.\n\nTalk soon!",
+    },
+    {
+      scope: "SALES",
+      channel: "EMAIL",
+      name: "Following Up On Your Quote",
+      subject: "Just checking in on your cleaning quote",
+      body: "Hi {{firstName}},\n\nJust wanted to follow up on the quote we sent over — did you have any questions, or is there anything we can adjust to better fit what you're looking for?\n\nWe'd love to get you on the schedule whenever you're ready!",
+    },
+    {
+      scope: "SALES",
+      channel: "SMS",
+      name: "Quick Follow-Up",
+      body: "Hi {{firstName}}, this is Mama's Cleaning Crew following up on your cleaning quote — let us know if you have any questions!",
+    },
+    {
+      scope: "RECRUITING",
+      channel: "EMAIL",
+      name: "Thanks for Applying",
+      subject: "Thanks for applying to Mama's Cleaning Crew!",
+      body: "Hi {{firstName}},\n\nThank you for applying for the {{position}} position with Mama's Cleaning Crew! We're reviewing applications now and will be in touch soon with next steps.\n\nThanks again for your interest in joining our team!",
+    },
+    {
+      scope: "RECRUITING",
+      channel: "EMAIL",
+      name: "Reminder: Complete Phone Screen",
+      subject: "Quick reminder — let's schedule your phone screen",
+      body: "Hi {{firstName}},\n\nJust following up to schedule a quick phone screen for the {{position}} position. Let us know a few times that work for you this week!",
+    },
+    {
+      scope: "RECRUITING",
+      channel: "SMS",
+      name: "Reminder: Upcoming Interview",
+      body: "Hi {{firstName}}, this is Mama's Cleaning Crew with a quick reminder about your upcoming interview for the {{position}} position. See you soon!",
+    },
+  ];
+
+  let created = 0;
+  for (const t of starters) {
+    const existing = await prisma.messageTemplate.findFirst({
+      where: { scope: t.scope, channel: t.channel, name: t.name },
+    });
+    if (existing) continue;
+    await prisma.messageTemplate.create({
+      data: { scope: t.scope, channel: t.channel, name: t.name, subject: t.subject ?? null, body: t.body },
+    });
+    created++;
+  }
+  console.log(`Seeded ${created} starter message template(s) (${starters.length} total defined).`);
+}
+
 async function main() {
   await seedAdmin();
   await seedModules();
   await seedOwnerDashboard();
   await seedLoans();
   await seedHiringQuestionsBackfill();
+  await seedInterviewLogistics();
+  await seedMessageTemplates();
 }
 
 main()

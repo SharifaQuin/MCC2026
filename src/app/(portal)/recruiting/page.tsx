@@ -82,6 +82,18 @@ export default async function RecruitingPage() {
           >
             Job Postings
           </Link>
+          <Link
+            href="/recruiting/message-templates"
+            className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Message Templates
+          </Link>
+          <Link
+            href="/recruiting/settings"
+            className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Interview Settings
+          </Link>
           <a
             href="/careers"
             target="_blank"

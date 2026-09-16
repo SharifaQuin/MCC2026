@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
 import { STAGE_LABELS, SCHEDULING_STAGES, INTERVIEW_SCORECARD_COMPETENCIES, DEFAULT_PHONE_SCREEN_CRITERIA, WORKING_SESSION_CHECKLIST_ITEMS } from "@/lib/recruiting";
+import { getMessageTemplates } from "@/lib/messageTemplates";
 import { formatInBusinessTimezone } from "@/lib/timezone";
 import StageControls from "./StageControls";
 import CommunicationPanel from "./CommunicationPanel";
@@ -62,6 +63,8 @@ export default async function ApplicantDetailPage({
   if (!applicant) {
     return <p className="text-neutral-500">Applicant not found.</p>;
   }
+
+  const messageTemplates = await getMessageTemplates("RECRUITING");
 
   // Stamp "viewed" once, the first time anyone opens this profile — a
   // persistent marker distinct from moving them through the pipeline.
@@ -249,7 +252,15 @@ export default async function ApplicantDetailPage({
     {
       id: "comms",
       label: "Communication",
-      content: <CommunicationPanel applicantId={applicant.id} history={commHistory} />,
+      content: (
+        <CommunicationPanel
+          applicantId={applicant.id}
+          history={commHistory}
+          templates={messageTemplates}
+          firstName={applicant.firstName}
+          positionTitle={applicant.jobPosting.titleEn}
+        />
+      ),
     },
     {
       id: "phone",

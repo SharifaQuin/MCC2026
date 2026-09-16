@@ -302,6 +302,19 @@ export default async function SalesPage() {
             View Quotes
           </Link>
         </section>
+
+        <section className="rounded-lg border border-neutral-200 bg-white p-6">
+          <h2 className="text-lg font-medium text-neutral-900">Message Templates</h2>
+          <p className="mt-1 text-sm text-neutral-500">
+            Canned emails/texts your team can pick from when reaching out to a lead.
+          </p>
+          <Link
+            href="/sales/message-templates"
+            className="mt-5 inline-block rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Manage Templates
+          </Link>
+        </section>
       </div>
     </div>
   );

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
-import { seedDefaultHiringQuestions } from "@/lib/recruiting";
+import { seedDefaultHiringQuestions, saveInterviewLogistics } from "@/lib/recruiting";
 import type { JobPostingRoleTrack } from "@prisma/client";
 
 const VALID_ROLE_TRACKS = new Set(["LEAD_TECHNICIAN", "ASSISTANT_TECHNICIAN", "OTHER"]);
@@ -23,6 +23,7 @@ export async function createJobPostingAction(formData: FormData) {
   const titleEn = String(formData.get("titleEn") ?? "").trim();
   if (!titleEn) return;
 
+  const titleEs = String(formData.get("titleEs") ?? "").trim() || null;
   const positionType = String(formData.get("positionType") ?? "").trim() || null;
   const descriptionEn = String(formData.get("descriptionEn") ?? "").trim();
   const passThresholdPct = Number(formData.get("passThresholdPct") ?? 70) || 70;
@@ -34,7 +35,7 @@ export async function createJobPostingAction(formData: FormData) {
   if (existing) slug = `${slug}-${Date.now().toString().slice(-5)}`;
 
   const posting = await prisma.jobPosting.create({
-    data: { titleEn, positionType, descriptionEn, passThresholdPct, roleTrack, slug },
+    data: { titleEn, titleEs, positionType, descriptionEn, passThresholdPct, roleTrack, slug },
   });
 
   // Seed the standard bilingual phone-screen + structured-interview
@@ -58,6 +59,7 @@ export async function updateJobPostingAction(id: string, formData: FormData) {
     where: { id },
     data: {
       titleEn,
+      titleEs: String(formData.get("titleEs") ?? "").trim() || null,
       positionType: String(formData.get("positionType") ?? "").trim() || null,
       descriptionEn: String(formData.get("descriptionEn") ?? "").trim(),
       passThresholdPct: Number(formData.get("passThresholdPct") ?? 70) || 70,
@@ -68,6 +70,19 @@ export async function updateJobPostingAction(id: string, formData: FormData) {
 
   revalidatePath(`/recruiting/postings/${id}`);
   revalidatePath("/recruiting");
+}
+
+export async function saveInterviewLogisticsAction(formData: FormData) {
+  await requireRecruitingAccess();
+
+  await saveInterviewLogistics({
+    address: String(formData.get("address") ?? "").trim(),
+    phone: String(formData.get("phone") ?? "").trim(),
+    arrivalInstructionsEn: String(formData.get("arrivalInstructionsEn") ?? "").trim(),
+    arrivalInstructionsEs: String(formData.get("arrivalInstructionsEs") ?? "").trim(),
+  });
+
+  revalidatePath("/recruiting/settings");
 }
 
 export async function addPrescreenQuestionAction(jobPostingId: string) {

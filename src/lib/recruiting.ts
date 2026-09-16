@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { ApplicantStage } from "@prisma/client";
+import type { ApplicantStage, Prisma } from "@prisma/client";
 import { sendEmail } from "@/lib/email";
 import { generateInviteToken } from "@/lib/tokens";
 import { generateNextEmployeeId } from "@/lib/employeeId";
@@ -113,6 +113,44 @@ export const SCHEDULING_STAGES: ApplicantStage[] = [
   "IN_PERSON_SCHEDULED",
 ];
 
+export interface InterviewLogistics {
+  address: string;
+  phone: string;
+  arrivalInstructionsEn: string;
+  arrivalInstructionsEs: string;
+}
+
+const INTERVIEW_LOGISTICS_KEY = "recruiting:interviewLogistics";
+
+// The office's address/phone/arrival instructions are the same for every
+// in-person interview regardless of which posting it's for — only the
+// position name in the email body changes per posting. Admin-editable (see
+// /recruiting/settings) rather than hardcoded, so it doesn't need a code
+// change if the office ever moves.
+const DEFAULT_INTERVIEW_LOGISTICS: InterviewLogistics = {
+  address: "1504 Brookhollow Dr. #120\nSanta Ana, CA 92705",
+  phone: "949-485-4440",
+  arrivalInstructionsEn:
+    "When you arrive, you'll see building 1504. Our office door is directly in the middle and you'll see our company sign in the window. Please ring the door bell and someone will be with you momentarily.",
+  arrivalInstructionsEs:
+    "Al llegar, verá el edificio 1504. La puerta de nuestra oficina se encuentra justo en el centro y verá el letrero de la empresa en el escaparate; por favor, toque el timbre y alguien le atenderá en un momento.",
+};
+
+export async function getInterviewLogistics(): Promise<InterviewLogistics> {
+  const row = await prisma.ownerSetting.findUnique({ where: { key: INTERVIEW_LOGISTICS_KEY } });
+  if (!row) return DEFAULT_INTERVIEW_LOGISTICS;
+  return { ...DEFAULT_INTERVIEW_LOGISTICS, ...(row.value as Partial<InterviewLogistics>) };
+}
+
+export async function saveInterviewLogistics(logistics: InterviewLogistics): Promise<void> {
+  const value = { ...logistics } as unknown as Prisma.InputJsonValue;
+  await prisma.ownerSetting.upsert({
+    where: { key: INTERVIEW_LOGISTICS_KEY },
+    create: { key: INTERVIEW_LOGISTICS_KEY, value },
+    update: { value },
+  });
+}
+
 // Puts the interview on the shared Outlook calendar and emails the applicant
 // a calendar invite, so the interview shows up automatically instead of
 // someone having to re-enter it by hand. Best-effort: never blocks or
@@ -171,18 +209,23 @@ export async function sendInterviewConfirmationEmail(
   jobPostingTitle: string,
   stage: ApplicantStage,
   scheduledAt: Date,
-  loggedById: string
+  loggedById: string,
+  jobPostingTitleEs?: string | null
 ) {
   const whenText = `${formatInBusinessTimezone(scheduledAt)} Pacific Time`;
-  const bodyLines = [
-    `Hi ${applicant.firstName},`,
-    "",
-    `We're so excited to see you for your ${stage === "PHONE_INTERVIEW_SCHEDULED" ? "phone" : "in-person"} interview for the ${jobPostingTitle} position!`,
-    "",
-    `When: ${whenText}`,
-  ];
+
+  let subject: string;
+  let body: string;
 
   if (stage === "PHONE_INTERVIEW_SCHEDULED") {
+    const bodyLines = [
+      `Hi ${applicant.firstName},`,
+      "",
+      `We're so excited to see you for your phone interview for the ${jobPostingTitle} position!`,
+      "",
+      `When: ${whenText}`,
+    ];
+
     const zoomPmi = process.env.RECRUITING_ZOOM_PMI;
     const zoomLink = zoomPmi
       ? `https://zoom.us/j/${zoomPmi.replace(/\D/g, "")}`
@@ -192,12 +235,68 @@ export async function sendInterviewConfirmationEmail(
       const zoomPasscode = process.env.RECRUITING_ZOOM_PASSCODE;
       if (zoomPasscode) bodyLines.push(`Passcode: ${zoomPasscode}`);
     }
+
+    bodyLines.push("", "See you soon!", "", "Mama's Cleaning Crew");
+
+    subject = `Your interview with Mama's Cleaning Crew — ${whenText}`;
+    body = bodyLines.join("\n");
+  } else {
+    // In-person invite — bilingual (English then Spanish) so it works
+    // regardless of which language the applicant prefers, since there's no
+    // stored language preference for applicants. Logistics (address/phone/
+    // arrival instructions) are admin-editable and generic across every
+    // posting; only the position name changes per job.
+    const logistics = await getInterviewLogistics();
+    const titleEs = jobPostingTitleEs || jobPostingTitle;
+
+    body = [
+      `Hi ${applicant.firstName},`,
+      "",
+      "Thank you for taking the time to speak with us! We're excited to invite you for an in-person interview for the " +
+        `${jobPostingTitle} position at Mama's Cleaning Crew.`,
+      "",
+      `When: ${whenText}`,
+      "",
+      "Interview Details:",
+      "",
+      "📍 Location:",
+      logistics.address,
+      "",
+      `📞 Contact: ${logistics.phone}`,
+      "",
+      "Arrival Instructions:",
+      "",
+      logistics.arrivalInstructionsEn,
+      "",
+      "Please arrive on time and come professionally dressed. If you have any questions or need to reschedule, feel free to reach out.",
+      "",
+      "We look forward to meeting you and learning more about how you can be a great addition to our team!",
+      "",
+      "—",
+      "",
+      "¡Gracias por tomarse el tiempo de hablar con nosotros! Nos entusiasma invitarle a una entrevista presencial " +
+        `para el puesto de ${titleEs} en Mama's Cleaning Crew.`,
+      "",
+      "Detalles de la entrevista:",
+      "",
+      "📍 Ubicación:",
+      logistics.address,
+      "",
+      `📞 Contacto: ${logistics.phone}`,
+      "",
+      "Instrucciones de llegada:",
+      "",
+      logistics.arrivalInstructionsEs,
+      "",
+      "Por favor, llegue a tiempo y vístase de manera profesional. Si tiene alguna pregunta o necesita reprogramar la entrevista, no dude en ponerse en contacto con nosotros.",
+      "",
+      "¡Esperamos conocerle y saber más sobre cómo podría ser una gran incorporación a nuestro equipo!",
+      "",
+      "Mama's Cleaning Crew",
+    ].join("\n");
+
+    subject = `Your in-person interview with Mama's Cleaning Crew — ${whenText}`;
   }
-
-  bodyLines.push("", "See you soon!", "", "Mama's Cleaning Crew");
-
-  const subject = `Your interview with Mama's Cleaning Crew — ${whenText}`;
-  const body = bodyLines.join("\n");
 
   try {
     const result = await sendEmail({ to: applicant.email, subject, body });

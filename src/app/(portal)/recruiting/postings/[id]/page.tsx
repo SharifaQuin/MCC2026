@@ -54,6 +54,21 @@ export default async function JobPostingDetailPage({ params }: { params: { id: s
           />
         </div>
         <div>
+          <label className="mb-1 block text-sm font-medium text-neutral-700">
+            Title (Spanish)
+          </label>
+          <input
+            name="titleEs"
+            defaultValue={posting.titleEs ?? ""}
+            placeholder="e.g. Técnico de Limpieza Residencial"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2"
+          />
+          <p className="mt-1 text-xs text-neutral-500">
+            Used in bilingual applicant emails (like the in-person interview invite). Falls
+            back to the English title if left blank.
+          </p>
+        </div>
+        <div>
           <label className="mb-1 block text-sm font-medium text-neutral-700">Position Type</label>
           <input
             name="positionType"

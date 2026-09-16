@@ -2,6 +2,15 @@
 
 import { useState, useTransition } from "react";
 import { sendLeadEmailAction, sendLeadTextAction, logLeadReplyAction } from "../actions";
+import { applyTemplateTokens } from "@/lib/templateTokens";
+
+interface TemplateOption {
+  id: string;
+  channel: "EMAIL" | "SMS";
+  name: string;
+  subject: string | null;
+  body: string;
+}
 
 interface CommEntry {
   id: string;
@@ -49,17 +58,40 @@ type PanelTab = "none" | "email" | "sms" | "logEmail" | "logSms";
 export default function LeadCommunicationPanel({
   leadId,
   history,
+  templates = [],
+  firstName,
 }: {
   leadId: string;
   history: CommEntry[];
+  templates?: TemplateOption[];
+  firstName: string;
 }) {
   const [tab, setTab] = useState<PanelTab>("none");
   const [pending, startTransition] = useTransition();
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+  const [smsBody, setSmsBody] = useState("");
 
   const emailHistory = history.filter((entry) => entry.channel === "EMAIL");
   const smsHistory = history.filter((entry) => entry.channel === "SMS");
+  const emailTemplates = templates.filter((t) => t.channel === "EMAIL");
+  const smsTemplates = templates.filter((t) => t.channel === "SMS");
+  const tokens = { firstName };
 
   const toggle = (next: PanelTab) => setTab(tab === next ? "none" : next);
+
+  function applyEmailTemplate(id: string) {
+    const t = emailTemplates.find((tpl) => tpl.id === id);
+    if (!t) return;
+    setEmailSubject(applyTemplateTokens(t.subject ?? "", tokens));
+    setEmailBody(applyTemplateTokens(t.body, tokens));
+  }
+
+  function applySmsTemplate(id: string) {
+    const t = smsTemplates.find((tpl) => tpl.id === id);
+    if (!t) return;
+    setSmsBody(applyTemplateTokens(t.body, tokens));
+  }
 
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -89,13 +121,33 @@ export default function LeadCommunicationPanel({
             startTransition(async () => {
               await sendLeadEmailAction(leadId, formData);
               setTab("none");
+              setEmailSubject("");
+              setEmailBody("");
             })
           }
           className="mb-4 space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-3"
         >
+          {emailTemplates.length > 0 && (
+            <select
+              onChange={(e) => applyEmailTemplate(e.target.value)}
+              defaultValue=""
+              className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            >
+              <option value="" disabled>
+                Use a template...
+              </option>
+              {emailTemplates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          )}
           <input
             name="subject"
             placeholder="Subject"
+            value={emailSubject}
+            onChange={(e) => setEmailSubject(e.target.value)}
             required
             className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
           />
@@ -103,6 +155,8 @@ export default function LeadCommunicationPanel({
             name="body"
             placeholder="Message"
             rows={4}
+            value={emailBody}
+            onChange={(e) => setEmailBody(e.target.value)}
             required
             className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
           />
@@ -122,14 +176,33 @@ export default function LeadCommunicationPanel({
             startTransition(async () => {
               await sendLeadTextAction(leadId, formData);
               setTab("none");
+              setSmsBody("");
             })
           }
           className="mb-4 space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-3"
         >
+          {smsTemplates.length > 0 && (
+            <select
+              onChange={(e) => applySmsTemplate(e.target.value)}
+              defaultValue=""
+              className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            >
+              <option value="" disabled>
+                Use a template...
+              </option>
+              {smsTemplates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          )}
           <textarea
             name="body"
             placeholder="Text message"
             rows={3}
+            value={smsBody}
+            onChange={(e) => setSmsBody(e.target.value)}
             required
             className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
           />

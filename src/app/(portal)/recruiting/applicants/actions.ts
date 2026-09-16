@@ -59,7 +59,7 @@ export async function setApplicantStageAction(
       ...(timestampField ? { [timestampField]: new Date() } : {}),
       ...(scheduledAtDate ? { scheduledAt: scheduledAtDate } : {}),
     },
-    include: { jobPosting: { select: { titleEn: true } } },
+    include: { jobPosting: { select: { titleEn: true, titleEs: true } } },
   });
 
   if (stage === "HIRED") {
@@ -73,7 +73,8 @@ export async function setApplicantStageAction(
       applicant.jobPosting.titleEn,
       stage,
       scheduledAtDate,
-      session.sub
+      session.sub,
+      applicant.jobPosting.titleEs
     );
   }
 
