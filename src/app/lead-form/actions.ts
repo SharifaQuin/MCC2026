@@ -2,13 +2,17 @@
 
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import type { LeadSource } from "@prisma/client";
 import {
   parseLeadSource,
   notifyNewLead,
   getLeadFormConfig,
   LEAD_SERVICE_LABELS,
+  LEAD_HOW_HEARD_OPTIONS,
   createDraftQuoteForLead,
 } from "@/lib/leads";
+
+const VALID_HOW_HEARD_VALUES = new Set(LEAD_HOW_HEARD_OPTIONS.map((o) => o.value));
 
 // Cloudflare Turnstile — entirely optional. If the site/secret keys aren't
 // configured yet (the owner hasn't signed up), the widget doesn't render
@@ -43,7 +47,13 @@ export async function submitLeadAction(formData: FormData) {
   const squareFootageRaw = String(formData.get("squareFootage") ?? "").trim();
   const squareFootage = squareFootageRaw ? parseInt(squareFootageRaw, 10) || null : null;
   const message = String(formData.get("message") ?? "").trim() || null;
-  const source = parseLeadSource(String(formData.get("src") ?? ""));
+  // The visible "How did you hear about us?" dropdown is authoritative —
+  // it's the customer's own direct answer. The ?src= campaign tag only
+  // pre-selects a default for them to confirm or change (see the form page).
+  const howHeardRaw = String(formData.get("howHeard") ?? "").trim();
+  const source: LeadSource = VALID_HOW_HEARD_VALUES.has(howHeardRaw)
+    ? (howHeardRaw as LeadSource)
+    : parseLeadSource(String(formData.get("src") ?? ""));
 
   // Honeypot — a real visitor never fills in this hidden field. Silently
   // "succeed" so a bot doesn't learn its submission was rejected.
@@ -56,7 +66,7 @@ export async function submitLeadAction(formData: FormData) {
     redirect("/lead-form?error=captcha");
   }
 
-  if (!firstName || !lastName || !email || !phone) {
+  if (!firstName || !lastName || !email || !phone || !VALID_HOW_HEARD_VALUES.has(howHeardRaw)) {
     redirect("/lead-form?error=incomplete");
   }
 

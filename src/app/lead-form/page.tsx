@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getLeadFormConfig, LEAD_SERVICE_OPTIONS } from "@/lib/leads";
+import { getLeadFormConfig, LEAD_SERVICE_OPTIONS, LEAD_HOW_HEARD_OPTIONS, guessHowHeardFromSrc } from "@/lib/leads";
 import { submitLeadAction } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -18,6 +18,7 @@ export default async function LeadFormPage({
     getLeadFormConfig(),
     prisma.leadFormField.findMany({ orderBy: { order: "asc" } }),
   ]);
+  const defaultHowHeard = guessHowHeardFromSrc(searchParams.src) ?? "";
 
   return (
     <div className="mx-auto max-w-xl px-4 py-8">
@@ -73,6 +74,27 @@ export default async function LeadFormPage({
               className="w-full rounded-md border border-neutral-300 px-3 py-2"
             />
           </div>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium text-neutral-700">
+            How did you hear about us? *
+          </label>
+          <select
+            name="howHeard"
+            required
+            defaultValue={defaultHowHeard}
+            className="w-full rounded-md border border-neutral-300 px-3 py-2"
+          >
+            <option value="" disabled>
+              Select one...
+            </option>
+            {LEAD_HOW_HEARD_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </div>
 
         {config.addressEnabled && (

@@ -1196,6 +1196,14 @@ enum LeadSource {
   FACEBOOK_ADS
   NEXTDOOR
   INSTAGRAM
+  // Organic/word-of-mouth awareness — distinct from FACEBOOK_ADS, which is
+  // reserved for paid-campaign spend tracking.
+  FACEBOOK
+  // Repeat/existing client booking again or referring themselves for
+  // another property — distinct from REFERRAL (someone else referred them).
+  CURRENT_CLIENT
+  // A physical marketing card/flyer left at a property by a technician.
+  LEAVE_BEHIND_CARD
   OTHER
 }
 

@@ -41,15 +41,33 @@ export const LEAD_SOURCE_LABELS: Record<string, string> = {
   FACEBOOK_ADS: "Facebook Ads",
   NEXTDOOR: "Nextdoor",
   INSTAGRAM: "Instagram",
+  FACEBOOK: "Facebook",
+  CURRENT_CLIENT: "Current Client",
+  LEAVE_BEHIND_CARD: "Leave-Behind Card",
   OTHER: "Other",
 };
 
-const LEAD_SOURCE_ALIASES: Record<string, "GOOGLE_ADS" | "FACEBOOK_ADS" | "REFERRAL" | "NEXTDOOR" | "INSTAGRAM"> = {
+// The options shown on the public lead form's "How did you hear about us?"
+// dropdown — a curated, ordered subset of LeadSource. Deliberately leaves
+// out staff-only/manual-entry sources (PHONE_CALL, WALK_IN, GOOGLE_ADS,
+// FACEBOOK_ADS) since those describe how *staff* logged a lead, not how a
+// customer would describe discovering the business themselves.
+export const LEAD_HOW_HEARD_OPTIONS: { value: string; label: string }[] = [
+  { value: "INSTAGRAM", label: "Instagram" },
+  { value: "FACEBOOK", label: "Facebook" },
+  { value: "NEXTDOOR", label: "Nextdoor" },
+  { value: "CURRENT_CLIENT", label: "Current Client" },
+  { value: "REFERRAL", label: "Referral (friend/family)" },
+  { value: "LEAVE_BEHIND_CARD", label: "Leave-Behind Card" },
+  { value: "OTHER", label: "Other" },
+];
+
+const LEAD_SOURCE_ALIASES: Record<string, "GOOGLE_ADS" | "FACEBOOK_ADS" | "REFERRAL" | "NEXTDOOR" | "INSTAGRAM" | "FACEBOOK"> = {
   google: "GOOGLE_ADS",
   googleads: "GOOGLE_ADS",
-  facebook: "FACEBOOK_ADS",
-  fb: "FACEBOOK_ADS",
   facebookads: "FACEBOOK_ADS",
+  facebook: "FACEBOOK",
+  fb: "FACEBOOK",
   referral: "REFERRAL",
   nextdoor: "NEXTDOOR",
   instagram: "INSTAGRAM",
@@ -60,12 +78,24 @@ const LEAD_SOURCE_ALIASES: Record<string, "GOOGLE_ADS" | "FACEBOOK_ADS" | "REFER
 // The public lead form always lives on the website, so it defaults to
 // WEBSITE_FORM — a ?src= query param lets an ad campaign's landing link
 // (pointing at the same embedded form) tag itself instead, the same way
-// job-board postings tag /apply/[slug] via ?src=indeed.
+// job-board postings tag /apply/[slug] via ?src=indeed. This is now only
+// a fallback/pre-fill for the visible "How did you hear about us?"
+// dropdown — the customer's own answer on submit is authoritative.
 export function parseLeadSource(
   raw: string | null | undefined
-): "WEBSITE_FORM" | "GOOGLE_ADS" | "FACEBOOK_ADS" | "REFERRAL" | "NEXTDOOR" | "INSTAGRAM" {
+): "WEBSITE_FORM" | "GOOGLE_ADS" | "FACEBOOK_ADS" | "REFERRAL" | "NEXTDOOR" | "INSTAGRAM" | "FACEBOOK" {
   const key = (raw ?? "").trim().toLowerCase();
   return LEAD_SOURCE_ALIASES[key] ?? "WEBSITE_FORM";
+}
+
+// Maps a ?src= campaign tag to a pre-selected option on the visible
+// "How did you hear about us?" dropdown — only when it lands on one of the
+// dropdown's own choices, so a paid-ads tag (which isn't a dropdown option)
+// just leaves the field for the customer to fill in themselves.
+export function guessHowHeardFromSrc(raw: string | null | undefined): string | null {
+  const guess = parseLeadSource(raw);
+  const isDropdownOption = LEAD_HOW_HEARD_OPTIONS.some((o) => o.value === guess);
+  return isDropdownOption ? guess : null;
 }
 
 export const LEAD_STAGE_LABELS: Record<string, string> = {
