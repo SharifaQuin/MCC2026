@@ -76,27 +76,6 @@ export default async function LeadFormPage({
           </div>
         </div>
 
-        <div>
-          <label className="mb-1 block text-sm font-medium text-neutral-700">
-            How did you hear about us? *
-          </label>
-          <select
-            name="howHeard"
-            required
-            defaultValue={defaultHowHeard}
-            className="w-full rounded-md border border-neutral-300 px-3 py-2"
-          >
-            <option value="" disabled>
-              Select one...
-            </option>
-            {LEAD_HOW_HEARD_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
         {config.addressEnabled && (
           <div>
             <label className="mb-1 block text-sm font-medium text-neutral-700">
@@ -158,6 +137,27 @@ export default async function LeadFormPage({
             </div>
           </>
         )}
+
+        <div>
+          <label className="mb-1 block text-sm font-medium text-neutral-700">
+            How did you hear about us? *
+          </label>
+          <select
+            name="howHeard"
+            required
+            defaultValue={defaultHowHeard}
+            className="w-full rounded-md border border-neutral-300 px-3 py-2"
+          >
+            <option value="" disabled>
+              Select one...
+            </option>
+            {LEAD_HOW_HEARD_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
 
         {config.messageEnabled && (
           <div>
