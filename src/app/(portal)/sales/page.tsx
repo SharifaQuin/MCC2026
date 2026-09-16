@@ -270,7 +270,10 @@ export default async function SalesPage() {
           )}
           {canEdit && (
             <div className="mt-4">
-              <AdSpendForm />
+              <AdSpendForm
+                currentSpend={Object.fromEntries(leadKpis.bySource.map((s) => [s.source, s.amountSpent]))}
+                monthLabel={new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+              />
             </div>
           )}
         </div>

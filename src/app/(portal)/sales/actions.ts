@@ -6,7 +6,17 @@ import { setSalesGoal, setSalesActuals } from "@/lib/salesDashboard";
 import { setLeadSourceSpendAmount } from "@/lib/leads";
 import type { LeadSource } from "@prisma/client";
 
-const VALID_LEAD_SOURCES = new Set(["WEBSITE_FORM", "PHONE_CALL", "WALK_IN", "REFERRAL", "GOOGLE_ADS", "FACEBOOK_ADS", "OTHER"]);
+const VALID_LEAD_SOURCES = new Set([
+  "WEBSITE_FORM",
+  "PHONE_CALL",
+  "WALK_IN",
+  "REFERRAL",
+  "GOOGLE_ADS",
+  "FACEBOOK_ADS",
+  "NEXTDOOR",
+  "INSTAGRAM",
+  "OTHER",
+]);
 
 function toMoney(formData: FormData, field: string): number {
   const raw = String(formData.get(field) ?? "").replace(/[^0-9.]/g, "");
@@ -36,14 +46,19 @@ export async function setSalesActualsAction(formData: FormData) {
   revalidatePath("/");
 }
 
-export async function setLeadSourceSpendAction(formData: FormData) {
+export async function setLeadSourceSpendAction(
+  formData: FormData
+): Promise<{ ok: true; amountSpent: number } | { ok: false; error: string }> {
   const { canEdit } = await requireDepartmentAccess("SALES");
-  if (!canEdit) return;
+  if (!canEdit) return { ok: false, error: "You don't have permission to edit Sales data." };
 
   const sourceRaw = String(formData.get("source") ?? "");
-  if (!VALID_LEAD_SOURCES.has(sourceRaw)) return;
+  if (!VALID_LEAD_SOURCES.has(sourceRaw)) {
+    return { ok: false, error: `"${sourceRaw}" isn't a recognized ad-spend source.` };
+  }
   const amountSpent = toMoney(formData, "amountSpent");
 
   await setLeadSourceSpendAmount(sourceRaw as LeadSource, amountSpent);
   revalidatePath("/sales");
+  return { ok: true, amountSpent };
 }
