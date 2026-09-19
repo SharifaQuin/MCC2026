@@ -88,31 +88,46 @@ const TEST_ACCOUNTS: TestAccountSeed[] = [
 
 async function seedTestAccounts() {
   for (const acct of TEST_ACCOUNTS) {
-    const existing = await prisma.user.findUnique({ where: { email: acct.email } });
-    if (existing) {
-      console.log(`Test account ${acct.email} already exists, skipping.`);
-      continue;
+    let user = await prisma.user.findUnique({ where: { email: acct.email } });
+    if (user) {
+      console.log(`Test account ${acct.email} already exists, skipping creation.`);
+    } else {
+      const employeeId = await generateNextEmployeeId();
+      user = await prisma.user.create({
+        data: {
+          employeeId,
+          email: acct.email,
+          name: acct.name,
+          role: acct.role,
+          isTestAccount: true,
+          active: true,
+          mustSetPassword: false,
+          hireDate: acct.hireDate,
+        },
+      });
+
+      if (acct.role === "TRAINEE") {
+        await assignDefaultOnboardingDocuments(user.id);
+      }
+
+      console.log(`Created test account: ${acct.email} (${acct.role})`);
     }
 
-    const employeeId = await generateNextEmployeeId();
-    const user = await prisma.user.create({
-      data: {
-        employeeId,
-        email: acct.email,
-        name: acct.name,
-        role: acct.role,
-        isTestAccount: true,
-        active: true,
-        mustSetPassword: false,
-        hireDate: acct.hireDate,
-      },
-    });
-
-    if (acct.role === "TRAINEE") {
-      await assignDefaultOnboardingDocuments(user.id);
+    // The Test Service Manager gets Sales + Management access by default —
+    // a bare SERVICE_MANAGER role only auto-grants HR — so "View As" shows
+    // the fuller manager experience out of the box. Adjust like any real
+    // employee's on the Permissions page if you want to test a narrower
+    // setup. Runs every seed pass (not just on creation) so accounts seeded
+    // before this grant existed still pick it up.
+    if (acct.role === "SERVICE_MANAGER") {
+      await prisma.departmentAccess.createMany({
+        data: [
+          { userId: user.id, department: "SALES", canEdit: true },
+          { userId: user.id, department: "MANAGEMENT", canEdit: true },
+        ],
+        skipDuplicates: true,
+      });
     }
-
-    console.log(`Created test account: ${acct.email} (${acct.role})`);
   }
 }
 
