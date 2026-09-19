@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { SessionPayload } from "@/lib/session";
-import { loadAdminDashboard } from "@/lib/dashboard";
+import { loadTrainerDashboard } from "@/lib/dashboard";
 
 function Stat({ label, value, href }: { label: string; value: number | string; href?: string }) {
   const content = (
@@ -20,13 +20,12 @@ function Stat({ label, value, href }: { label: string; value: number | string; h
 }
 
 // The real "home" for a Trainer — previously they skipped straight to the
-// raw /trainer/employees roster with no summary first. Reuses
-// loadAdminDashboard's training numbers (the same ones the owner's home
-// page already shows) rather than computing anything new — a Trainer just
-// doesn't also see the HR/payroll/complaint stats mixed into that function
-// that aren't part of their job.
+// raw /trainer/employees roster with no summary first. Scoped to only the
+// trainees personally assigned to this Trainer (see loadTrainerDashboard) —
+// a Trainer only has access to the people they're actually training, same
+// as /trainer/employees and /trainer/employees/[id].
 export default async function TrainerHome({ session }: { session: SessionPayload }) {
-  const training = await loadAdminDashboard();
+  const training = await loadTrainerDashboard(session.sub);
 
   return (
     <div>

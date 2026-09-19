@@ -13,6 +13,7 @@ import AttendancePanel from "@/components/AttendancePanel";
 import HireDateForm from "@/components/HireDateForm";
 import EmployeeProfileForm from "@/components/EmployeeProfileForm";
 import PairingPanel from "@/components/PairingPanel";
+import TrainingAssignmentPanel from "@/components/TrainingAssignmentPanel";
 import PromotionPanel, { type PromotionAssessmentRow } from "@/components/PromotionPanel";
 import PayReviewPanel, { type PayReviewAssessmentRow } from "@/components/PayReviewPanel";
 import ExportToOneDriveButton from "@/components/ExportToOneDriveButton";
@@ -23,6 +24,12 @@ import DeparturePanel from "@/components/DeparturePanel";
 import PersonnelDocumentsPanel, { type SignedDocRow, type TemplateOption } from "@/components/PersonnelDocumentsPanel";
 import ComplianceDocsPanel, { type ComplianceDocRow } from "@/components/ComplianceDocsPanel";
 import { getCurrentPairForEmployee, getPairHistoryForEmployee, getPairingCandidates } from "@/lib/pairing";
+import {
+  getCurrentTrainerForTrainee,
+  getTrainingAssignmentHistoryForTrainee,
+  getTrainerCandidates,
+  getAssignedTraineesForTrainer,
+} from "@/lib/trainingAssignment";
 import { buildMilestoneTimeline } from "@/lib/milestones";
 import { serializePromotionAssessmentForRole, type ReadinessIndicatorValue } from "@/lib/promotions";
 
@@ -97,6 +104,25 @@ export async function loadEmployeeDetail(userId: string) {
     getPairHistoryForEmployee(userId),
     getPairingCandidates(userId),
   ]);
+
+  // Only trainees get assigned a trainer; only trainers have "currently
+  // training" trainees to show — skip the queries that don't apply.
+  const [currentTrainer, trainingHistory, trainerCandidates, assignedTrainees] =
+    user.role === "TRAINEE"
+      ? await Promise.all([
+          getCurrentTrainerForTrainee(userId),
+          getTrainingAssignmentHistoryForTrainee(userId),
+          getTrainerCandidates(),
+          Promise.resolve([]),
+        ])
+      : user.role === "TRAINER"
+        ? await Promise.all([
+            Promise.resolve(null),
+            Promise.resolve([]),
+            Promise.resolve([]),
+            getAssignedTraineesForTrainer(userId),
+          ])
+        : [null, [], [], []];
 
   const promotionAssessmentRows = await prisma.promotionAssessment.findMany({
     where: { employeeId: userId },
@@ -224,6 +250,10 @@ export async function loadEmployeeDetail(userId: string) {
     currentPair,
     pairHistory,
     pairingCandidates,
+    currentTrainer,
+    trainingHistory,
+    trainerCandidates,
+    assignedTrainees,
     promotionAssessments,
     payReviewAssessments,
     milestoneTimeline,
@@ -260,6 +290,10 @@ export function EmployeeDetailView({
     currentPair,
     pairHistory,
     pairingCandidates,
+    currentTrainer,
+    trainingHistory,
+    trainerCandidates,
+    assignedTrainees,
     promotionAssessments,
     payReviewAssessments,
     milestoneTimeline,
@@ -394,6 +428,51 @@ export function EmployeeDetailView({
         </section>
       )}
 
+      {showHrTools && user.role === "TRAINEE" && (
+        <section>
+          <h2 className="mb-3 text-lg font-medium">Training Assignment</h2>
+          <TrainingAssignmentPanel
+            traineeId={user.id}
+            current={
+              currentTrainer
+                ? {
+                    assignmentId: currentTrainer.assignmentId,
+                    trainerId: currentTrainer.trainerId,
+                    trainerName: currentTrainer.trainerName,
+                    startDate: currentTrainer.startDate.toISOString(),
+                  }
+                : null
+            }
+            history={trainingHistory}
+            candidates={trainerCandidates}
+          />
+        </section>
+      )}
+
+      {showHrTools && user.role === "TRAINER" && (
+        <section>
+          <h2 className="mb-3 text-lg font-medium">Currently Training</h2>
+          {assignedTrainees.length === 0 ? (
+            <p className="text-sm text-neutral-500">No trainees currently assigned.</p>
+          ) : (
+            <div className="space-y-2">
+              {assignedTrainees.map((t) => (
+                <Link
+                  key={t.id}
+                  href={`/staff/${t.id}`}
+                  className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white p-4 hover:border-brand-300"
+                >
+                  <span className="font-medium">{t.name}</span>
+                  <span className="text-xs text-neutral-500">
+                    Since {new Date(t.startDate).toLocaleDateString()}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
       {showHrTools && (
         <section>
           <h2 className="mb-3 text-lg font-medium">Promotion Assessments</h2>
@@ -475,7 +554,7 @@ export function EmployeeDetailView({
         </section>
       )}
 
-      {showHrTools && (
+      {showHrTools && (viewerRole === "ADMIN" || viewerRole === "SERVICE_MANAGER") && (
         <section>
           <DeparturePanel
             employeeId={user.id}

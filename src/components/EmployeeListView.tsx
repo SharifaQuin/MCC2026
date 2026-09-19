@@ -34,12 +34,19 @@ export function EmployeeListView({
   data,
   basePath,
   initialStatus,
+  showDeparted = true,
 }: {
   data: EmployeeSummaries;
   basePath: string;
   initialStatus?: StatusFilter;
+  // Departure info (who left, and the fact that they left at all) is
+  // upper-management-only — a Trainer's employee list passes false so
+  // departed trainees never appear here, not just their reason/notes
+  // (those are already locked behind /staff/[id]).
+  showDeparted?: boolean;
 }) {
-  const { totalModules, users } = data;
+  const { totalModules, users: allUsers } = data;
+  const users = showDeparted ? allUsers : allUsers.filter((u) => !u.lastDay);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>(initialStatus ?? "ALL");
 
@@ -95,7 +102,7 @@ export function EmployeeListView({
           <option value="CERTIFIED">Certified</option>
           <option value="COMPLETED_ALL">Completed all training</option>
           <option value="DEACTIVATED">Deactivated</option>
-          <option value="DEPARTED">Departed</option>
+          {showDeparted && <option value="DEPARTED">Departed</option>}
         </select>
       </div>
 
@@ -117,7 +124,7 @@ export function EmployeeListView({
                 {u.email}
                 {u.employeeId && <span className="ml-2 text-neutral-400">· {u.employeeId}</span>}
               </p>
-              {u.lastDay && <p className="mt-1 text-xs font-medium text-red-600">Departed</p>}
+              {showDeparted && u.lastDay && <p className="mt-1 text-xs font-medium text-red-600">Departed</p>}
               {!u.active && !u.lastDay && (
                 <p className="mt-1 text-xs font-medium text-red-600">Deactivated</p>
               )}

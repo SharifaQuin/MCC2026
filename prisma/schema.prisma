@@ -185,6 +185,10 @@ model User {
   pairsAsAssistant Pair[] @relation("PairAssistant")
   pairsCreated     Pair[] @relation("PairCreatedBy")
 
+  trainingAssignmentsAsTrainer TrainingAssignment[] @relation("TrainingAssignmentTrainer")
+  trainingAssignmentsAsTrainee TrainingAssignment[] @relation("TrainingAssignmentTrainee")
+  trainingAssignmentsCreated   TrainingAssignment[] @relation("TrainingAssignmentCreatedBy")
+
   promotionAssessments       PromotionAssessment[] @relation("PromotionAssessmentEmployee")
   promotionAssessmentsMade   PromotionAssessment[] @relation("PromotionAssessmentAssessedBy")
 
@@ -1500,6 +1504,33 @@ model Pair {
 
   @@index([leadId])
   @@index([assistantId])
+}
+
+// Who a Trainer is personally responsible for training — separate from
+// Pair (which tracks day-to-day field partnerships, not mentorship).
+// Unlike Pair, a Trainer can have several trainees actively assigned at
+// once (no unique constraint on trainerId); a trainee has at most one
+// active assigned trainer at a time (partial unique index on traineeId,
+// see migration.sql). This is also the scoping boundary for what a
+// Trainer can see in the portal — /trainer/employees and the Trainer home
+// page only show trainees with an active assignment to that Trainer.
+// Ending or reassigning is always manual (ADMIN/SERVICE_MANAGER), never
+// automatic.
+model TrainingAssignment {
+  id          String    @id @default(cuid())
+  trainerId   String
+  trainer     User      @relation("TrainingAssignmentTrainer", fields: [trainerId], references: [id], onDelete: Cascade)
+  traineeId   String
+  trainee     User      @relation("TrainingAssignmentTrainee", fields: [traineeId], references: [id], onDelete: Cascade)
+  startDate   DateTime
+  endDate     DateTime?
+  active      Boolean   @default(true)
+  createdById String
+  createdBy   User      @relation("TrainingAssignmentCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+
+  @@index([trainerId])
+  @@index([traineeId])
 }
 
 enum PromotionTargetRole {
