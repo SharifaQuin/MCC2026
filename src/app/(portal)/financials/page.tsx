@@ -4,8 +4,11 @@ import {
   upsertMonthlyFinancialsAction,
   updateDrawPolicyAction,
   updateProfitabilityTargetAction,
+  disconnectQuickBooksAction,
 } from "@/app/actions/financials";
+import { getQuickBooksConnection, isQuickBooksConfigured } from "@/lib/quickbooks";
 import LoansManager from "./LoansManager";
+import PullFromQuickBooksButton from "./PullFromQuickBooksButton";
 
 const money = (n: number) =>
   `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -59,12 +62,13 @@ interface ProfitabilityTarget {
 export default async function FinancialsPage({
   searchParams,
 }: {
-  searchParams: { month?: string };
+  searchParams: { month?: string; quickbooks?: string };
 }) {
-  const [months, ownerSettings, loans] = await Promise.all([
+  const [months, ownerSettings, loans, quickBooksConnection] = await Promise.all([
     getMonthlyFinancials(),
     getOwnerSettings(),
     getLoans(),
+    getQuickBooksConnection(),
   ]);
 
   const selectedMonth = searchParams.month ?? "";
@@ -115,6 +119,47 @@ export default async function FinancialsPage({
       <p className="mb-6 text-sm text-neutral-500">
         Owner-only — full monthly P&amp;L history, targets, and settings.
       </p>
+
+      {searchParams.quickbooks === "connected" && (
+        <div className="mb-6 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+          QuickBooks connected. Open a month below and use "Pull from QuickBooks" to bring in its numbers.
+        </div>
+      )}
+      {searchParams.quickbooks === "error" && (
+        <div className="mb-6 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          Couldn't connect to QuickBooks — please try again.
+        </div>
+      )}
+
+      <section className="mb-8 flex items-center justify-between rounded-lg border border-neutral-200 bg-white p-4">
+        {quickBooksConnection ? (
+          <>
+            <p className="text-sm text-neutral-700">
+              <span className="font-medium text-green-700">✓ QuickBooks connected</span> — by{" "}
+              {quickBooksConnection.connectedBy.name}
+            </p>
+            <form action={disconnectQuickBooksAction}>
+              <button type="submit" className="text-sm font-medium text-red-600 hover:underline">
+                Disconnect
+              </button>
+            </form>
+          </>
+        ) : isQuickBooksConfigured() ? (
+          <>
+            <p className="text-sm text-neutral-500">Not connected to QuickBooks yet.</p>
+            <a
+              href="/api/quickbooks/connect"
+              className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+            >
+              Connect QuickBooks
+            </a>
+          </>
+        ) : (
+          <p className="text-sm text-neutral-500">
+            QuickBooks isn't set up yet — add QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET to enable it.
+          </p>
+        )}
+      </section>
 
       {latest && (
         <section className="mb-8 rounded-lg border border-neutral-200 bg-white p-6">
@@ -250,6 +295,8 @@ export default async function FinancialsPage({
               <Field label="Month (YYYY-MM)" name="month" defaultValue={editing?.month ?? ""} readOnly={!isNew} />
               <Field label="Month label (e.g. Jan)" name="monthLabel" defaultValue={editing?.monthLabel ?? ""} />
             </div>
+
+            {quickBooksConnection && <PullFromQuickBooksButton />}
 
             <fieldset className="space-y-3">
               <legend className="text-sm font-semibold text-neutral-800">Revenue</legend>

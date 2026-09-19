@@ -189,6 +189,8 @@ model User {
   trainingAssignmentsAsTrainee TrainingAssignment[] @relation("TrainingAssignmentTrainee")
   trainingAssignmentsCreated   TrainingAssignment[] @relation("TrainingAssignmentCreatedBy")
 
+  quickBooksConnectionsMade QuickBooksConnection[]
+
   promotionAssessments       PromotionAssessment[] @relation("PromotionAssessmentEmployee")
   promotionAssessmentsMade   PromotionAssessment[] @relation("PromotionAssessmentAssessedBy")
 
@@ -1156,6 +1158,26 @@ model OwnerSetting {
   key       String   @id
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+// One QuickBooks Online company connection (OAuth). Unlike the app-level
+// integrations (Outlook, RingCentral) whose credentials are static env
+// vars, QuickBooks tokens are per-connection and rotate on every refresh,
+// so they have to live in the DB, not the environment. Only ever expect
+// one row — a single company — but nothing enforces that beyond app logic.
+// Access tokens last ~1 hour; refresh tokens ~100 days and are single-use
+// (each refresh returns a new one that must overwrite the old).
+model QuickBooksConnection {
+  id                    String   @id @default(cuid())
+  realmId               String   @unique
+  accessToken           String   @db.Text
+  refreshToken          String   @db.Text
+  accessTokenExpiresAt  DateTime
+  refreshTokenExpiresAt DateTime
+  connectedById         String
+  connectedBy           User     @relation(fields: [connectedById], references: [id])
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 // Key/value JSONB the whole management team can see — the revenue growth

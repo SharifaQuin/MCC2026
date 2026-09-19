@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import type { ChecklistCategory, ChecklistOwner, ChecklistTaskStatus, ChecklistVisibility } from "@prisma/client";
+import { disconnectQuickBooks, fetchProfitAndLossSummary, type ProfitAndLossSummary } from "@/lib/quickbooks";
 
 async function requireOwnerAccess() {
   const session = await getSession();
@@ -97,6 +98,42 @@ export async function upsertMonthlyFinancialsAction(formData: FormData) {
 
   revalidatePath("/financials");
   revalidatePath("/");
+}
+
+export interface PullFromQuickBooksResult {
+  error?: string;
+  summary?: ProfitAndLossSummary;
+}
+
+// Fetches just the five reliable top-line P&L totals for the given month —
+// never the granular line items (technician payroll, fuel, etc.), since
+// those depend on how this company's own QuickBooks accounts are
+// categorized and can't be guessed safely. The caller (PullFromQuickBooksButton)
+// drops these into the form fields for the owner to review, not save
+// automatically — same trust model as every other number on this page.
+export async function pullFromQuickBooksAction(month: string): Promise<PullFromQuickBooksResult> {
+  await requireOwnerAccess();
+
+  if (!/^\d{4}-\d{2}$/.test(month)) {
+    return { error: "Enter the month (YYYY-MM) before pulling from QuickBooks." };
+  }
+
+  const [year, monthNum] = month.split("-").map(Number);
+  const startDate = `${month}-01`;
+  const lastDay = new Date(year, monthNum, 0).getDate();
+  const endDate = `${month}-${String(lastDay).padStart(2, "0")}`;
+
+  const summary = await fetchProfitAndLossSummary(startDate, endDate);
+  if (!summary) {
+    return { error: "Couldn't get a Profit and Loss report from QuickBooks for that month." };
+  }
+  return { summary };
+}
+
+export async function disconnectQuickBooksAction() {
+  await requireOwnerAccess();
+  await disconnectQuickBooks();
+  revalidatePath("/financials");
 }
 
 export async function updateDrawPolicyAction(formData: FormData) {
