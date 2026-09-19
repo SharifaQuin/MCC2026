@@ -17,6 +17,7 @@ export async function runInterviewReminderSchedulerTick(now: Date = new Date()):
       stage: { in: SCHEDULING_STAGES },
       scheduledAt: { gt: now, lte: new Date(now.getTime() + DAY_MS) },
       interviewReminderDaySentAt: null,
+      interviewCantMakeItAt: null,
     },
     include: { jobPosting: { select: { titleEn: true, titleEs: true } } },
   });
@@ -41,6 +42,7 @@ export async function runInterviewReminderSchedulerTick(now: Date = new Date()):
       stage: { in: SCHEDULING_STAGES },
       scheduledAt: { gt: now, lte: new Date(now.getTime() + HOUR_MS) },
       interviewReminderHourSentAt: null,
+      interviewCantMakeItAt: null,
     },
     include: { jobPosting: { select: { titleEn: true, titleEs: true } } },
   });

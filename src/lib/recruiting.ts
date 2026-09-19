@@ -6,6 +6,7 @@ import { generateInviteToken } from "@/lib/tokens";
 import { generateNextEmployeeId } from "@/lib/employeeId";
 import { createCalendarEvent } from "@/lib/calendar";
 import { formatInBusinessTimezone } from "@/lib/timezone";
+import { postSlackDMToOwner } from "@/lib/slack";
 
 // Auto-scores an applicant's prescreen answers against the question bank's
 // point values and returns whether they cleared the posting's threshold.
@@ -491,6 +492,48 @@ export async function sendInterviewReminder(
       },
     });
   }
+}
+
+// Fired the moment an applicant clicks "I can't make it" on the public
+// confirm page — this is the one thing that needs a human to act on right
+// away (the interview is still on the calendar and nobody's coming), so it
+// goes out immediately rather than waiting for a digest. Mirrors
+// notifyNewApplicant/leads.ts's new-lead notification: an email plus a
+// Slack DM to the owner. Best-effort, same as every other notification here.
+export async function notifyStaffApplicantCantMakeIt(
+  applicant: { id: string; firstName: string; lastName: string },
+  jobPostingTitle: string,
+  scheduledAt: Date
+) {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+  const profileUrl = `${appUrl}/recruiting/applicants/${applicant.id}`;
+  const whenText = `${formatInBusinessTimezone(scheduledAt)} Pacific Time`;
+
+  const notifyEmail = process.env.RECRUITING_NOTIFY_EMAIL || process.env.MS_GRAPH_SENDER_EMAIL;
+  if (notifyEmail) {
+    try {
+      await sendEmail({
+        to: notifyEmail,
+        subject: `${applicant.firstName} ${applicant.lastName} can't make their interview`,
+        body: [
+          `${applicant.firstName} ${applicant.lastName} let us know they can't make their ${jobPostingTitle} interview scheduled for ${whenText}.`,
+          "",
+          "They were not offered a way to pick a new time themselves — please reach out to reschedule.",
+          "",
+          `View their profile: ${profileUrl}`,
+        ].join("\n"),
+      });
+    } catch {
+      // Swallow — a notification failure should never block the applicant's request from being recorded.
+    }
+  }
+
+  await postSlackDMToOwner(
+    [
+      `:warning: *${applicant.firstName} ${applicant.lastName}* can't make their ${jobPostingTitle} interview (${whenText}) — needs rescheduling.`,
+      `<${profileUrl}|View applicant>`,
+    ].join("\n")
+  );
 }
 
 // When an applicant is marked Hired, automatically create their training

@@ -472,6 +472,11 @@ model Applicant {
   // reschedule so a stale confirmation never carries over to a new time.
   interviewConfirmToken       String?   @unique
   interviewConfirmedAt        DateTime?
+  // Set when the applicant clicks "I can't make it" on the confirm page —
+  // deliberately does NOT let them pick a new time themselves; it just
+  // flags this for a staffer to see and reach out. Stops further reminders
+  // for this interview once set (see interviewReminderScheduler).
+  interviewCantMakeItAt       DateTime?
   interviewReminderDaySentAt  DateTime?
   interviewReminderHourSentAt DateTime?
   rejectedAt     DateTime?

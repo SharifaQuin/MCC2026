@@ -365,11 +365,21 @@ export default async function ApplicantDetailPage({
       )}
 
       {applicant.scheduledAt && (SCHEDULING_STAGES as string[]).includes(applicant.stage) && (
-        <div className="mt-3 flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+        <div
+          className={`mt-3 flex items-center justify-between rounded-md border p-3 text-sm ${
+            applicant.interviewCantMakeItAt
+              ? "border-red-200 bg-red-50 text-red-800"
+              : "border-amber-200 bg-amber-50 text-amber-800"
+          }`}
+        >
           <span>
             {STAGE_LABELS[applicant.stage]}: {formatInBusinessTimezone(applicant.scheduledAt)} PT
           </span>
-          {applicant.interviewConfirmedAt ? (
+          {applicant.interviewCantMakeItAt ? (
+            <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-800">
+              ⚠ Can't make it — needs rescheduling
+            </span>
+          ) : applicant.interviewConfirmedAt ? (
             <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
               ✓ Confirmed {new Date(applicant.interviewConfirmedAt).toLocaleDateString()}
             </span>

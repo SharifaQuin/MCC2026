@@ -68,6 +68,7 @@ export async function setApplicantStageAction(
             scheduledAt: scheduledAtDate,
             interviewConfirmToken: generateInviteToken(),
             interviewConfirmedAt: null,
+            interviewCantMakeItAt: null,
             interviewReminderDaySentAt: null,
             interviewReminderHourSentAt: null,
           }
