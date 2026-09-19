@@ -12,7 +12,7 @@ function nextAnniversary(hireDate: Date, from: Date): Date {
 
 export async function getUpcomingAnniversaries(days = 30) {
   const staff = await prisma.user.findMany({
-    where: { role: { in: STAFF_ROLES }, active: true, hireDate: { not: null } },
+    where: { role: { in: STAFF_ROLES }, active: true, hireDate: { not: null }, isTestAccount: false },
     select: { id: true, name: true, hireDate: true },
   });
 
@@ -41,7 +41,7 @@ export function yearsOfService(hireDate: Date, from = new Date()): number {
 
 export async function getStaffDirectory() {
   const staff = await prisma.user.findMany({
-    where: { role: { in: STAFF_ROLES }, active: true },
+    where: { role: { in: STAFF_ROLES }, active: true, isTestAccount: false },
     orderBy: { name: "asc" },
     select: { id: true, employeeId: true, name: true, email: true, role: true, hireDate: true },
   });
@@ -81,9 +81,9 @@ export async function getTurnoverStats(windowDays = 90) {
   const since = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
 
   const [headcountNow, departedRows] = await Promise.all([
-    prisma.user.count({ where: { role: { in: STAFF_ROLES }, active: true } }),
+    prisma.user.count({ where: { role: { in: STAFF_ROLES }, active: true, isTestAccount: false } }),
     prisma.user.findMany({
-      where: { lastDay: { gte: since, lte: now } },
+      where: { lastDay: { gte: since, lte: now }, isTestAccount: false },
       select: { id: true, name: true, lastDay: true, hireDate: true, departureReason: true },
       orderBy: { lastDay: "desc" },
     }),
@@ -123,7 +123,7 @@ export async function getTurnoverStats(windowDays = 90) {
 
 export async function getStaffDashboardStats() {
   const [totalStaff, upcomingAnniversaries, openComplaints, payrollDisputes] = await Promise.all([
-    prisma.user.count({ where: { role: { in: STAFF_ROLES }, active: true } }),
+    prisma.user.count({ where: { role: { in: STAFF_ROLES }, active: true, isTestAccount: false } }),
     getUpcomingAnniversaries(30),
     prisma.complaint.count({ where: { status: "OPEN" } }),
     prisma.payrollEntry.count({ where: { status: "DISPUTED" } }),
@@ -144,7 +144,7 @@ export async function getStaffDashboardStats() {
 // this is the one place to actually find someone who left a while ago.
 export async function getAllDepartedEmployees() {
   const rows = await prisma.user.findMany({
-    where: { lastDay: { not: null } },
+    where: { lastDay: { not: null }, isTestAccount: false },
     orderBy: { lastDay: "desc" },
     select: {
       id: true,

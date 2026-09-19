@@ -6,7 +6,7 @@ export async function loadAdminDashboard() {
   const totalModules = await prisma.module.count({ where: { published: true } });
 
   const employees = await prisma.user.findMany({
-    where: { role: "TRAINEE" },
+    where: { role: "TRAINEE", isTestAccount: false },
     include: {
       progress: { where: { status: "COMPLETED" } },
       _count: { select: { fieldEvaluationsReceived: true } },
@@ -38,7 +38,7 @@ export async function loadAdminDashboard() {
       ? Math.round((daysToCertify.reduce((a, b) => a + b, 0) / daysToCertify.length) * 10) / 10
       : null;
   const pendingCertifications = await prisma.user.findMany({
-    where: { role: "TRAINEE", certificationStatus: "PENDING" },
+    where: { role: "TRAINEE", certificationStatus: "PENDING", isTestAccount: false },
     select: { id: true, name: true, certRecommendedAt: true },
     orderBy: { certRecommendedAt: "asc" },
   });

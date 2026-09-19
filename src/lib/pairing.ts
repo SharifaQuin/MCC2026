@@ -3,7 +3,7 @@ import { STAFF_ROLES } from "@/lib/staff";
 
 export async function getPairingCandidates(excludeUserId: string) {
   return prisma.user.findMany({
-    where: { role: { in: STAFF_ROLES }, active: true, id: { not: excludeUserId } },
+    where: { role: { in: STAFF_ROLES }, active: true, id: { not: excludeUserId }, isTestAccount: false },
     select: { id: true, name: true },
     orderBy: { name: "asc" },
   });

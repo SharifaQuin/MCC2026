@@ -90,6 +90,10 @@ model User {
   passwordHash     String?
   mustSetPassword  Boolean   @default(true)
   active           Boolean   @default(true)
+  // Seeded demo/test employee accounts (owner "View As" impersonation) —
+  // never real staff, so they're excluded from staff directories, turnover
+  // stats, CSV exports, and other real-business-data reporting.
+  isTestAccount    Boolean   @default(false)
   inviteToken      String?   @unique
   inviteExpiresAt  DateTime?
   language         Language  @default(EN)

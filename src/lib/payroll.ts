@@ -48,7 +48,7 @@ export async function getPayPeriodDetail(payPeriodId: string) {
 
   const [employees, entries] = await Promise.all([
     prisma.user.findMany({
-      where: { role: "TRAINEE", active: true },
+      where: { role: "TRAINEE", active: true, isTestAccount: false },
       orderBy: { name: "asc" },
       select: { id: true, name: true, email: true },
     }),

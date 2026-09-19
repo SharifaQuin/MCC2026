@@ -55,6 +55,7 @@ export const dictionary = {
     payroll: "Payroll",
     financials: "Financials",
     todo: "To-Do List",
+    testAccounts: "Test Accounts",
   },
   ES: {
     appName: "Portal de Capacitación de MCC",
@@ -112,6 +113,7 @@ export const dictionary = {
     payroll: "Nómina",
     financials: "Finanzas",
     todo: "Lista de Tareas",
+    testAccounts: "Cuentas de Prueba",
   },
 } as const;
 

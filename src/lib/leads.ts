@@ -781,6 +781,7 @@ export async function getSalesTeamMembers() {
   return prisma.user.findMany({
     where: {
       active: true,
+      isTestAccount: false,
       OR: [{ role: "ADMIN" }, { departmentAccess: { some: { department: "SALES" } } }],
     },
     select: { id: true, name: true },

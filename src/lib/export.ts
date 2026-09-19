@@ -5,7 +5,7 @@ export async function loadEmployeeExportRows() {
   const totalModules = await prisma.module.count({ where: { published: true } });
 
   const employees = await prisma.user.findMany({
-    where: { role: "TRAINEE" },
+    where: { role: "TRAINEE", isTestAccount: false },
     orderBy: { createdAt: "asc" },
     include: {
       progress: { where: { status: "COMPLETED" } },

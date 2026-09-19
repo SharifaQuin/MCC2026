@@ -4,6 +4,7 @@ import path from "node:path";
 import { hashPassword } from "../src/lib/password";
 import { generateNextEmployeeId } from "../src/lib/employeeId";
 import { seedDefaultHiringQuestions } from "../src/lib/recruiting";
+import { assignDefaultOnboardingDocuments } from "../src/lib/onboarding";
 
 const prisma = new PrismaClient();
 
@@ -65,6 +66,54 @@ async function seedAdmin() {
     },
   });
   console.log(`Created admin account: ${email}`);
+}
+
+interface TestAccountSeed {
+  email: string;
+  name: string;
+  role: "TRAINEE" | "TRAINER" | "SERVICE_MANAGER";
+  hireDate: Date | null;
+}
+
+// Owner-only "View As" test accounts — always active, always isTestAccount,
+// and excluded from real staff/business reporting (see all the
+// `isTestAccount: false` filters across src/lib). The Trainee one is
+// deliberately left fresh (no hireDate, no signed onboarding docs) so
+// viewing as them shows the real new-hire documents gate.
+const TEST_ACCOUNTS: TestAccountSeed[] = [
+  { email: "test-trainee@mamascleaningcrew.local", name: "TEST — Trainee / New Hire", role: "TRAINEE", hireDate: null },
+  { email: "test-trainer@mamascleaningcrew.local", name: "TEST — Trainer", role: "TRAINER", hireDate: new Date("2024-01-15") },
+  { email: "test-service-manager@mamascleaningcrew.local", name: "TEST — Service Manager", role: "SERVICE_MANAGER", hireDate: new Date("2024-01-15") },
+];
+
+async function seedTestAccounts() {
+  for (const acct of TEST_ACCOUNTS) {
+    const existing = await prisma.user.findUnique({ where: { email: acct.email } });
+    if (existing) {
+      console.log(`Test account ${acct.email} already exists, skipping.`);
+      continue;
+    }
+
+    const employeeId = await generateNextEmployeeId();
+    const user = await prisma.user.create({
+      data: {
+        employeeId,
+        email: acct.email,
+        name: acct.name,
+        role: acct.role,
+        isTestAccount: true,
+        active: true,
+        mustSetPassword: false,
+        hireDate: acct.hireDate,
+      },
+    });
+
+    if (acct.role === "TRAINEE") {
+      await assignDefaultOnboardingDocuments(user.id);
+    }
+
+    console.log(`Created test account: ${acct.email} (${acct.role})`);
+  }
 }
 
 async function seedModules() {
@@ -658,6 +707,7 @@ async function seedMessageTemplates() {
 
 async function main() {
   await seedAdmin();
+  await seedTestAccounts();
   await seedModules();
   await seedOwnerDashboard();
   await seedLoans();

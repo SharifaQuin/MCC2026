@@ -27,7 +27,7 @@ export async function getHrTodayAttentionItems(): Promise<HrTodayItem[]> {
     staffWithHireDates,
     expiredOrExpiringCompliance,
   ] = await Promise.all([
-    prisma.user.count({ where: { role: "TRAINEE", certificationStatus: "PENDING" } }),
+    prisma.user.count({ where: { role: "TRAINEE", certificationStatus: "PENDING", isTestAccount: false } }),
     prisma.complaint.count({ where: { status: "OPEN" } }),
     prisma.payrollEntry.count({ where: { status: "DISPUTED" } }),
     prisma.applicant.count({ where: { stage: { in: NEEDS_DECISION_STAGES } } }),
@@ -39,7 +39,7 @@ export async function getHrTodayAttentionItems(): Promise<HrTodayItem[]> {
       where: { decision: "DEVELOP", reassessmentDate: { lte: new Date() } },
     }),
     prisma.user.findMany({
-      where: { role: { in: STAFF_ROLES }, active: true, hireDate: { not: null } },
+      where: { role: { in: STAFF_ROLES }, active: true, hireDate: { not: null }, isTestAccount: false },
       select: { id: true, hireDate: true, milestoneReviews: true },
     }),
     prisma.complianceDocument.count({

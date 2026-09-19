@@ -76,6 +76,9 @@ export default function Nav({
                 <Link href="/todo" className="hover:underline">
                   {labels.todo}
                 </Link>
+                <Link href="/test-accounts" className="hover:underline">
+                  {labels.testAccounts}
+                </Link>
               </>
             )}
           </nav>
