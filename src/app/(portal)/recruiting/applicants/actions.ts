@@ -14,6 +14,7 @@ import {
   rejectionEmailTemplate,
   setOnboardingChecklistItem,
 } from "@/lib/recruiting";
+import { generateInviteToken } from "@/lib/tokens";
 import { zonedTimeToUtc } from "@/lib/timezone";
 import type {
   ApplicantStage,
@@ -58,7 +59,19 @@ export async function setApplicantStageAction(
     data: {
       stage,
       ...(timestampField ? { [timestampField]: new Date() } : {}),
-      ...(scheduledAtDate ? { scheduledAt: scheduledAtDate } : {}),
+      // A fresh (or rescheduled) interview time gets its own confirm token
+      // and starts unconfirmed with no reminders sent yet — a stale
+      // confirmation or an already-sent reminder from a previous time
+      // should never carry over to a new one.
+      ...(scheduledAtDate
+        ? {
+            scheduledAt: scheduledAtDate,
+            interviewConfirmToken: generateInviteToken(),
+            interviewConfirmedAt: null,
+            interviewReminderDaySentAt: null,
+            interviewReminderHourSentAt: null,
+          }
+        : {}),
     },
     include: { jobPosting: { select: { titleEn: true, titleEs: true } } },
   });

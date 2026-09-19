@@ -365,8 +365,19 @@ export default async function ApplicantDetailPage({
       )}
 
       {applicant.scheduledAt && (SCHEDULING_STAGES as string[]).includes(applicant.stage) && (
-        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          {STAGE_LABELS[applicant.stage]}: {formatInBusinessTimezone(applicant.scheduledAt)} PT
+        <div className="mt-3 flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          <span>
+            {STAGE_LABELS[applicant.stage]}: {formatInBusinessTimezone(applicant.scheduledAt)} PT
+          </span>
+          {applicant.interviewConfirmedAt ? (
+            <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
+              ✓ Confirmed {new Date(applicant.interviewConfirmedAt).toLocaleDateString()}
+            </span>
+          ) : (
+            <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-500">
+              Not yet confirmed
+            </span>
+          )}
         </div>
       )}
 

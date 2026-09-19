@@ -466,6 +466,14 @@ model Applicant {
   prescreenPassed   Boolean?
   notes          String?        @db.Text
   scheduledAt    DateTime?
+  // Set whenever scheduledAt is (re)set for an interview stage — the token
+  // in the "Yes, I'll be there" link sent with the reminders, and the
+  // record of whether/when they clicked it. Cleared and regenerated on a
+  // reschedule so a stale confirmation never carries over to a new time.
+  interviewConfirmToken       String?   @unique
+  interviewConfirmedAt        DateTime?
+  interviewReminderDaySentAt  DateTime?
+  interviewReminderHourSentAt DateTime?
   rejectedAt     DateTime?
   benchedAt      DateTime?
   hiredAt        DateTime?

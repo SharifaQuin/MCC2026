@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { ApplicantStage, Prisma } from "@prisma/client";
 import { sendEmail } from "@/lib/email";
+import { sendSms } from "@/lib/sms";
 import { generateInviteToken } from "@/lib/tokens";
 import { generateNextEmployeeId } from "@/lib/employeeId";
 import { createCalendarEvent } from "@/lib/calendar";
@@ -323,6 +324,170 @@ export async function sendInterviewConfirmationEmail(
         status: "FAILED",
         errorMessage: error instanceof Error ? error.message : "Unknown error",
         sentById: loggedById,
+      },
+    });
+  }
+}
+
+// Fired by interviewReminderScheduler one day before and again one hour
+// before a scheduled interview — both by email and text, since either one
+// might get missed. Includes a "Yes, I'll be there" link (the applicant's
+// interviewConfirmToken) so staff can see who's confirmed without having to
+// wait for a reply. Best-effort per channel: an SMS failure shouldn't block
+// the email or vice versa, and neither should ever throw (called from the
+// background scheduler tick, which must keep running regardless).
+export async function sendInterviewReminder(
+  applicant: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    interviewConfirmToken: string | null;
+  },
+  jobPostingTitle: string,
+  stage: ApplicantStage,
+  scheduledAt: Date,
+  reminderType: "day" | "hour",
+  jobPostingTitleEs?: string | null
+) {
+  const whenText = `${formatInBusinessTimezone(scheduledAt)} Pacific Time`;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+  const confirmLink = applicant.interviewConfirmToken
+    ? `${appUrl}/interview-confirm/${applicant.interviewConfirmToken}`
+    : null;
+  const timeframeEn = reminderType === "day" ? "tomorrow" : "in about an hour";
+  const timeframeEs = reminderType === "day" ? "mañana" : "en aproximadamente una hora";
+
+  let subject: string;
+  let emailBody: string;
+  let smsBody: string;
+
+  if (stage === "PHONE_INTERVIEW_SCHEDULED") {
+    const bodyLines = [
+      `Hi ${applicant.firstName},`,
+      "",
+      `Just a reminder — your phone interview with Mama's Cleaning Crew for the ${jobPostingTitle} position is ${timeframeEn}!`,
+      "",
+      `When: ${whenText}`,
+    ];
+    const zoomPmi = process.env.RECRUITING_ZOOM_PMI;
+    const zoomLink = zoomPmi
+      ? `https://zoom.us/j/${zoomPmi.replace(/\D/g, "")}`
+      : process.env.RECRUITING_ZOOM_LINK;
+    if (zoomLink) {
+      bodyLines.push(`Zoom link: ${zoomLink}`);
+      const zoomPasscode = process.env.RECRUITING_ZOOM_PASSCODE;
+      if (zoomPasscode) bodyLines.push(`Passcode: ${zoomPasscode}`);
+    }
+    if (confirmLink) bodyLines.push("", `Please confirm you'll be joining: ${confirmLink}`);
+    bodyLines.push("", "See you soon!", "", "Mama's Cleaning Crew");
+
+    subject = `Reminder: your interview is ${timeframeEn} — ${whenText}`;
+    emailBody = bodyLines.join("\n");
+
+    const smsLines = [
+      `Mama's Cleaning Crew: reminder that your phone interview for ${jobPostingTitle} is ${timeframeEn} (${whenText}).`,
+    ];
+    if (confirmLink) smsLines.push(`Please confirm: ${confirmLink}`);
+    smsBody = smsLines.join(" ");
+  } else {
+    // In-person — bilingual (English then Spanish), matching
+    // sendInterviewConfirmationEmail, for both the email and the text.
+    const logistics = await getInterviewLogistics();
+    const titleEs = jobPostingTitleEs || jobPostingTitle;
+
+    const bodyLines = [
+      `Hi ${applicant.firstName},`,
+      "",
+      `Just a reminder — your in-person interview with Mama's Cleaning Crew for the ${jobPostingTitle} position is ${timeframeEn}!`,
+      "",
+      `When: ${whenText}`,
+      "",
+      "📍 Location:",
+      logistics.address,
+      "",
+      `📞 Contact: ${logistics.phone}`,
+    ];
+    if (confirmLink) bodyLines.push("", `Please confirm you'll be arriving: ${confirmLink}`);
+    bodyLines.push(
+      "",
+      "We look forward to meeting you!",
+      "",
+      "—",
+      "",
+      `Hola ${applicant.firstName},`,
+      "",
+      `Solo un recordatorio — su entrevista presencial con Mama's Cleaning Crew para el puesto de ${titleEs} es ${timeframeEs}!`,
+      "",
+      `Cuándo: ${whenText}`,
+      "",
+      "📍 Ubicación:",
+      logistics.address,
+      "",
+      `📞 Contacto: ${logistics.phone}`
+    );
+    if (confirmLink) bodyLines.push("", `Por favor confirme que llegará: ${confirmLink}`);
+    bodyLines.push("", "¡Esperamos conocerle!", "", "Mama's Cleaning Crew");
+
+    subject = `Reminder: your interview is ${timeframeEn} — ${whenText}`;
+    emailBody = bodyLines.join("\n");
+
+    const smsLines = [
+      `Mama's Cleaning Crew: reminder — your in-person interview for ${jobPostingTitle} is ${timeframeEn} (${whenText}) at ${logistics.address.split("\n")[0]}.`,
+    ];
+    if (confirmLink) smsLines.push(`Please confirm / confirme: ${confirmLink}`);
+    smsBody = smsLines.join(" ");
+  }
+
+  try {
+    const result = await sendEmail({ to: applicant.email, subject, body: emailBody });
+    await prisma.communicationLog.create({
+      data: {
+        applicantId: applicant.id,
+        channel: "EMAIL",
+        direction: "OUTBOUND",
+        subject,
+        body: emailBody,
+        status: result.ok ? "SENT" : "FAILED",
+        errorMessage: result.ok ? null : result.error,
+      },
+    });
+  } catch (error) {
+    await prisma.communicationLog.create({
+      data: {
+        applicantId: applicant.id,
+        channel: "EMAIL",
+        direction: "OUTBOUND",
+        subject,
+        body: emailBody,
+        status: "FAILED",
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
+      },
+    });
+  }
+
+  try {
+    const result = await sendSms({ to: applicant.phone, text: smsBody });
+    await prisma.communicationLog.create({
+      data: {
+        applicantId: applicant.id,
+        channel: "SMS",
+        direction: "OUTBOUND",
+        body: smsBody,
+        status: result.ok ? "SENT" : "FAILED",
+        errorMessage: result.ok ? null : result.error,
+      },
+    });
+  } catch (error) {
+    await prisma.communicationLog.create({
+      data: {
+        applicantId: applicant.id,
+        channel: "SMS",
+        direction: "OUTBOUND",
+        body: smsBody,
+        status: "FAILED",
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
       },
     });
   }
