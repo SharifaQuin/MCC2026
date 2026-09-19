@@ -11,6 +11,8 @@ import { getLatestMonthlyFinancials, getTeamGoals, getChecklistTasksForRole, get
 import { reachedGrowthStages } from "@/lib/checklistDisplay";
 import { estimateLoanPayoff } from "@/lib/loans";
 import ChecklistSidebar from "@/components/ChecklistSidebar";
+import TraineeHome from "./TraineeHome";
+import TrainerHome from "./TrainerHome";
 
 function Stat({ label, value, href }: { label: string; value: number | string; href?: string }) {
   const content = (
@@ -38,10 +40,11 @@ const money = (n: number) =>
 export default async function HomePage() {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (session.role === "TRAINER") redirect("/trainer/employees");
+  if (session.role === "TRAINER") return <TrainerHome session={session} />;
   if (session.role === "TRAINEE") {
     const pending = await getPendingOnboardingCount(session.sub);
-    redirect(pending > 0 ? "/documents" : "/modules");
+    if (pending > 0) redirect("/documents");
+    return <TraineeHome session={session} />;
   }
 
   const grants = await prisma.departmentAccess.findMany({

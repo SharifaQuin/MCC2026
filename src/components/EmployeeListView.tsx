@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { EmployeeSummaries } from "@/components/EmployeeList";
+import { getOnboardingPace } from "@/lib/onboardingPace";
 
 export type StatusFilter =
   | "ALL"
@@ -16,16 +17,15 @@ export type StatusFilter =
   | "DEPARTED";
 
 function onboardingDayBadge(createdAt: Date, active: boolean, mustSetPassword: boolean, certified: boolean) {
-  if (!active || mustSetPassword || certified) return null;
-  const day = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-  const overdue = day > 3;
+  const pace = getOnboardingPace({ createdAt, active, mustSetPassword, certified });
+  if (!pace) return null;
   return (
     <span
       className={`rounded-full px-3 py-1 text-xs font-medium ${
-        overdue ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
+        pace.overdue ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
       }`}
     >
-      {overdue ? `Day ${day} (past 3-day goal)` : `Day ${day} of 3`}
+      {pace.overdue ? `Day ${pace.day} (past 3-day goal)` : `Day ${pace.day} of 3`}
     </span>
   );
 }
