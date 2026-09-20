@@ -6,3 +6,6 @@ node_modules
 .DS_Store
 next-env.d.ts
 tsconfig.tsbuildinfo
+/playwright-report
+/test-results
+/blob-report
