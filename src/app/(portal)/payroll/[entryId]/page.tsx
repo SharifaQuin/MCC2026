@@ -82,6 +82,17 @@ export default async function PayrollEntryPage({ params }: { params: { entryId: 
         </div>
       )}
 
+      {entry.signedPdfDataUrl && (
+        <div className="mt-6">
+          <p className="mb-2 text-sm font-medium text-neutral-700">Signed PDF (kept in your employee file)</p>
+          <iframe
+            src={entry.signedPdfDataUrl}
+            title="Signed payroll PDF"
+            className="h-[70vh] w-full rounded-md border border-neutral-200"
+          />
+        </div>
+      )}
+
       {entry.status === "DISPUTED" && (
         <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <p className="font-medium">Your question has been sent to HR:</p>

@@ -643,17 +643,28 @@ export function EmployeeDetailView({
             ) : (
               <div className="space-y-2">
                 {payrollEntries.map((e) => (
-                  <Link
+                  <div
                     key={e.id}
-                    href={`/staff/payroll/${e.payPeriodId}`}
                     className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white p-3 text-sm hover:border-brand-300"
                   >
-                    <span className="font-medium">{e.payPeriodLabel}</span>
-                    <span className="text-neutral-500">
+                    <Link href={`/staff/payroll/${e.payPeriodId}`} className="font-medium">
+                      {e.payPeriodLabel}
+                    </Link>
+                    <span className="flex items-center gap-2 text-neutral-500">
                       {e.regularHours}h reg
                       {e.overtimeHours > 0 ? ` + ${e.overtimeHours}h OT` : ""} · {e.status}
+                      {e.signedPdfDataUrl && (
+                        <a
+                          href={e.signedPdfDataUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-brand-700 hover:underline"
+                        >
+                          Signed PDF
+                        </a>
+                      )}
                     </span>
-                  </Link>
+                  </div>
                 ))}
               </div>
             )}

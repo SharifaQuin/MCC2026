@@ -1110,6 +1110,11 @@ model PayrollEntry {
   status             PayrollEntryStatus @default(PENDING)
   signedAt           DateTime?
   signedName         String?
+  // A PDF snapshot of the entry as it looked at the moment of signing —
+  // generated once, on sign, same pattern as SignedDocument.pdfDataUrl.
+  // Cleared (along with signedAt/signedName) whenever the entry is reopened
+  // for a fresh review, since it would otherwise show stale hours.
+  signedPdfDataUrl   String?            @db.Text
   disputeNote        String?            @db.Text
   disputedAt         DateTime?
   resolutionNotes    String?            @db.Text

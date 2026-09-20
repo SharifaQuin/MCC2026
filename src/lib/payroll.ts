@@ -120,6 +120,7 @@ export interface PayrollEmployeeRow {
     attachmentDataUrl: string | null;
     signedAt: string | null;
     signedName: string | null;
+    signedPdfDataUrl: string | null;
     disputeNote: string | null;
     disputedAt: string | null;
     resolutionNotes: string | null;
@@ -166,6 +167,7 @@ export async function getPayPeriodDetail(payPeriodId: string) {
             attachmentDataUrl: e.attachmentDataUrl,
             signedAt: e.signedAt ? e.signedAt.toISOString() : null,
             signedName: e.signedName,
+            signedPdfDataUrl: e.signedPdfDataUrl,
             disputeNote: e.disputeNote,
             disputedAt: e.disputedAt ? e.disputedAt.toISOString() : null,
             resolutionNotes: e.resolutionNotes,
@@ -197,6 +199,7 @@ export async function getEmployeePayrollEntries(employeeId: string) {
     regularHours: e.regularHours,
     overtimeHours: e.overtimeHours,
     status: e.status,
+    signedPdfDataUrl: e.signedPdfDataUrl,
   }));
 }
 
@@ -223,8 +226,52 @@ export async function getPayrollEntryDetail(entryId: string, employeeId: string)
     attachmentFileName: entry.attachmentFileName,
     signedAt: entry.signedAt ? entry.signedAt.toISOString() : null,
     signedName: entry.signedName,
+    signedPdfDataUrl: entry.signedPdfDataUrl,
     disputeNote: entry.disputeNote,
     resolutionNotes: entry.resolutionNotes,
+    reportTotals: toReportTotals(entry),
+    jobLines: entry.jobLines.map(toJobLineView),
+    adjustments: entry.adjustments.map(toAdjustmentView),
+  };
+}
+
+export interface PayrollEntryForSigning {
+  employeeName: string;
+  payPeriodLabel: string;
+  startDate: Date;
+  endDate: Date;
+  regularHours: number;
+  overtimeHours: number;
+  reportTotals: PayrollReportTotals | null;
+  jobLines: PayrollJobLineView[];
+  adjustments: PayrollAdjustmentView[];
+}
+
+// Everything renderPayrollEntryPdf needs to snapshot the entry at the
+// moment it's signed — kept in the lib layer so the server action stays a
+// thin ownership check + PDF render + update.
+export async function getPayrollEntryForSigning(
+  entryId: string,
+  employeeId: string
+): Promise<PayrollEntryForSigning | null> {
+  const entry = await prisma.payrollEntry.findUnique({
+    where: { id: entryId },
+    include: {
+      payPeriod: true,
+      employee: { select: { name: true } },
+      jobLines: { orderBy: { performedDate: "asc" } },
+      adjustments: { orderBy: { date: "asc" } },
+    },
+  });
+  if (!entry || entry.employeeId !== employeeId) return null;
+
+  return {
+    employeeName: entry.employee.name,
+    payPeriodLabel: entry.payPeriod.label,
+    startDate: entry.payPeriod.startDate,
+    endDate: entry.payPeriod.endDate,
+    regularHours: entry.regularHours,
+    overtimeHours: entry.overtimeHours,
     reportTotals: toReportTotals(entry),
     jobLines: entry.jobLines.map(toJobLineView),
     adjustments: entry.adjustments.map(toAdjustmentView),
@@ -429,6 +476,7 @@ async function importPayrollReport(payPeriodId: string, report: ParsedPayrollRep
       status: "PENDING",
       signedAt: null,
       signedName: null,
+      signedPdfDataUrl: null,
       disputeNote: null,
       disputedAt: null,
       resolutionNotes: null,
@@ -489,6 +537,7 @@ async function importPayrollRows(payPeriodId: string, initialRows: string[][]): 
         status: "PENDING",
         signedAt: null,
         signedName: null,
+        signedPdfDataUrl: null,
         disputeNote: null,
         disputedAt: null,
         resolutionNotes: null,

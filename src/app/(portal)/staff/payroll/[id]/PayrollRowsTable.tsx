@@ -237,6 +237,20 @@ function Row({ payPeriodId, row }: { payPeriodId: string; row: PayrollEmployeeRo
       {entry?.signedAt && (
         <p className="mt-2 text-xs text-green-700">
           Approved by &ldquo;{entry.signedName}&rdquo; on {new Date(entry.signedAt).toLocaleString()}
+          {entry.signedPdfDataUrl && (
+            <>
+              {" "}
+              ·{" "}
+              <a
+                href={entry.signedPdfDataUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium underline"
+              >
+                View Signed PDF
+              </a>
+            </>
+          )}
         </p>
       )}
 

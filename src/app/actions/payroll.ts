@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { importPayrollCsv, importPayrollExcel } from "@/lib/payroll";
+import { importPayrollCsv, importPayrollExcel, getPayrollEntryForSigning } from "@/lib/payroll";
+import { renderPayrollEntryPdf } from "@/lib/payrollPdf";
 import { sendEmail } from "@/lib/email";
 
 async function requireHrAccess() {
@@ -90,6 +91,7 @@ export async function upsertPayrollEntryAction(
       status: "PENDING",
       signedAt: null,
       signedName: null,
+      signedPdfDataUrl: null,
       disputeNote: null,
       disputedAt: null,
       resolutionNotes: null,
@@ -176,12 +178,22 @@ export async function signPayrollEntryAction(entryId: string, formData: FormData
   const agreed = formData.get("agreed") === "on";
   if (!signedName || !agreed) return;
 
-  const entry = await prisma.payrollEntry.findUnique({ where: { id: entryId } });
-  if (!entry || entry.employeeId !== session.sub) return;
+  const entry = await getPayrollEntryForSigning(entryId, session.sub);
+  if (!entry) return;
+
+  const signedAt = new Date();
+  const signedPdfDataUrl = await renderPayrollEntryPdf({ ...entry, signedName, signedAt });
 
   await prisma.payrollEntry.update({
     where: { id: entryId },
-    data: { status: "APPROVED", signedAt: new Date(), signedName, disputeNote: null, disputedAt: null },
+    data: {
+      status: "APPROVED",
+      signedAt,
+      signedName,
+      signedPdfDataUrl,
+      disputeNote: null,
+      disputedAt: null,
+    },
   });
 
   revalidatePath("/payroll");

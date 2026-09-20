@@ -2,21 +2,29 @@ import fs from "fs";
 import path from "path";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 
-const PAGE_WIDTH = 612; // US Letter, points
-const PAGE_HEIGHT = 792;
-const MARGIN = 54;
-const BODY_FONT_SIZE = 11;
-const LINE_HEIGHT = 16;
+export const PAGE_WIDTH = 612; // US Letter, points
+export const PAGE_HEIGHT = 792;
+export const MARGIN = 54;
+export const BODY_FONT_SIZE = 11;
+export const LINE_HEIGHT = 16;
 
-const NAVY = rgb(0x1b / 255, 0x2a / 255, 0x4a / 255);
-const GOLD = rgb(0xc9 / 255, 0xa2 / 255, 0x27 / 255);
-const GRAY = rgb(0.45, 0.45, 0.45);
+export const NAVY = rgb(0x1b / 255, 0x2a / 255, 0x4a / 255);
+export const GOLD = rgb(0xc9 / 255, 0xa2 / 255, 0x27 / 255);
+export const GRAY = rgb(0.45, 0.45, 0.45);
 
 const LOGO_SIZE = 28;
-const HEADER_HEIGHT = 58;
-const FOOTER_Y = 28;
+export const HEADER_HEIGHT = 58;
+export const FOOTER_Y = 28;
 
-function drawLetterhead(page: PDFPage, logo: PDFImage, boldFont: PDFFont, font: PDFFont) {
+export async function loadLetterheadAssets(pdfDoc: PDFDocument) {
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const logoBytes = fs.readFileSync(path.join(process.cwd(), "public", "brand", "mcc-logo-mark.png"));
+  const logo = await pdfDoc.embedPng(logoBytes);
+  return { font, boldFont, logo };
+}
+
+export function drawLetterhead(page: PDFPage, logo: PDFImage, boldFont: PDFFont, font: PDFFont) {
   const logoY = PAGE_HEIGHT - MARGIN - LOGO_SIZE + 4;
   page.drawImage(logo, { x: MARGIN, y: logoY, width: LOGO_SIZE, height: LOGO_SIZE });
   page.drawText("Mama's Cleaning Crew", {
@@ -36,7 +44,7 @@ function drawLetterhead(page: PDFPage, logo: PDFImage, boldFont: PDFFont, font: 
   page.drawText("Mama's Cleaning Crew", { x: MARGIN, y: FOOTER_Y, size: 8, font, color: GRAY });
 }
 
-function wrapLine(text: string, font: PDFFont, fontSize: number, maxWidth: number): string[] {
+export function wrapLine(text: string, font: PDFFont, fontSize: number, maxWidth: number): string[] {
   if (!text) return [""];
   const words = text.split(" ");
   const lines: string[] = [];
