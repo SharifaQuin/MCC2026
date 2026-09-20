@@ -133,34 +133,43 @@ export default async function FinancialsPage({
         </div>
       )}
 
-      <section className="mb-8 flex items-center justify-between rounded-lg border border-neutral-200 bg-white p-4">
-        {quickBooksConnection ? (
-          <>
-            <p className="text-sm text-neutral-700">
-              <span className="font-medium text-green-700">✓ QuickBooks connected</span> — by{" "}
-              {quickBooksConnection.connectedBy.name}
+      <section className="mb-8 rounded-lg border border-neutral-200 bg-white p-4">
+        <div className="flex items-center justify-between">
+          {quickBooksConnection ? (
+            <>
+              <p className="text-sm text-neutral-700">
+                <span className="font-medium text-green-700">✓ QuickBooks connected</span> — by{" "}
+                {quickBooksConnection.connectedBy.name}
+              </p>
+              <form action={disconnectQuickBooksAction}>
+                <button type="submit" className="text-sm font-medium text-red-600 hover:underline">
+                  Disconnect
+                </button>
+              </form>
+            </>
+          ) : isQuickBooksConfigured() ? (
+            <>
+              <p className="text-sm text-neutral-500">Not connected to QuickBooks yet.</p>
+              <a
+                href="/api/quickbooks/connect"
+                className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+              >
+                Connect QuickBooks
+              </a>
+            </>
+          ) : (
+            <p className="text-sm text-neutral-500">
+              QuickBooks isn't set up yet — add QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET to enable it.
             </p>
-            <form action={disconnectQuickBooksAction}>
-              <button type="submit" className="text-sm font-medium text-red-600 hover:underline">
-                Disconnect
-              </button>
-            </form>
-          </>
-        ) : isQuickBooksConfigured() ? (
-          <>
-            <p className="text-sm text-neutral-500">Not connected to QuickBooks yet.</p>
-            <a
-              href="/api/quickbooks/connect"
-              className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-            >
-              Connect QuickBooks
-            </a>
-          </>
-        ) : (
-          <p className="text-sm text-neutral-500">
-            QuickBooks isn't set up yet — add QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET to enable it.
-          </p>
-        )}
+          )}
+        </div>
+        <p className="mt-2 text-xs text-neutral-400">
+          Trouble with the QuickBooks connection?{" "}
+          <a href="mailto:support@mamascleaningcrew.com" className="text-brand-600 underline">
+            Contact support
+          </a>
+          .
+        </p>
       </section>
 
       {latest && (

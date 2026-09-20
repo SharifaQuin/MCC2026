@@ -94,7 +94,13 @@ async function requestTokens(params: Record<string, string>, attempt = 1): Promi
     if (res.status >= 500 && attempt === 1) {
       return requestTokens(params, 2);
     }
-    throw new Error(`QuickBooks token request failed: ${await res.text()}`);
+    // intuit_tid identifies this exact request in Intuit's own logs — worth
+    // keeping in our server logs so their support team can look it up if we
+    // ever need to open a ticket about a token request that failed.
+    const intuitTid = res.headers.get("intuit_tid");
+    const body = await res.text();
+    console.error(`QuickBooks token request failed (status ${res.status}, intuit_tid ${intuitTid}): ${body}`);
+    throw new Error(`QuickBooks token request failed: ${body}`);
   }
   return tokensFromResponse((await res.json()) as TokenResponse);
 }
@@ -245,7 +251,14 @@ export async function fetchProfitAndLossSummary(
       },
     }
   );
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const intuitTid = res.headers.get("intuit_tid");
+    const body = await res.text();
+    console.error(
+      `QuickBooks P&L report request failed (status ${res.status}, intuit_tid ${intuitTid}): ${body}`
+    );
+    return null;
+  }
 
   const report = (await res.json()) as { Rows?: unknown };
   const totalIncome = findSummaryAmount(report.Rows, "Income");
@@ -254,7 +267,12 @@ export async function fetchProfitAndLossSummary(
   const totalExpenses = findSummaryAmount(report.Rows, "Expenses");
   const netIncome = findSummaryAmount(report.Rows, "NetIncome");
 
-  if (totalIncome === null || totalExpenses === null || netIncome === null) return null;
+  if (totalIncome === null || totalExpenses === null || netIncome === null) {
+    console.error(
+      `QuickBooks P&L report for ${startDate}..${endDate} didn't include the expected Income/Expenses/NetIncome summary rows.`
+    );
+    return null;
+  }
 
   return {
     totalIncome,
