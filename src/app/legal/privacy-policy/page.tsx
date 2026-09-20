@@ -116,8 +116,8 @@ export default function PrivacyPolicyPage() {
         <h2 className="mb-2 mt-8 text-base font-semibold text-neutral-900">8. Contact us</h2>
         <p className="mb-6">
           Questions about this policy or requests regarding your information can be sent to{" "}
-          <a href="mailto:shar@mamascleaningcrew.com" className="text-brand-700 underline">
-            shar@mamascleaningcrew.com
+          <a href="mailto:support@mamascleaningcrew.com" className="text-brand-700 underline">
+            support@mamascleaningcrew.com
           </a>
           .
         </p>

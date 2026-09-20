@@ -87,8 +87,8 @@ export default function TermsPage() {
         <h2 className="mb-2 mt-8 text-base font-semibold text-neutral-900">10. Contact us</h2>
         <p className="mb-6">
           Questions about these Terms can be sent to{" "}
-          <a href="mailto:shar@mamascleaningcrew.com" className="text-brand-700 underline">
-            shar@mamascleaningcrew.com
+          <a href="mailto:support@mamascleaningcrew.com" className="text-brand-700 underline">
+            support@mamascleaningcrew.com
           </a>
           .
         </p>
