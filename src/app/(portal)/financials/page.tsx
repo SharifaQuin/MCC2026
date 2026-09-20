@@ -21,6 +21,7 @@ function Field({
   step = "0.01",
   optional = false,
   readOnly = false,
+  type,
 }: {
   label: string;
   name: string;
@@ -28,6 +29,7 @@ function Field({
   step?: string;
   optional?: boolean;
   readOnly?: boolean;
+  type?: string;
 }) {
   return (
     <div>
@@ -36,7 +38,7 @@ function Field({
         {optional ? " (optional)" : ""}
       </label>
       <input
-        type={typeof defaultValue === "string" ? "text" : "number"}
+        type={type ?? (typeof defaultValue === "string" ? "text" : "number")}
         step={step}
         name={name}
         defaultValue={defaultValue ?? ""}
@@ -292,7 +294,7 @@ export default async function FinancialsPage({
           </h2>
           <form action={upsertMonthlyFinancialsAction} className="space-y-6">
             <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-              <Field label="Month (YYYY-MM)" name="month" defaultValue={editing?.month ?? ""} readOnly={!isNew} />
+              <Field label="Month" name="month" type="month" defaultValue={editing?.month ?? ""} readOnly={!isNew} />
               <Field label="Month label (e.g. Jan)" name="monthLabel" defaultValue={editing?.monthLabel ?? ""} />
             </div>
 
