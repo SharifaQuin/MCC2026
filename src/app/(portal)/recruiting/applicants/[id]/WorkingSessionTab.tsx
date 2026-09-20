@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { saveWorkingSessionAction } from "../actions";
 import { INTERVIEW_RECOMMENDATION_LABELS } from "@/lib/recruiting";
 
@@ -50,6 +50,7 @@ export default function WorkingSessionTab({
   canEdit: boolean;
 }) {
   const [pending, startTransition] = useTransition();
+  const [saved, setSaved] = useState(false);
   const checkedByLabel = new Map((record?.preSessionChecklist ?? []).map((c) => [c.label, c.checked]));
 
   return (
@@ -57,6 +58,8 @@ export default function WorkingSessionTab({
       action={(formData) =>
         startTransition(async () => {
           await saveWorkingSessionAction(applicantId, checklistLabels, formData);
+          setSaved(true);
+          setTimeout(() => setSaved(false), 3000);
         })
       }
       className="space-y-6"
@@ -199,13 +202,16 @@ export default function WorkingSessionTab({
       </div>
 
       {canEdit && (
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
-        >
-          {pending ? "Saving..." : "Save Working Session"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+          >
+            {pending ? "Saving..." : "Save Working Session"}
+          </button>
+          {saved && <span className="text-sm font-medium text-green-700">✓ Saved</span>}
+        </div>
       )}
     </form>
   );

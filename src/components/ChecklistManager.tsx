@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useFormStatus } from "react-dom";
+import { useRef, useState, useTransition } from "react";
 import {
   addChecklistTaskAction,
   bulkAddChecklistTasksAction,
@@ -225,16 +224,84 @@ function TaskRow({ task }: { task: ChecklistRow }) {
   );
 }
 
-function AddSubmitButton() {
-  const { pending } = useFormStatus();
+function AddTaskForm() {
+  const [pending, startTransition] = useTransition();
+  const [saved, setSaved] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    startTransition(async () => {
+      await addChecklistTaskAction(formData);
+      formRef.current?.reset();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    });
+  }
+
   return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+    <form
+      ref={formRef}
+      onSubmit={handleSubmit}
+      className="mb-4 grid grid-cols-2 gap-3 rounded-md border border-neutral-200 p-4 md:grid-cols-4"
     >
-      {pending ? "Adding..." : "Add task"}
-    </button>
+      <div className="col-span-2 md:col-span-4">
+        <label className="mb-1 block text-xs font-medium text-neutral-600">Task</label>
+        <input name="task" required className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm" />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-neutral-600">Frequency</label>
+        <select name="frequency" className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm">
+          <option value="DAILY">Daily</option>
+          <option value="WEEKLY">Weekly</option>
+          <option value="MONTHLY">Monthly</option>
+          <option value="ONE_TIME">One-Time</option>
+          <option value="MILESTONE">Milestone</option>
+        </select>
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-neutral-600">Category</label>
+        <select name="category" className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm">
+          <option value="MARKETING">Marketing</option>
+          <option value="SALES">Sales</option>
+          <option value="HR">HR</option>
+          <option value="MANAGEMENT">Management/Admin</option>
+        </select>
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-neutral-600">Owner</label>
+        <select name="owner" className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm">
+          <option value="OWNER">Owner</option>
+          <option value="TEAM">Team</option>
+        </select>
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-neutral-600">Visible to</label>
+        <select name="visibility" className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm">
+          <option value="OWNER_ONLY">Owner only</option>
+          <option value="TEAM">Team</option>
+        </select>
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-neutral-600">Target date (optional)</label>
+        <input type="date" name="targetDate" className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm" />
+        <p className="mt-1 text-[11px] text-neutral-400">
+          One-Time/Milestone only — defaults to 3 days out if left blank. Monthly is always due month-end;
+          Daily/Weekly don&apos;t use a due date.
+        </p>
+      </div>
+      <div className="col-span-2 flex items-center gap-3 md:col-span-4">
+        <button
+          type="submit"
+          disabled={pending}
+          className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+        >
+          {pending ? "Adding..." : "Add task"}
+        </button>
+        {saved && <span className="text-sm font-medium text-green-700">✓ Task added</span>}
+      </div>
+    </form>
   );
 }
 
@@ -415,61 +482,7 @@ export default function ChecklistManager({ tasks }: { tasks: ChecklistRow[] }) {
 
       {showBulkAdd && <BulkAddPanel onDone={() => setShowBulkAdd(false)} />}
 
-      {showAdd && (
-        <form
-          action={addChecklistTaskAction}
-          className="mb-4 grid grid-cols-2 gap-3 rounded-md border border-neutral-200 p-4 md:grid-cols-4"
-        >
-          <div className="col-span-2 md:col-span-4">
-            <label className="mb-1 block text-xs font-medium text-neutral-600">Task</label>
-            <input name="task" required className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-neutral-600">Frequency</label>
-            <select name="frequency" className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm">
-              <option value="DAILY">Daily</option>
-              <option value="WEEKLY">Weekly</option>
-              <option value="MONTHLY">Monthly</option>
-              <option value="ONE_TIME">One-Time</option>
-              <option value="MILESTONE">Milestone</option>
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-neutral-600">Category</label>
-            <select name="category" className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm">
-              <option value="MARKETING">Marketing</option>
-              <option value="SALES">Sales</option>
-              <option value="HR">HR</option>
-              <option value="MANAGEMENT">Management/Admin</option>
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-neutral-600">Owner</label>
-            <select name="owner" className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm">
-              <option value="OWNER">Owner</option>
-              <option value="TEAM">Team</option>
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-neutral-600">Visible to</label>
-            <select name="visibility" className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm">
-              <option value="OWNER_ONLY">Owner only</option>
-              <option value="TEAM">Team</option>
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-neutral-600">Target date (optional)</label>
-            <input type="date" name="targetDate" className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm" />
-            <p className="mt-1 text-[11px] text-neutral-400">
-              One-Time/Milestone only — defaults to 3 days out if left blank. Monthly is always due month-end;
-              Daily/Weekly don&apos;t use a due date.
-            </p>
-          </div>
-          <div className="col-span-2 md:col-span-4">
-            <AddSubmitButton />
-          </div>
-        </form>
-      )}
+      {showAdd && <AddTaskForm />}
 
       {active.length === 0 ? (
         <p className="text-sm text-neutral-400">Nothing active right now.</p>

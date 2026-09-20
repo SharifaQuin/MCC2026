@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { savePhoneScreenAction } from "../actions";
 import { PHONE_SCREEN_OUTCOME_LABELS } from "@/lib/recruiting";
 
@@ -41,6 +41,7 @@ export default function PhoneScreenTab({
   canEdit: boolean;
 }) {
   const [pending, startTransition] = useTransition();
+  const [saved, setSaved] = useState(false);
   const questionIds = questions.map((q) => q.id);
 
   const checkedByLabel = new Map((criteriaChecklist ?? []).map((c) => [c.label, c.checked]));
@@ -50,6 +51,8 @@ export default function PhoneScreenTab({
       action={(formData) =>
         startTransition(async () => {
           await savePhoneScreenAction(applicantId, questionIds, criteriaLabels, formData);
+          setSaved(true);
+          setTimeout(() => setSaved(false), 3000);
         })
       }
       className="space-y-6"
@@ -148,13 +151,16 @@ export default function PhoneScreenTab({
       </div>
 
       {canEdit && (
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
-        >
-          {pending ? "Saving..." : "Save Phone Screen"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+          >
+            {pending ? "Saving..." : "Save Phone Screen"}
+          </button>
+          {saved && <span className="text-sm font-medium text-green-700">✓ Saved</span>}
+        </div>
       )}
     </form>
   );

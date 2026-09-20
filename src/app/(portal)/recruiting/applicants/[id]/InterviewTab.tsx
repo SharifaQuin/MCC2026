@@ -102,6 +102,7 @@ export default function InterviewTab({
   canEdit: boolean;
 }) {
   const [answersPending, startAnswersTransition] = useTransition();
+  const [answersSaved, setAnswersSaved] = useState(false);
   const [scorecardPending, startScorecardTransition] = useTransition();
   const [showNewScorecard, setShowNewScorecard] = useState(false);
   const questionIds = questions.map((q) => q.id);
@@ -112,6 +113,8 @@ export default function InterviewTab({
         action={(formData) =>
           startAnswersTransition(async () => {
             await saveInterviewAnswersAction(applicantId, questionIds, formData);
+            setAnswersSaved(true);
+            setTimeout(() => setAnswersSaved(false), 3000);
           })
         }
         className="rounded-lg border border-neutral-200 bg-white p-4"
@@ -145,13 +148,16 @@ export default function InterviewTab({
           )}
         </div>
         {canEdit && questions.length > 0 && (
-          <button
-            type="submit"
-            disabled={answersPending}
-            className="mt-4 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
-          >
-            {answersPending ? "Saving..." : "Save Answers"}
-          </button>
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={answersPending}
+              className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+            >
+              {answersPending ? "Saving..." : "Save Answers"}
+            </button>
+            {answersSaved && <span className="text-sm font-medium text-green-700">✓ Saved</span>}
+          </div>
         )}
       </form>
 
