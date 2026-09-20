@@ -1077,11 +1077,17 @@ enum PayrollEntryStatus {
 }
 
 // One employee's hours for one pay period. Hours get in here either typed
-// in directly or bulk-imported from a CSV export; attachmentDataUrl is an
-// optional reference document (e.g. a timesheet PDF) attached alongside —
-// it's just shown to the employee, not parsed for its hours. The employee
-// then reviews and either signs off (signedAt/signedName, same e-signature
-// pattern as OnboardingAssignment) or disputes it with a note.
+// in directly, bulk-imported from a simple CSV export, or imported from the
+// scheduling platform's per-employee payroll report workbook (one sheet per
+// cleaner, with a per-job and per-adjustment breakdown — see PayrollJobLine
+// and PayrollAdjustment). The totals* fields below are only populated for
+// that richer import path and are trusted as given rather than re-derived
+// from the job/adjustment rows, same reasoning as MonthlyFinancials.
+// attachmentDataUrl is an optional reference document (e.g. a timesheet
+// PDF) attached alongside — it's just shown to the employee, not parsed for
+// its hours. The employee then reviews and either signs off (signedAt/
+// signedName, same e-signature pattern as OnboardingAssignment) or disputes
+// it with a note.
 model PayrollEntry {
   id                 String             @id @default(cuid())
   payPeriodId        String
@@ -1090,6 +1096,15 @@ model PayrollEntry {
   employee           User               @relation("EmployeePayrollEntries", fields: [employeeId], references: [id], onDelete: Cascade)
   regularHours       Float
   overtimeHours      Float              @default(0)
+  // Report totals, only set when imported from a payroll report workbook.
+  totalPayout        Float?
+  jobsPayout         Float?
+  adjustmentsPayout  Float?
+  totalHours         Float?
+  avgPayPerHour      Float?
+  estimatedHours     Float?
+  jobLines           PayrollJobLine[]
+  adjustments        PayrollAdjustment[]
   attachmentDataUrl  String?            @db.Text
   attachmentFileName String?
   status             PayrollEntryStatus @default(PENDING)
@@ -1104,6 +1119,48 @@ model PayrollEntry {
 
   @@unique([payPeriodId, employeeId])
   @@index([employeeId])
+}
+
+// One completed job/cleaning visit that fed into a payroll report's payout
+// for that pay period, imported verbatim from the scheduling platform's
+// per-job table (Job ID, Customer, Service Type, ...).
+model PayrollJobLine {
+  id               String       @id @default(cuid())
+  payrollEntryId   String
+  payrollEntry     PayrollEntry @relation(fields: [payrollEntryId], references: [id], onDelete: Cascade)
+  jobExternalId    String
+  customer         String
+  serviceType      String
+  performedDate    DateTime?
+  clockIn          String
+  clockOut         String
+  actualTimeHours  Float
+  serviceTimeHours Float
+  payout           Float
+  notes            String?      @db.Text
+  createdAt        DateTime     @default(now())
+
+  @@index([payrollEntryId])
+}
+
+// One bonus/mileage/tip/travel-time/break-time adjustment that fed into a
+// payroll report's payout, imported verbatim from the scheduling platform's
+// per-adjustment table.
+model PayrollAdjustment {
+  id             String       @id @default(cuid())
+  payrollEntryId String
+  payrollEntry   PayrollEntry @relation(fields: [payrollEntryId], references: [id], onDelete: Cascade)
+  sourceId       String
+  amount         Float
+  hours          Float
+  type           String
+  description    String       @db.Text
+  date           DateTime?
+  clockIn        String?
+  clockOut       String?
+  createdAt      DateTime     @default(now())
+
+  @@index([payrollEntryId])
 }
 
 // One calendar month's full P&L, as reconciled by the owner/CFO agent from

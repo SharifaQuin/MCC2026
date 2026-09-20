@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { getPayrollEntryDetail } from "@/lib/payroll";
 import { signPayrollEntryAction, disputePayrollEntryAction } from "@/app/actions/payroll";
+import PayrollBreakdown from "@/components/PayrollBreakdown";
 
 export default async function PayrollEntryPage({ params }: { params: { entryId: string } }) {
   const session = await getSession();
@@ -36,6 +37,12 @@ export default async function PayrollEntryPage({ params }: { params: { entryId: 
           </div>
         </dl>
 
+        <PayrollBreakdown
+          reportTotals={entry.reportTotals}
+          jobLines={entry.jobLines}
+          adjustments={entry.adjustments}
+        />
+
         {entry.attachmentDataUrl && (
           <div className="mt-4 border-t border-neutral-200 pt-4">
             <a
@@ -59,7 +66,19 @@ export default async function PayrollEntryPage({ params }: { params: { entryId: 
 
       {entry.status === "APPROVED" && (
         <div className="mt-6 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
-          Approved by <span className="font-medium">{entry.signedName}</span>.
+          <p className="mb-2">I confirm that the above hours are accurate to the best of my knowledge.</p>
+          <dl className="grid grid-cols-2 gap-4">
+            <div>
+              <dt className="text-xs text-green-700">Authorized Signature</dt>
+              <dd className="font-medium">{entry.signedName}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-green-700">Authorized Date</dt>
+              <dd className="font-medium">
+                {entry.signedAt ? new Date(entry.signedAt).toLocaleDateString() : "—"}
+              </dd>
+            </div>
+          </dl>
         </div>
       )}
 
@@ -91,7 +110,7 @@ export default async function PayrollEntryPage({ params }: { params: { entryId: 
             />
             <label className="mb-4 flex items-start gap-2 text-sm text-neutral-700">
               <input type="checkbox" name="agreed" required className="mt-1 h-4 w-4" />
-              <span>I confirm these hours are accurate.</span>
+              <span>I confirm that the above hours are accurate to the best of my knowledge.</span>
             </label>
             <button
               type="submit"

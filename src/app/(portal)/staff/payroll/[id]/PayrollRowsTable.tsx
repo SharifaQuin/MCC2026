@@ -10,6 +10,7 @@ import {
 } from "@/app/actions/payroll";
 import { fileToDataUrl } from "@/lib/fileToDataUrl";
 import type { PayrollEmployeeRow } from "@/lib/payroll";
+import PayrollBreakdown from "@/components/PayrollBreakdown";
 
 const STATUS_STYLES: Record<string, string> = {
   PENDING: "bg-amber-100 text-amber-700",
@@ -174,8 +175,10 @@ function DisputeResolution({
 
 function Row({ payPeriodId, row }: { payPeriodId: string; row: PayrollEmployeeRow }) {
   const [editing, setEditing] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
   const [pending, startTransition] = useTransition();
   const { entry } = row;
+  const hasReportDetail = !!entry?.reportTotals;
 
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -197,6 +200,15 @@ function Row({ payPeriodId, row }: { payPeriodId: string; row: PayrollEmployeeRo
             <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLES[entry.status]}`}>
               {entry.status}
             </span>
+          )}
+          {hasReportDetail && (
+            <button
+              type="button"
+              onClick={() => setShowDetail((s) => !s)}
+              className="text-xs font-medium text-brand-700 hover:underline"
+            >
+              {showDetail ? "Hide Detail" : "View Detail"}
+            </button>
           )}
           <button
             type="button"
@@ -242,6 +254,14 @@ function Row({ payPeriodId, row }: { payPeriodId: string; row: PayrollEmployeeRo
       )}
       {entry?.status === "DISPUTED" && (
         <DisputeResolution payPeriodId={payPeriodId} entryId={entry.id} />
+      )}
+
+      {showDetail && entry && (
+        <PayrollBreakdown
+          reportTotals={entry.reportTotals}
+          jobLines={entry.jobLines}
+          adjustments={entry.adjustments}
+        />
       )}
 
       {editing && (

@@ -46,9 +46,11 @@ export default function CsvImportForm({ payPeriodId }: { payPeriodId: string }) 
           className="block w-full text-sm"
         />
         <p className="mt-1 text-xs text-neutral-400">
-          Columns: email, regularHours, overtimeHours (overtime optional). An optional header row
-          starting with &quot;email&quot; is fine. Re-importing an employee&apos;s row overwrites
-          their hours and re-opens the entry for their review.
+          Upload the scheduling platform&apos;s payroll report workbook as-is (one sheet per
+          cleaner, matched by name) to import job-by-job hours, pay, and adjustments — or a simple
+          file with columns email, regularHours, overtimeHours (overtime optional; an optional
+          header row starting with &quot;email&quot; is fine). Re-importing an employee&apos;s row
+          overwrites their hours and re-opens the entry for their review.
         </p>
       </div>
       {state?.error && <p className="text-sm text-red-600">{state.error}</p>}

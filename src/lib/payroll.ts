@@ -23,6 +23,90 @@ export async function getPayPeriodsOverview() {
   }));
 }
 
+export interface PayrollJobLineView {
+  id: string;
+  jobExternalId: string;
+  customer: string;
+  serviceType: string;
+  performedDate: string | null;
+  clockIn: string;
+  clockOut: string;
+  actualTimeHours: number;
+  serviceTimeHours: number;
+  payout: number;
+  notes: string | null;
+}
+
+export interface PayrollAdjustmentView {
+  id: string;
+  sourceId: string;
+  amount: number;
+  hours: number;
+  type: string;
+  description: string;
+  date: string | null;
+  clockIn: string | null;
+  clockOut: string | null;
+}
+
+export interface PayrollReportTotals {
+  totalPayout: number;
+  jobsPayout: number;
+  adjustmentsPayout: number;
+  totalHours: number;
+  avgPayPerHour: number;
+  estimatedHours: number;
+}
+
+function toJobLineView(j: {
+  id: string;
+  jobExternalId: string;
+  customer: string;
+  serviceType: string;
+  performedDate: Date | null;
+  clockIn: string;
+  clockOut: string;
+  actualTimeHours: number;
+  serviceTimeHours: number;
+  payout: number;
+  notes: string | null;
+}): PayrollJobLineView {
+  return { ...j, performedDate: j.performedDate ? j.performedDate.toISOString() : null };
+}
+
+function toAdjustmentView(a: {
+  id: string;
+  sourceId: string;
+  amount: number;
+  hours: number;
+  type: string;
+  description: string;
+  date: Date | null;
+  clockIn: string | null;
+  clockOut: string | null;
+}): PayrollAdjustmentView {
+  return { ...a, date: a.date ? a.date.toISOString() : null };
+}
+
+function toReportTotals(e: {
+  totalPayout: number | null;
+  jobsPayout: number | null;
+  adjustmentsPayout: number | null;
+  totalHours: number | null;
+  avgPayPerHour: number | null;
+  estimatedHours: number | null;
+}): PayrollReportTotals | null {
+  if (e.totalPayout === null) return null;
+  return {
+    totalPayout: e.totalPayout,
+    jobsPayout: e.jobsPayout ?? 0,
+    adjustmentsPayout: e.adjustmentsPayout ?? 0,
+    totalHours: e.totalHours ?? 0,
+    avgPayPerHour: e.avgPayPerHour ?? 0,
+    estimatedHours: e.estimatedHours ?? 0,
+  };
+}
+
 export interface PayrollEmployeeRow {
   employeeId: string;
   name: string;
@@ -40,6 +124,9 @@ export interface PayrollEmployeeRow {
     disputedAt: string | null;
     resolutionNotes: string | null;
     resolvedAt: string | null;
+    reportTotals: PayrollReportTotals | null;
+    jobLines: PayrollJobLineView[];
+    adjustments: PayrollAdjustmentView[];
   } | null;
 }
 
@@ -53,7 +140,13 @@ export async function getPayPeriodDetail(payPeriodId: string) {
       orderBy: { name: "asc" },
       select: { id: true, name: true, email: true },
     }),
-    prisma.payrollEntry.findMany({ where: { payPeriodId } }),
+    prisma.payrollEntry.findMany({
+      where: { payPeriodId },
+      include: {
+        jobLines: { orderBy: { performedDate: "asc" } },
+        adjustments: { orderBy: { date: "asc" } },
+      },
+    }),
   ]);
 
   const entryByEmployee = new Map(entries.map((e) => [e.employeeId, e]));
@@ -77,6 +170,9 @@ export async function getPayPeriodDetail(payPeriodId: string) {
             disputedAt: e.disputedAt ? e.disputedAt.toISOString() : null,
             resolutionNotes: e.resolutionNotes,
             resolvedAt: e.resolvedAt ? e.resolvedAt.toISOString() : null,
+            reportTotals: toReportTotals(e),
+            jobLines: e.jobLines.map(toJobLineView),
+            adjustments: e.adjustments.map(toAdjustmentView),
           }
         : null,
     };
@@ -107,7 +203,11 @@ export async function getEmployeePayrollEntries(employeeId: string) {
 export async function getPayrollEntryDetail(entryId: string, employeeId: string) {
   const entry = await prisma.payrollEntry.findUnique({
     where: { id: entryId },
-    include: { payPeriod: true },
+    include: {
+      payPeriod: true,
+      jobLines: { orderBy: { performedDate: "asc" } },
+      adjustments: { orderBy: { date: "asc" } },
+    },
   });
   if (!entry || entry.employeeId !== employeeId) return null;
 
@@ -125,6 +225,9 @@ export async function getPayrollEntryDetail(entryId: string, employeeId: string)
     signedName: entry.signedName,
     disputeNote: entry.disputeNote,
     resolutionNotes: entry.resolutionNotes,
+    reportTotals: toReportTotals(entry),
+    jobLines: entry.jobLines.map(toJobLineView),
+    adjustments: entry.adjustments.map(toAdjustmentView),
   };
 }
 
@@ -157,12 +260,10 @@ function excelCellToString(value: ExcelJS.CellValue): string {
   return String(value).trim();
 }
 
-async function parseExcel(buffer: ArrayBuffer): Promise<string[][]> {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer);
-  const worksheet = workbook.worksheets[0];
-  if (!worksheet) return [];
-
+// Blank rows are dropped entirely (not kept as empty arrays) so table
+// sections in the richer report format below can be sliced out purely by
+// locating their header rows, with no blank-row bookkeeping needed.
+function sheetToRows(worksheet: ExcelJS.Worksheet): string[][] {
   const rows: string[][] = [];
   worksheet.eachRow({ includeEmpty: false }, (row) => {
     const cells: string[] = [];
@@ -172,6 +273,184 @@ async function parseExcel(buffer: ArrayBuffer): Promise<string[][]> {
     if (cells.some((c) => c.length > 0)) rows.push(cells);
   });
   return rows;
+}
+
+// The scheduling platform's report dates look like "Tue 08, Sep 2026" —
+// weekday and day are swapped from a format JS can parse directly, so pull
+// out month/day/year and reassemble.
+function parseReportDate(raw: string): Date | null {
+  const s = raw.trim();
+  if (!s) return null;
+  const m = s.match(/^\w+\s+(\d{1,2}),\s*(\w+)\s+(\d{4})$/);
+  const candidate = m ? `${m[2]} ${m[1]}, ${m[3]}` : s;
+  const d = new Date(candidate);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+interface ParsedJobLine {
+  jobExternalId: string;
+  customer: string;
+  serviceType: string;
+  performedDate: Date | null;
+  clockIn: string;
+  clockOut: string;
+  actualTimeHours: number;
+  serviceTimeHours: number;
+  payout: number;
+  notes: string | null;
+}
+
+interface ParsedAdjustment {
+  sourceId: string;
+  amount: number;
+  hours: number;
+  type: string;
+  description: string;
+  date: Date | null;
+  clockIn: string | null;
+  clockOut: string | null;
+}
+
+interface ParsedPayrollReport {
+  employeeName: string;
+  totalPayout: number;
+  jobsPayout: number;
+  adjustmentsPayout: number;
+  totalHours: number;
+  avgPayPerHour: number;
+  estimatedHours: number;
+  jobs: ParsedJobLine[];
+  adjustments: ParsedAdjustment[];
+}
+
+// The scheduling platform exports one sheet per cleaner for the pay period,
+// each starting with a literal "Payroll report" cell, an info row (name,
+// employee ID, date range), a totals row, then a per-job table and a
+// per-adjustment table. Returns null if this sheet isn't in that format,
+// so callers can fall back to the plain 3-column layout.
+function parsePayrollReportSheet(rows: string[][]): ParsedPayrollReport | null {
+  if (rows[0]?.[0] !== "Payroll report") return null;
+
+  const infoRow = rows[1] ?? [];
+  const cleanerIdx = infoRow.indexOf("Cleaner");
+  const employeeName = cleanerIdx >= 0 ? (infoRow[cleanerIdx + 1] ?? "").trim() : "";
+
+  const totalsLabelRow = rows[2] ?? [];
+  const totalsValueRow = rows[3] ?? [];
+  const totals: Record<string, number> = {};
+  totalsLabelRow.forEach((label, i) => {
+    const n = parseFloat(totalsValueRow[i] ?? "");
+    if (label && Number.isFinite(n)) totals[label] = n;
+  });
+
+  const jobHeaderIdx = rows.findIndex((r) => r[0] === "Job ID");
+  const adjHeaderIdx = rows.findIndex((r) => r[0] === "ID" && r[1] === "Amount");
+
+  const jobRows = jobHeaderIdx >= 0 ? rows.slice(jobHeaderIdx + 1, adjHeaderIdx >= 0 ? adjHeaderIdx : undefined) : [];
+  const adjRows = adjHeaderIdx >= 0 ? rows.slice(adjHeaderIdx + 1) : [];
+
+  const jobs: ParsedJobLine[] = jobRows
+    .filter((r) => r[0])
+    .map((r) => ({
+      jobExternalId: r[0],
+      customer: r[1] ?? "",
+      serviceType: r[2] ?? "",
+      performedDate: parseReportDate(r[3] ?? ""),
+      clockIn: r[4] ?? "",
+      clockOut: r[5] ?? "",
+      actualTimeHours: parseFloat(r[6] ?? "") || 0,
+      serviceTimeHours: parseFloat(r[7] ?? "") || 0,
+      payout: parseFloat(r[8] ?? "") || 0,
+      notes: (r[9] ?? "").trim() || null,
+    }));
+
+  const adjustments: ParsedAdjustment[] = adjRows
+    .filter((r) => r[0])
+    .map((r) => ({
+      sourceId: r[0],
+      amount: parseFloat(r[1] ?? "") || 0,
+      hours: parseFloat(r[2] ?? "") || 0,
+      type: r[3] ?? "",
+      description: (r[4] ?? "").trim(),
+      date: parseReportDate(r[5] ?? ""),
+      clockIn: (r[6] ?? "").trim() || null,
+      clockOut: (r[7] ?? "").trim() || null,
+    }));
+
+  return {
+    employeeName,
+    totalPayout: totals["Payout"] ?? 0,
+    jobsPayout: totals["Jobs"] ?? 0,
+    adjustmentsPayout: totals["Adjustments"] ?? 0,
+    totalHours: totals["Time"] ?? 0,
+    avgPayPerHour: totals["Average Pay Per Hour"] ?? 0,
+    estimatedHours: totals["Estimated time"] ?? 0,
+    jobs,
+    adjustments,
+  };
+}
+
+// Employees aren't identified by email in this report format, only by
+// full name — match case/whitespace-insensitively against the roster.
+async function importPayrollReport(payPeriodId: string, report: ParsedPayrollReport): Promise<string | null> {
+  const name = report.employeeName.trim().toLowerCase();
+  if (!name) return "A sheet is missing the cleaner's name.";
+
+  const employees = await prisma.user.findMany({
+    where: { isTestAccount: false, active: true },
+    select: { id: true, name: true },
+  });
+  const employee = employees.find((e) => e.name.trim().toLowerCase() === name);
+  if (!employee) return `No employee found named "${report.employeeName}".`;
+
+  const entry = await prisma.payrollEntry.upsert({
+    where: { payPeriodId_employeeId: { payPeriodId, employeeId: employee.id } },
+    create: {
+      payPeriodId,
+      employeeId: employee.id,
+      regularHours: report.totalHours,
+      overtimeHours: 0,
+      totalPayout: report.totalPayout,
+      jobsPayout: report.jobsPayout,
+      adjustmentsPayout: report.adjustmentsPayout,
+      totalHours: report.totalHours,
+      avgPayPerHour: report.avgPayPerHour,
+      estimatedHours: report.estimatedHours,
+    },
+    update: {
+      regularHours: report.totalHours,
+      overtimeHours: 0,
+      totalPayout: report.totalPayout,
+      jobsPayout: report.jobsPayout,
+      adjustmentsPayout: report.adjustmentsPayout,
+      totalHours: report.totalHours,
+      avgPayPerHour: report.avgPayPerHour,
+      estimatedHours: report.estimatedHours,
+      status: "PENDING",
+      signedAt: null,
+      signedName: null,
+      disputeNote: null,
+      disputedAt: null,
+      resolutionNotes: null,
+      resolvedAt: null,
+    },
+  });
+
+  await prisma.payrollJobLine.deleteMany({ where: { payrollEntryId: entry.id } });
+  await prisma.payrollAdjustment.deleteMany({ where: { payrollEntryId: entry.id } });
+
+  if (report.jobs.length > 0) {
+    await prisma.payrollJobLine.createMany({
+      data: report.jobs.map((j) => ({ payrollEntryId: entry.id, ...j })),
+    });
+  }
+  if (report.adjustments.length > 0) {
+    await prisma.payrollAdjustment.createMany({
+      data: report.adjustments.map((a) => ({ payrollEntryId: entry.id, ...a })),
+    });
+  }
+
+  return null;
 }
 
 // Expected columns: email, regularHours, overtimeHours (overtime optional,
@@ -230,5 +509,27 @@ export async function importPayrollExcel(
   payPeriodId: string,
   buffer: ArrayBuffer
 ): Promise<CsvImportResult> {
-  return importPayrollRows(payPeriodId, await parseExcel(buffer));
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const firstSheet = workbook.worksheets[0];
+  if (!firstSheet) return { imported: 0, errors: ["The uploaded file has no sheets."] };
+
+  const looksLikeReportWorkbook = firstSheet.getRow(1).getCell(1).value === "Payroll report";
+  if (!looksLikeReportWorkbook) {
+    return importPayrollRows(payPeriodId, sheetToRows(firstSheet));
+  }
+
+  const errors: string[] = [];
+  let imported = 0;
+  for (const worksheet of workbook.worksheets) {
+    const report = parsePayrollReportSheet(sheetToRows(worksheet));
+    if (!report) {
+      errors.push(`Skipped sheet "${worksheet.name}" — not a recognized payroll report format.`);
+      continue;
+    }
+    const error = await importPayrollReport(payPeriodId, report);
+    if (error) errors.push(`${worksheet.name}: ${error}`);
+    else imported += 1;
+  }
+  return { imported, errors };
 }
