@@ -4,7 +4,13 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { importPayrollCsv, importPayrollExcel, getPayrollEntryForSigning } from "@/lib/payroll";
+import {
+  importPayrollCsv,
+  importPayrollExcel,
+  getPayrollEntryForSigning,
+  attachUnmatchedPayrollReport,
+  dismissUnmatchedPayrollReport,
+} from "@/lib/payroll";
 import { renderPayrollEntryPdf } from "@/lib/payrollPdf";
 import { sendEmail } from "@/lib/email";
 
@@ -146,6 +152,39 @@ export async function importPayrollCsvAction(
   revalidatePath(`/staff/payroll/${payPeriodId}`);
   revalidatePath("/payroll");
   return { imported: result.imported, errors: result.errors };
+}
+
+export interface AttachUnmatchedState {
+  error?: string;
+}
+
+export async function attachUnmatchedPayrollReportAction(
+  unmatchedId: string,
+  payPeriodId: string,
+  _prevState: AttachUnmatchedState,
+  formData: FormData
+): Promise<AttachUnmatchedState> {
+  try {
+    await requireHrAccess();
+  } catch {
+    return { error: "Not authorized." };
+  }
+
+  const employeeId = String(formData.get("employeeId") ?? "");
+  if (!employeeId) return { error: "Please choose an employee to attach this to." };
+
+  const error = await attachUnmatchedPayrollReport(unmatchedId, employeeId);
+  if (error) return { error };
+
+  revalidatePath(`/staff/payroll/${payPeriodId}`);
+  revalidatePath("/payroll");
+  return {};
+}
+
+export async function dismissUnmatchedPayrollReportAction(unmatchedId: string, payPeriodId: string) {
+  await requireHrAccess();
+  await dismissUnmatchedPayrollReport(unmatchedId);
+  revalidatePath(`/staff/payroll/${payPeriodId}`);
 }
 
 export async function resolveDisputeAction(

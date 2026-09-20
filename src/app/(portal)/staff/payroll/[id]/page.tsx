@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getPayPeriodDetail } from "@/lib/payroll";
+import { getPayPeriodDetail, getUnmatchedPayrollReports, getAttachableEmployees } from "@/lib/payroll";
 import CsvImportForm from "./CsvImportForm";
 import PayrollRowsTable from "./PayrollRowsTable";
+import UnmatchedPayrollReports from "./UnmatchedPayrollReports";
 
 export default async function AdminPayPeriodPage({ params }: { params: { id: string } }) {
   const detail = await getPayPeriodDetail(params.id);
@@ -10,6 +11,10 @@ export default async function AdminPayPeriodPage({ params }: { params: { id: str
 
   const { payPeriod, rows } = detail;
   const disputeCount = rows.filter((r) => r.entry?.status === "DISPUTED").length;
+  const [unmatched, employees] = await Promise.all([
+    getUnmatchedPayrollReports(payPeriod.id),
+    getAttachableEmployees(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -30,6 +35,8 @@ export default async function AdminPayPeriodPage({ params }: { params: { id: str
       </div>
 
       <CsvImportForm payPeriodId={payPeriod.id} />
+
+      <UnmatchedPayrollReports payPeriodId={payPeriod.id} unmatched={unmatched} employees={employees} />
 
       <PayrollRowsTable payPeriodId={payPeriod.id} rows={rows} />
     </div>

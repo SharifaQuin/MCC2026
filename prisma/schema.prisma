@@ -86,6 +86,12 @@ model User {
   employeeId       String?   @unique
   email            String    @unique
   name             String
+  // Alternate "Cleaner" names from payroll report workbooks that HR has
+  // manually attached to this employee (e.g. the scheduling platform has
+  // her down with a middle name this account's `name` doesn't have) — the
+  // payroll importer checks these before giving up on a name it can't
+  // match to anyone.
+  payrollAliasNames String[]  @default([])
   role             Role      @default(TRAINEE)
   passwordHash     String?
   mustSetPassword  Boolean   @default(true)
@@ -1060,14 +1066,34 @@ model AttendanceEvent {
 // A biweekly (or whatever cadence HR runs) pay period that hours get
 // entered against.
 model PayPeriod {
-  id        String         @id @default(cuid())
-  startDate DateTime
-  endDate   DateTime
-  label     String
-  createdAt DateTime       @default(now())
-  entries   PayrollEntry[]
+  id               String                    @id @default(cuid())
+  startDate        DateTime
+  endDate          DateTime
+  label            String
+  createdAt        DateTime                  @default(now())
+  entries          PayrollEntry[]
+  unmatchedReports PayrollUnmatchedReport[]
 
   @@unique([startDate, endDate])
+}
+
+// A per-employee sheet from a payroll report workbook whose "Cleaner" name
+// didn't match any employee on file (a middle name, nickname, or spelling
+// difference) — held here so HR can manually attach it to the right
+// employee instead of the whole sheet just being dropped on the floor.
+// reportData is the parsed report (totals + job/adjustment line items,
+// same shape importPayrollReport builds from the sheet) with all Date
+// fields as ISO strings, since Prisma's Json type can't hold Date objects.
+model PayrollUnmatchedReport {
+  id          String    @id @default(cuid())
+  payPeriodId String
+  payPeriod   PayPeriod @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
+  rawName     String
+  reportData  Json
+  createdAt   DateTime  @default(now())
+
+  @@unique([payPeriodId, rawName])
+  @@index([payPeriodId])
 }
 
 enum PayrollEntryStatus {

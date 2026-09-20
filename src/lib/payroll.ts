@@ -437,24 +437,19 @@ function parsePayrollReportSheet(rows: string[][]): ParsedPayrollReport | null {
   };
 }
 
-// Employees aren't identified by email in this report format, only by
-// full name — match case/whitespace-insensitively against the roster.
-async function importPayrollReport(payPeriodId: string, report: ParsedPayrollReport): Promise<string | null> {
-  const name = report.employeeName.trim().toLowerCase();
-  if (!name) return "A sheet is missing the cleaner's name.";
-
-  const employees = await prisma.user.findMany({
-    where: { isTestAccount: false, active: true },
-    select: { id: true, name: true },
-  });
-  const employee = employees.find((e) => e.name.trim().toLowerCase() === name);
-  if (!employee) return `No employee found named "${report.employeeName}".`;
-
+// Creates/updates the entry and replaces its job/adjustment line items —
+// shared by both the auto-match path and the manual "attach to employee"
+// path below, so a report is applied identically either way.
+async function applyPayrollReportToEmployee(
+  payPeriodId: string,
+  employeeId: string,
+  report: ParsedPayrollReport
+): Promise<void> {
   const entry = await prisma.payrollEntry.upsert({
-    where: { payPeriodId_employeeId: { payPeriodId, employeeId: employee.id } },
+    where: { payPeriodId_employeeId: { payPeriodId, employeeId } },
     create: {
       payPeriodId,
-      employeeId: employee.id,
+      employeeId,
       regularHours: report.totalHours,
       overtimeHours: 0,
       totalPayout: report.totalPayout,
@@ -497,8 +492,114 @@ async function importPayrollReport(payPeriodId: string, report: ParsedPayrollRep
       data: report.adjustments.map((a) => ({ payrollEntryId: entry.id, ...a })),
     });
   }
+}
 
+// Prisma's Json column can't hold Date objects, so the report is flattened
+// to ISO strings before being stashed and rebuilt on the way back out.
+interface StashedReport extends Omit<ParsedPayrollReport, "jobs" | "adjustments"> {
+  jobs: (Omit<ParsedJobLine, "performedDate"> & { performedDate: string | null })[];
+  adjustments: (Omit<ParsedAdjustment, "date"> & { date: string | null })[];
+}
+
+function stashReport(report: ParsedPayrollReport): StashedReport {
+  return {
+    ...report,
+    jobs: report.jobs.map((j) => ({ ...j, performedDate: j.performedDate ? j.performedDate.toISOString() : null })),
+    adjustments: report.adjustments.map((a) => ({ ...a, date: a.date ? a.date.toISOString() : null })),
+  };
+}
+
+function unstashReport(data: StashedReport): ParsedPayrollReport {
+  return {
+    ...data,
+    jobs: data.jobs.map((j) => ({ ...j, performedDate: j.performedDate ? new Date(j.performedDate) : null })),
+    adjustments: data.adjustments.map((a) => ({ ...a, date: a.date ? new Date(a.date) : null })),
+  };
+}
+
+// Employees aren't identified by email in this report format, only by
+// full name — match case/whitespace-insensitively against the roster's
+// name or any alias HR has attached (see attachUnmatchedPayrollReport).
+// A name that matches no one is held in PayrollUnmatchedReport rather than
+// dropped, so HR can manually attach it instead of re-uploading the file.
+async function importPayrollReport(payPeriodId: string, report: ParsedPayrollReport): Promise<string | null> {
+  const name = report.employeeName.trim().toLowerCase();
+  if (!name) return "A sheet is missing the cleaner's name.";
+
+  const employees = await prisma.user.findMany({
+    where: { isTestAccount: false, active: true },
+    select: { id: true, name: true, payrollAliasNames: true },
+  });
+  const employee = employees.find(
+    (e) => e.name.trim().toLowerCase() === name || e.payrollAliasNames.some((a) => a.trim().toLowerCase() === name)
+  );
+
+  if (!employee) {
+    await prisma.payrollUnmatchedReport.upsert({
+      where: { payPeriodId_rawName: { payPeriodId, rawName: report.employeeName } },
+      create: { payPeriodId, rawName: report.employeeName, reportData: stashReport(report) as object },
+      update: { reportData: stashReport(report) as object },
+    });
+    return `No employee found named "${report.employeeName}" — attach it to the right employee below.`;
+  }
+
+  await applyPayrollReportToEmployee(payPeriodId, employee.id, report);
   return null;
+}
+
+export interface UnmatchedPayrollReportRow {
+  id: string;
+  rawName: string;
+  createdAt: string;
+}
+
+export async function getUnmatchedPayrollReports(payPeriodId: string): Promise<UnmatchedPayrollReportRow[]> {
+  const rows = await prisma.payrollUnmatchedReport.findMany({
+    where: { payPeriodId },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows.map((r) => ({ id: r.id, rawName: r.rawName, createdAt: r.createdAt.toISOString() }));
+}
+
+export async function getAttachableEmployees() {
+  return prisma.user.findMany({
+    where: { role: "TRAINEE", active: true, isTestAccount: false },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, email: true },
+  });
+}
+
+// Applies the stashed report to the chosen employee and remembers the raw
+// "Cleaner" name as a permanent alias on their account, so the same name
+// auto-matches on every future import instead of needing this every time.
+export async function attachUnmatchedPayrollReport(unmatchedId: string, employeeId: string): Promise<string | null> {
+  const unmatched = await prisma.payrollUnmatchedReport.findUnique({ where: { id: unmatchedId } });
+  if (!unmatched) return "That unmatched report no longer exists — it may have already been attached or dismissed.";
+
+  const employee = await prisma.user.findUnique({
+    where: { id: employeeId },
+    select: { id: true, payrollAliasNames: true },
+  });
+  if (!employee) return "That employee could not be found.";
+
+  const report = unstashReport(unmatched.reportData as unknown as StashedReport);
+  await applyPayrollReportToEmployee(unmatched.payPeriodId, employeeId, report);
+
+  const alias = unmatched.rawName.trim();
+  const hasAlias = employee.payrollAliasNames.some((a) => a.trim().toLowerCase() === alias.toLowerCase());
+  if (!hasAlias) {
+    await prisma.user.update({
+      where: { id: employeeId },
+      data: { payrollAliasNames: { push: alias } },
+    });
+  }
+
+  await prisma.payrollUnmatchedReport.delete({ where: { id: unmatchedId } });
+  return null;
+}
+
+export async function dismissUnmatchedPayrollReport(unmatchedId: string): Promise<void> {
+  await prisma.payrollUnmatchedReport.delete({ where: { id: unmatchedId } });
 }
 
 // Expected columns: email, regularHours, overtimeHours (overtime optional,
