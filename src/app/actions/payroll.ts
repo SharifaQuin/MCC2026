@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { importPayrollCsv } from "@/lib/payroll";
+import { importPayrollCsv, importPayrollExcel } from "@/lib/payroll";
 import { sendEmail } from "@/lib/email";
 
 async function requireHrAccess() {
@@ -133,11 +133,13 @@ export async function importPayrollCsvAction(
   // enough to know it's a file.
   const file = formData.get("csvFile");
   if (!file || typeof file === "string" || file.size === 0) {
-    return { error: "Please choose a CSV file to upload." };
+    return { error: "Please choose a file to upload." };
   }
 
-  const text = await file.text();
-  const result = await importPayrollCsv(payPeriodId, text);
+  const isExcel = /\.xlsx?$/i.test(file.name);
+  const result = isExcel
+    ? await importPayrollExcel(payPeriodId, await file.arrayBuffer())
+    : await importPayrollCsv(payPeriodId, await file.text());
 
   revalidatePath(`/staff/payroll/${payPeriodId}`);
   revalidatePath("/payroll");

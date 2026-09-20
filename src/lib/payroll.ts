@@ -1,3 +1,4 @@
+import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
 
 export async function getPayPeriodsOverview() {
@@ -142,12 +143,43 @@ function parseCsv(text: string): string[][] {
     .map((line) => line.split(",").map((cell) => cell.trim()));
 }
 
+// A cell from an Excel worksheet can be a plain string/number, a Date, a
+// rich-text run, or a formula result — normalize all of those down to the
+// same flat string the CSV path already works with.
+function excelCellToString(value: ExcelJS.CellValue): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") {
+    if ("result" in value) return excelCellToString(value.result as ExcelJS.CellValue);
+    if ("text" in value) return String(value.text);
+    if ("richText" in value) return value.richText.map((r) => r.text).join("");
+    if (value instanceof Date) return value.toISOString();
+  }
+  return String(value).trim();
+}
+
+async function parseExcel(buffer: ArrayBuffer): Promise<string[][]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) return [];
+
+  const rows: string[][] = [];
+  worksheet.eachRow({ includeEmpty: false }, (row) => {
+    const cells: string[] = [];
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      cells.push(excelCellToString(cell.value));
+    });
+    if (cells.some((c) => c.length > 0)) rows.push(cells);
+  });
+  return rows;
+}
+
 // Expected columns: email, regularHours, overtimeHours (overtime optional,
 // defaults to 0). An optional header row starting with "email" is skipped.
 // Any hours change on an existing entry re-opens it for the employee's
 // review (clears a prior signature or dispute) since the numbers changed.
-export async function importPayrollCsv(payPeriodId: string, text: string): Promise<CsvImportResult> {
-  let rows = parseCsv(text);
+async function importPayrollRows(payPeriodId: string, initialRows: string[][]): Promise<CsvImportResult> {
+  let rows = initialRows;
   if (rows[0]?.[0]?.toLowerCase() === "email") rows = rows.slice(1);
 
   const errors: string[] = [];
@@ -188,4 +220,15 @@ export async function importPayrollCsv(payPeriodId: string, text: string): Promi
   }
 
   return { imported, errors };
+}
+
+export async function importPayrollCsv(payPeriodId: string, text: string): Promise<CsvImportResult> {
+  return importPayrollRows(payPeriodId, parseCsv(text));
+}
+
+export async function importPayrollExcel(
+  payPeriodId: string,
+  buffer: ArrayBuffer
+): Promise<CsvImportResult> {
+  return importPayrollRows(payPeriodId, await parseExcel(buffer));
 }
