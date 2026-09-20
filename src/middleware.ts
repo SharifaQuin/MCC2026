@@ -16,6 +16,7 @@ const PUBLIC_PATHS = [
   "/careers",
   "/lead-form",
   "/interview-confirm",
+  "/legal",
   "/manifest.webmanifest",
   "/icon.svg",
   "/apple-icon.png",
