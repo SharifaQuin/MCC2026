@@ -67,21 +67,33 @@ function tokensFromResponse(body: TokenResponse) {
   };
 }
 
-async function requestTokens(params: Record<string, string>) {
+async function requestTokens(params: Record<string, string>, attempt = 1): Promise<ReturnType<typeof tokensFromResponse>> {
   const { clientId, clientSecret } = getClientCredentials();
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
 
-  const res = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${basicAuth}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-    },
-    body: new URLSearchParams(params),
-  });
+  // Retry once on a transient failure (network error, or a 5xx from Intuit's
+  // side) — but never on a 4xx like invalid_grant, since that means the
+  // refresh/auth code itself is dead and a retry won't fix it.
+  let res: Response;
+  try {
+    res = await fetch(TOKEN_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${basicAuth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body: new URLSearchParams(params),
+    });
+  } catch (networkError) {
+    if (attempt === 1) return requestTokens(params, 2);
+    throw networkError;
+  }
 
   if (!res.ok) {
+    if (res.status >= 500 && attempt === 1) {
+      return requestTokens(params, 2);
+    }
     throw new Error(`QuickBooks token request failed: ${await res.text()}`);
   }
   return tokensFromResponse((await res.json()) as TokenResponse);
@@ -120,6 +132,18 @@ export async function disconnectQuickBooks(): Promise<void> {
   await prisma.quickBooksConnection.deleteMany({});
 }
 
+// Thrown when the refresh token itself is dead — expired (~100 days
+// unused), revoked, or the customer disconnected the app from Intuit's
+// side. There's no fixing this without the owner clicking "Connect
+// QuickBooks" again, so callers should catch this and say so rather than
+// surface a raw error.
+export class QuickBooksReauthRequiredError extends Error {
+  constructor() {
+    super("QuickBooks needs to be reconnected.");
+    this.name = "QuickBooksReauthRequiredError";
+  }
+}
+
 // Refreshes and returns a usable access token, lazily — refreshes only
 // when the current one is expired (or about to be, within 2 minutes).
 // QuickBooks refresh tokens are single-use: every refresh returns a brand
@@ -134,10 +158,19 @@ export async function getValidAccessToken(): Promise<{ accessToken: string; real
     return { accessToken: connection.accessToken, realmId: connection.realmId };
   }
 
-  const tokens = await requestTokens({
-    grant_type: "refresh_token",
-    refresh_token: connection.refreshToken,
-  });
+  let tokens;
+  try {
+    tokens = await requestTokens({
+      grant_type: "refresh_token",
+      refresh_token: connection.refreshToken,
+    });
+  } catch (error) {
+    // Clearing the stale connection makes the "Connect QuickBooks" button
+    // reappear on /financials, instead of silently failing on every future
+    // pull with the same dead refresh token.
+    await prisma.quickBooksConnection.delete({ where: { id: connection.id } });
+    throw new QuickBooksReauthRequiredError();
+  }
 
   await prisma.quickBooksConnection.update({
     where: { id: connection.id },

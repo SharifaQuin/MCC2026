@@ -4,7 +4,12 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import type { ChecklistCategory, ChecklistOwner, ChecklistTaskStatus, ChecklistVisibility } from "@prisma/client";
-import { disconnectQuickBooks, fetchProfitAndLossSummary, type ProfitAndLossSummary } from "@/lib/quickbooks";
+import {
+  disconnectQuickBooks,
+  fetchProfitAndLossSummary,
+  QuickBooksReauthRequiredError,
+  type ProfitAndLossSummary,
+} from "@/lib/quickbooks";
 
 async function requireOwnerAccess() {
   const session = await getSession();
@@ -123,7 +128,16 @@ export async function pullFromQuickBooksAction(month: string): Promise<PullFromQ
   const lastDay = new Date(year, monthNum, 0).getDate();
   const endDate = `${month}-${String(lastDay).padStart(2, "0")}`;
 
-  const summary = await fetchProfitAndLossSummary(startDate, endDate);
+  let summary: ProfitAndLossSummary | null;
+  try {
+    summary = await fetchProfitAndLossSummary(startDate, endDate);
+  } catch (error) {
+    if (error instanceof QuickBooksReauthRequiredError) {
+      revalidatePath("/financials");
+      return { error: 'QuickBooks disconnected — click "Connect QuickBooks" above, then try again.' };
+    }
+    throw error;
+  }
   if (!summary) {
     return { error: "Couldn't get a Profit and Loss report from QuickBooks for that month." };
   }
