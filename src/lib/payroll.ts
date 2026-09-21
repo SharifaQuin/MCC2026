@@ -465,6 +465,16 @@ function parsePayrollReportSheet(rows: string[][]): ParsedPayrollReport | null {
   };
 }
 
+// The report's own "Time" total only covers on-the-clock job time — drive
+// time between jobs comes through separately as a "Travel Time" adjustment
+// line, so it has to be added in by hand to get the real number of hours
+// worked. Matched loosely against the adjustment type string (as exported
+// by the scheduling platform) rather than an exact literal, so it still
+// catches it if that label varies slightly (e.g. "Travel", "Travel Time").
+function sumTravelHours(adjustments: ParsedAdjustment[]): number {
+  return adjustments.filter((a) => /travel/i.test(a.type)).reduce((sum, a) => sum + a.hours, 0);
+}
+
 // Creates/updates the entry and replaces its job/adjustment line items —
 // shared by both the auto-match path and the manual "attach to employee"
 // path below, so a report is applied identically either way.
@@ -473,12 +483,14 @@ async function applyPayrollReportToEmployee(
   employeeId: string,
   report: ParsedPayrollReport
 ): Promise<void> {
+  const regularHours = report.totalHours + sumTravelHours(report.adjustments);
+
   const entry = await prisma.payrollEntry.upsert({
     where: { payPeriodId_employeeId: { payPeriodId, employeeId } },
     create: {
       payPeriodId,
       employeeId,
-      regularHours: report.totalHours,
+      regularHours,
       overtimeHours: 0,
       totalPayout: report.totalPayout,
       jobsPayout: report.jobsPayout,
@@ -488,7 +500,7 @@ async function applyPayrollReportToEmployee(
       estimatedHours: report.estimatedHours,
     },
     update: {
-      regularHours: report.totalHours,
+      regularHours,
       overtimeHours: 0,
       totalPayout: report.totalPayout,
       jobsPayout: report.jobsPayout,

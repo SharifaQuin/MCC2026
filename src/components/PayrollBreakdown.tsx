@@ -28,6 +28,11 @@ export default function PayrollBreakdown({
     adjustmentsByType.set(a.type, (adjustmentsByType.get(a.type) ?? 0) + a.amount);
   }
 
+  // The report's "Time" total is job time only — travel time between jobs
+  // comes in as its own adjustment line and gets added to it to arrive at
+  // the employee's actual regular hours worked (shown as "reg" above).
+  const travelHours = adjustments.filter((a) => /travel/i.test(a.type)).reduce((sum, a) => sum + a.hours, 0);
+
   return (
     <div className="mt-4 space-y-4">
       <div className="grid grid-cols-2 gap-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm sm:grid-cols-3 lg:grid-cols-6">
@@ -45,7 +50,14 @@ export default function PayrollBreakdown({
         </div>
         <div>
           <dt className="text-xs text-neutral-400">Time</dt>
-          <dd className="font-medium">{reportTotals.totalHours.toFixed(2)}h</dd>
+          <dd className="font-medium">
+            {reportTotals.totalHours.toFixed(2)}h
+            {travelHours > 0 && (
+              <span className="ml-1 font-normal text-neutral-400">
+                + {travelHours.toFixed(2)}h travel = {(reportTotals.totalHours + travelHours).toFixed(2)}h reg
+              </span>
+            )}
+          </dd>
         </div>
         <div>
           <dt className="text-xs text-neutral-400">Avg Pay/Hr</dt>
