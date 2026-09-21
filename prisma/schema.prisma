@@ -183,6 +183,7 @@ model User {
   attendanceEvents       AttendanceEvent[] @relation("EmployeeAttendanceEvents")
   attendanceEventsLogged AttendanceEvent[] @relation("AttendanceEventsLogged")
   payrollEntries     PayrollEntry[]    @relation("EmployeePayrollEntries")
+  payrollOverridesRecorded PayrollEntry[] @relation("PayrollOverriddenBy")
 
   weeklyUpdatesCreated  WeeklyUpdate[] @relation("WeeklyUpdateCreatedBy")
   weeklyUpdatesApproved WeeklyUpdate[] @relation("WeeklyUpdateApprovedBy")
@@ -1141,6 +1142,14 @@ model PayrollEntry {
   // Cleared (along with signedAt/signedName) whenever the entry is reopened
   // for a fresh review, since it would otherwise show stale hours.
   signedPdfDataUrl   String?            @db.Text
+  // Set when HR records the approval on the employee's behalf because they
+  // signed a physical copy instead of using the app — signedAt/signedName
+  // still hold the moment/name recorded, this just distinguishes it from
+  // the employee's own e-signature so it reads correctly everywhere.
+  signedViaOverride  Boolean            @default(false)
+  overriddenById     String?
+  overriddenBy       User?              @relation("PayrollOverriddenBy", fields: [overriddenById], references: [id], onDelete: SetNull)
+  overrideNote       String?            @db.Text
   disputeNote        String?            @db.Text
   disputedAt         DateTime?
   resolutionNotes    String?            @db.Text

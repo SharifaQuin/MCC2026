@@ -8,6 +8,7 @@ import {
   importPayrollCsv,
   importPayrollExcel,
   getPayrollEntryForSigning,
+  getPayrollEntryForOverride,
   attachUnmatchedPayrollReport,
   dismissUnmatchedPayrollReport,
 } from "@/lib/payroll";
@@ -98,6 +99,7 @@ export async function upsertPayrollEntryAction(
       signedAt: null,
       signedName: null,
       signedPdfDataUrl: null,
+      signatureReminderSentAt: null,
       disputeNote: null,
       disputedAt: null,
       resolutionNotes: null,
@@ -238,6 +240,68 @@ export async function signPayrollEntryAction(entryId: string, formData: FormData
   revalidatePath("/payroll");
   revalidatePath(`/payroll/${entryId}`);
   redirect("/payroll");
+}
+
+export interface OverrideSignState {
+  error?: string;
+  success?: boolean;
+}
+
+// HR-recorded approval for an employee who signed a physical copy instead
+// of using the app — same effect as signPayrollEntryAction (status
+// APPROVED, a signed PDF generated) but attributed to whoever recorded it
+// rather than presented as the employee's own e-signature.
+export async function overridePayrollEntrySignAction(
+  entryId: string,
+  payPeriodId: string,
+  _prevState: OverrideSignState,
+  formData: FormData
+): Promise<OverrideSignState> {
+  let session;
+  try {
+    session = await requireHrAccess();
+  } catch {
+    return { error: "Not authorized." };
+  }
+
+  const signedName = String(formData.get("signedName") ?? "").trim();
+  if (!signedName) return { error: "Please enter the name as it was signed on the physical copy." };
+  const overrideNote = String(formData.get("overrideNote") ?? "").trim() || null;
+  const scanDataUrl = String(formData.get("scanDataUrl") ?? "") || null;
+  const scanFileName = String(formData.get("scanFileName") ?? "") || null;
+
+  const entry = await getPayrollEntryForOverride(entryId);
+  if (!entry) return { error: "Payroll entry not found." };
+
+  const signedAt = new Date();
+  const signedPdfDataUrl = await renderPayrollEntryPdf({
+    ...entry,
+    signedName,
+    signedAt,
+    overrideRecordedBy: session.name,
+    overrideNote,
+  });
+
+  await prisma.payrollEntry.update({
+    where: { id: entryId },
+    data: {
+      status: "APPROVED",
+      signedAt,
+      signedName,
+      signedPdfDataUrl,
+      signedViaOverride: true,
+      overriddenById: session.sub,
+      overrideNote,
+      disputeNote: null,
+      disputedAt: null,
+      ...(scanDataUrl ? { attachmentDataUrl: scanDataUrl, attachmentFileName: scanFileName } : {}),
+    },
+  });
+
+  revalidatePath(`/staff/payroll/${payPeriodId}`);
+  revalidatePath("/payroll");
+  revalidatePath(`/payroll/${entryId}`);
+  return { success: true };
 }
 
 export async function disputePayrollEntryAction(entryId: string, formData: FormData) {

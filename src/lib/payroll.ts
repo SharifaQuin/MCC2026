@@ -121,6 +121,9 @@ export interface PayrollEmployeeRow {
     signedAt: string | null;
     signedName: string | null;
     signedPdfDataUrl: string | null;
+    signedViaOverride: boolean;
+    overriddenByName: string | null;
+    overrideNote: string | null;
     disputeNote: string | null;
     disputedAt: string | null;
     resolutionNotes: string | null;
@@ -146,6 +149,7 @@ export async function getPayPeriodDetail(payPeriodId: string) {
       include: {
         jobLines: { orderBy: { performedDate: "asc" } },
         adjustments: { orderBy: { date: "asc" } },
+        overriddenBy: { select: { name: true } },
       },
     }),
   ]);
@@ -168,6 +172,9 @@ export async function getPayPeriodDetail(payPeriodId: string) {
             signedAt: e.signedAt ? e.signedAt.toISOString() : null,
             signedName: e.signedName,
             signedPdfDataUrl: e.signedPdfDataUrl,
+            signedViaOverride: e.signedViaOverride,
+            overriddenByName: e.overriddenBy?.name ?? null,
+            overrideNote: e.overrideNote,
             disputeNote: e.disputeNote,
             disputedAt: e.disputedAt ? e.disputedAt.toISOString() : null,
             resolutionNotes: e.resolutionNotes,
@@ -210,6 +217,7 @@ export async function getPayrollEntryDetail(entryId: string, employeeId: string)
       payPeriod: true,
       jobLines: { orderBy: { performedDate: "asc" } },
       adjustments: { orderBy: { date: "asc" } },
+      overriddenBy: { select: { name: true } },
     },
   });
   if (!entry || entry.employeeId !== employeeId) return null;
@@ -227,6 +235,8 @@ export async function getPayrollEntryDetail(entryId: string, employeeId: string)
     signedAt: entry.signedAt ? entry.signedAt.toISOString() : null,
     signedName: entry.signedName,
     signedPdfDataUrl: entry.signedPdfDataUrl,
+    signedViaOverride: entry.signedViaOverride,
+    overriddenByName: entry.overriddenBy?.name ?? null,
     disputeNote: entry.disputeNote,
     resolutionNotes: entry.resolutionNotes,
     reportTotals: toReportTotals(entry),
@@ -248,12 +258,14 @@ export interface PayrollEntryForSigning {
 }
 
 // Everything renderPayrollEntryPdf needs to snapshot the entry at the
-// moment it's signed — kept in the lib layer so the server action stays a
-// thin ownership check + PDF render + update.
-export async function getPayrollEntryForSigning(
-  entryId: string,
-  employeeId: string
-): Promise<PayrollEntryForSigning | null> {
+// moment it's signed — kept in the lib layer so callers stay a thin
+// authorization check + PDF render + update. Shared by the employee's own
+// self-sign action and the manager-override action below; each does its
+// own authorization before calling this, since what counts as "allowed to
+// see this" differs (ownership vs. HR role).
+async function loadEntryForPdf(
+  entryId: string
+): Promise<(PayrollEntryForSigning & { employeeId: string }) | null> {
   const entry = await prisma.payrollEntry.findUnique({
     where: { id: entryId },
     include: {
@@ -263,9 +275,10 @@ export async function getPayrollEntryForSigning(
       adjustments: { orderBy: { date: "asc" } },
     },
   });
-  if (!entry || entry.employeeId !== employeeId) return null;
+  if (!entry) return null;
 
   return {
+    employeeId: entry.employeeId,
     employeeName: entry.employee.name,
     payPeriodLabel: entry.payPeriod.label,
     startDate: entry.payPeriod.startDate,
@@ -276,6 +289,21 @@ export async function getPayrollEntryForSigning(
     jobLines: entry.jobLines.map(toJobLineView),
     adjustments: entry.adjustments.map(toAdjustmentView),
   };
+}
+
+export async function getPayrollEntryForSigning(
+  entryId: string,
+  employeeId: string
+): Promise<PayrollEntryForSigning | null> {
+  const entry = await loadEntryForPdf(entryId);
+  if (!entry || entry.employeeId !== employeeId) return null;
+  return entry;
+}
+
+// No ownership check — the caller (an admin/service-manager action) has
+// already authorized itself via requireHrAccess before calling this.
+export async function getPayrollEntryForOverride(entryId: string): Promise<PayrollEntryForSigning | null> {
+  return loadEntryForPdf(entryId);
 }
 
 export interface CsvImportResult {
@@ -472,6 +500,7 @@ async function applyPayrollReportToEmployee(
       signedAt: null,
       signedName: null,
       signedPdfDataUrl: null,
+      signatureReminderSentAt: null,
       disputeNote: null,
       disputedAt: null,
       resolutionNotes: null,
@@ -639,6 +668,7 @@ async function importPayrollRows(payPeriodId: string, initialRows: string[][]): 
         signedAt: null,
         signedName: null,
         signedPdfDataUrl: null,
+        signatureReminderSentAt: null,
         disputeNote: null,
         disputedAt: null,
         resolutionNotes: null,

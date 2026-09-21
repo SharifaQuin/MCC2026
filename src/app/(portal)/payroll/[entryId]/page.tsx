@@ -66,10 +66,19 @@ export default async function PayrollEntryPage({ params }: { params: { entryId: 
 
       {entry.status === "APPROVED" && (
         <div className="mt-6 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
-          <p className="mb-2">I confirm that the above hours are accurate to the best of my knowledge.</p>
+          {entry.signedViaOverride ? (
+            <p className="mb-2">
+              You signed a physical copy of these hours, and HR recorded that approval here
+              {entry.overriddenByName ? ` (by ${entry.overriddenByName})` : ""}.
+            </p>
+          ) : (
+            <p className="mb-2">I confirm that the above hours are accurate to the best of my knowledge.</p>
+          )}
           <dl className="grid grid-cols-2 gap-4">
             <div>
-              <dt className="text-xs text-green-700">Authorized Signature</dt>
+              <dt className="text-xs text-green-700">
+                {entry.signedViaOverride ? "Signature (as written on the physical copy)" : "Authorized Signature"}
+              </dt>
               <dd className="font-medium">{entry.signedName}</dd>
             </div>
             <div>

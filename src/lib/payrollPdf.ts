@@ -40,6 +40,11 @@ export async function renderPayrollEntryPdf(opts: {
   adjustments: PayrollAdjustmentView[];
   signedName: string;
   signedAt: Date;
+  // Set only when HR recorded this on the employee's behalf because they
+  // signed a physical copy — swaps the confirmation wording so the PDF
+  // doesn't read as if the employee typed the confirmation themselves.
+  overrideRecordedBy?: string;
+  overrideNote?: string | null;
 }): Promise<string> {
   const pdfDoc = await PDFDocument.create();
   const { font, boldFont, logo } = await loadLetterheadAssets(pdfDoc);
@@ -117,9 +122,17 @@ export async function renderPayrollEntryPdf(opts: {
     color: GRAY,
   });
   y -= 14;
-  drawLine("I confirm that the above hours are accurate to the best of my knowledge.", { bold: true });
-  drawLine(`Authorized Signature: ${opts.signedName}`);
-  drawLine(`Authorized Date: ${opts.signedAt.toLocaleDateString()}`);
+  if (opts.overrideRecordedBy) {
+    drawLine("Signed physical copy on file — recorded on the employee's behalf.", { bold: true });
+    drawLine(`Authorized Signature (as written on the physical copy): ${opts.signedName}`);
+    drawLine(`Authorized Date: ${opts.signedAt.toLocaleDateString()}`);
+    drawLine(`Recorded by: ${opts.overrideRecordedBy}`);
+    if (opts.overrideNote) drawLine(`Note: ${opts.overrideNote}`);
+  } else {
+    drawLine("I confirm that the above hours are accurate to the best of my knowledge.", { bold: true });
+    drawLine(`Authorized Signature: ${opts.signedName}`);
+    drawLine(`Authorized Date: ${opts.signedAt.toLocaleDateString()}`);
+  }
 
   if (pages.length > 1) {
     pages.forEach((p, i) => {

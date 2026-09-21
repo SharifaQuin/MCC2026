@@ -6,7 +6,9 @@ import {
   upsertPayrollEntryAction,
   deletePayrollEntryAction,
   resolveDisputeAction,
+  overridePayrollEntrySignAction,
   EntryFormState,
+  OverrideSignState,
 } from "@/app/actions/payroll";
 import { fileToDataUrl } from "@/lib/fileToDataUrl";
 import type { PayrollEmployeeRow } from "@/lib/payroll";
@@ -142,6 +144,122 @@ function EntryEditForm({
   );
 }
 
+function OverrideSubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+    >
+      {pending ? "Recording..." : "Record Override"}
+    </button>
+  );
+}
+
+function OverrideSignForm({
+  payPeriodId,
+  entryId,
+  employeeName,
+  onClose,
+}: {
+  payPeriodId: string;
+  entryId: string;
+  employeeName: string;
+  onClose: () => void;
+}) {
+  const action = overridePayrollEntrySignAction.bind(null, entryId, payPeriodId);
+  const [state, formAction] = useFormState<OverrideSignState, FormData>(action, {});
+  const [scanDataUrl, setScanDataUrl] = useState("");
+  const [scanFileName, setScanFileName] = useState("");
+  const [fileError, setFileError] = useState<string | null>(null);
+
+  if (state.success) onClose();
+
+  return (
+    <form action={formAction} className="mt-2 space-y-3 rounded-md border border-amber-200 bg-amber-50 p-3">
+      <p className="text-xs text-amber-800">
+        Use this when the employee signed a physical copy instead of approving it in the app. This
+        records the approval on their behalf and notes who recorded it.
+      </p>
+      <div>
+        <label className="mb-1 block text-xs font-medium">Name as signed on the physical copy</label>
+        <input
+          type="text"
+          name="signedName"
+          defaultValue={employeeName}
+          required
+          className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+        />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium">Note (optional)</label>
+        <textarea
+          name="overrideNote"
+          rows={2}
+          placeholder="e.g. Signed physical copy filed in HR cabinet"
+          className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+        />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium">Scan of signed copy (optional)</label>
+        <input type="hidden" name="scanDataUrl" value={scanDataUrl} />
+        <input type="hidden" name="scanFileName" value={scanFileName} />
+        {scanFileName && (
+          <div className="mb-2 flex items-center gap-3">
+            <a
+              href={scanDataUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-medium text-brand-700 hover:underline"
+            >
+              View {scanFileName}
+            </a>
+            <button
+              type="button"
+              onClick={() => {
+                setScanDataUrl("");
+                setScanFileName("");
+              }}
+              className="text-xs font-medium text-red-600 hover:underline"
+            >
+              Remove
+            </button>
+          </div>
+        )}
+        <input
+          type="file"
+          accept=".pdf,application/pdf,.jpg,.jpeg,.png,image/jpeg,image/png"
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            setFileError(null);
+            try {
+              setScanDataUrl(await fileToDataUrl(file));
+              setScanFileName(file.name);
+            } catch {
+              setFileError("Couldn't read that file — try again.");
+            }
+          }}
+          className="block w-full text-sm"
+        />
+        {fileError && <p className="mt-1 text-xs text-red-600">{fileError}</p>}
+      </div>
+      {state?.error && <p className="text-xs text-red-600">{state.error}</p>}
+      <div className="flex items-center gap-3">
+        <OverrideSubmitButton />
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-xs font-medium text-neutral-500 hover:underline"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function DisputeResolution({
   payPeriodId,
   entryId,
@@ -175,10 +293,12 @@ function DisputeResolution({
 
 function Row({ payPeriodId, row }: { payPeriodId: string; row: PayrollEmployeeRow }) {
   const [editing, setEditing] = useState(false);
+  const [overriding, setOverriding] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const [pending, startTransition] = useTransition();
   const { entry } = row;
   const hasReportDetail = !!entry?.reportTotals;
+  const canOverride = entry && entry.status !== "APPROVED";
 
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -217,6 +337,15 @@ function Row({ payPeriodId, row }: { payPeriodId: string; row: PayrollEmployeeRo
           >
             {editing ? "Close" : entry ? "Edit" : "Add Hours"}
           </button>
+          {canOverride && (
+            <button
+              type="button"
+              onClick={() => setOverriding((o) => !o)}
+              className="text-xs font-medium text-amber-700 hover:underline"
+            >
+              {overriding ? "Close" : "Manager Override"}
+            </button>
+          )}
           {entry && (
             <button
               type="button"
@@ -236,7 +365,17 @@ function Row({ payPeriodId, row }: { payPeriodId: string; row: PayrollEmployeeRo
 
       {entry?.signedAt && (
         <p className="mt-2 text-xs text-green-700">
-          Approved by &ldquo;{entry.signedName}&rdquo; on {new Date(entry.signedAt).toLocaleString()}
+          {entry.signedViaOverride ? (
+            <>
+              Approved by &ldquo;{entry.signedName}&rdquo; (signed physical copy, recorded by{" "}
+              {entry.overriddenByName ?? "HR"}) on {new Date(entry.signedAt).toLocaleString()}
+            </>
+          ) : (
+            <>
+              Approved by &ldquo;{entry.signedName}&rdquo; on {new Date(entry.signedAt).toLocaleString()}
+            </>
+          )}
+          {entry.overrideNote && <> — Note: {entry.overrideNote}</>}
           {entry.signedPdfDataUrl && (
             <>
               {" "}
@@ -275,6 +414,15 @@ function Row({ payPeriodId, row }: { payPeriodId: string; row: PayrollEmployeeRo
           reportTotals={entry.reportTotals}
           jobLines={entry.jobLines}
           adjustments={entry.adjustments}
+        />
+      )}
+
+      {overriding && entry && (
+        <OverrideSignForm
+          payPeriodId={payPeriodId}
+          entryId={entry.id}
+          employeeName={row.name}
+          onClose={() => setOverriding(false)}
         />
       )}
 
