@@ -30,6 +30,7 @@ export async function register() {
   const { runHrDigestSchedulerTick } = await import("@/lib/hrDigestScheduler");
   const { runLeadDigestSchedulerTick } = await import("@/lib/leadDigestScheduler");
   const { runInterviewReminderSchedulerTick } = await import("@/lib/interviewReminderScheduler");
+  const { runPayrollReminderSchedulerTick } = await import("@/lib/payrollReminderScheduler");
 
   setInterval(() => {
     runWeeklyUpdateSchedulerTick().catch((err) => {
@@ -43,6 +44,9 @@ export async function register() {
     });
     runInterviewReminderSchedulerTick().catch((err) => {
       console.error("[interviewReminderScheduler] tick failed:", err);
+    });
+    runPayrollReminderSchedulerTick().catch((err) => {
+      console.error("[payrollReminderScheduler] tick failed:", err);
     });
   }, 60_000);
 }

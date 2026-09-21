@@ -1154,6 +1154,12 @@ model PayrollEntry {
   disputedAt         DateTime?
   resolutionNotes    String?            @db.Text
   resolvedAt         DateTime?
+  // Last time a "please review & sign your hours" reminder email went out
+  // for this entry, so the scheduler doesn't re-send on every tick — reset
+  // to null wherever signedPdfDataUrl is (the entry being reopened means
+  // the reminder clock should restart). Null forever once status leaves
+  // PENDING.
+  signatureReminderSentAt DateTime?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
