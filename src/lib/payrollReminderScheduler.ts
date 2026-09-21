@@ -37,7 +37,13 @@ export async function runPayrollReminderSchedulerTick(now: Date = new Date()): P
       `Please log in and approve & sign your hours, or flag a question if something looks off: ${appUrl}/payroll\n\n` +
       `— Mama's Cleaning Crew`;
 
-    const result = await sendEmail({ to: entry.employee.email, subject, body });
+    const result = await sendEmail({
+      to: entry.employee.email,
+      subject,
+      body,
+      from: "HR@mamascleaningcrew.com",
+      replyTo: "HR@mamascleaningcrew.com",
+    });
     if (!result.ok) {
       console.error(`[payrollReminderScheduler] failed to email ${entry.employee.email}:`, result.error);
     }
