@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { SectionContainer } from "@/components/ds/Card";
 import Button from "@/components/ds/Button";
-import type { CareersV2Content } from "@/lib/recruiting";
+import Logo from "@/components/Logo";
+import type { CareersV2Content, CareersLocale } from "@/lib/recruiting";
 
 // Recruiting 2.0's careers landing page. All candidate-facing copy comes
 // from the `content` prop (see getCareersV2Content in src/lib/recruiting.ts)
@@ -10,8 +11,10 @@ import type { CareersV2Content } from "@/lib/recruiting";
 // fixed structural labels (MAMAS letters, career ladder roles, At a
 // Glance field labels, section headings).
 
-const CAREER_LADDER = ["Cleaning Technician", "Lead Technician", "Trainer", "Field Supervisor", "Service Manager"];
-
+// The MAMAS letters/words are a branded acronym tied to the company name
+// ("Mama's") — kept in English in both locales rather than translated,
+// the same way a brand name itself isn't translated. Only their
+// descriptions (in `content`) are localized.
 const MAMAS_LETTERS: { letter: string; word: string }[] = [
   { letter: "M", word: "Meticulous" },
   { letter: "A", word: "Authentic" },
@@ -20,15 +23,71 @@ const MAMAS_LETTERS: { letter: string; word: string }[] = [
   { letter: "S", word: "Sincere" },
 ];
 
+// Fixed section headings and small labels that aren't part of the
+// Admin-editable `content` blob — translated here since they're still
+// candidate-facing text, just not sentences Shar would want to rewrite.
+const UI_STRINGS: Record<
+  CareersLocale,
+  {
+    careerLadder: string[];
+    ourStoryHeading: string;
+    videoHeading: string;
+    jobDescriptionHeading: string;
+    whyWorkHeading: string;
+    jobPreviewHeading: string;
+    jobPreviewAlsoLabel: string;
+    careerGrowthHeading: string;
+    mamasHeading: string;
+    openPositionsHeading: string;
+    noOpenPositions: string;
+    applyNow: string;
+    faqHeading: string;
+  }
+> = {
+  en: {
+    careerLadder: ["Cleaning Technician", "Lead Technician", "Trainer", "Field Supervisor", "Service Manager"],
+    ourStoryHeading: "Our Story",
+    videoHeading: "See What It's Like to Work at Mama's",
+    jobDescriptionHeading: "The Cleaning Technician Position",
+    whyWorkHeading: "Why Work at Mama's",
+    jobPreviewHeading: "What the Job Actually Involves",
+    jobPreviewAlsoLabel: "You'll also:",
+    careerGrowthHeading: "Grow With Mama's",
+    mamasHeading: "The MAMAS Way",
+    openPositionsHeading: "Open Positions",
+    noOpenPositions: "We don't have any open positions right now — check back soon!",
+    applyNow: "Apply Now",
+    faqHeading: "Questions? We've Got Answers.",
+  },
+  es: {
+    careerLadder: ["Técnico de Limpieza", "Técnico Líder", "Capacitador(a)", "Supervisor(a) de Campo", "Gerente de Servicio"],
+    ourStoryHeading: "Nuestra Historia",
+    videoHeading: "Mira Cómo Es Trabajar en Mama's",
+    jobDescriptionHeading: "La Posición de Técnico de Limpieza",
+    whyWorkHeading: "Por Qué Trabajar en Mama's",
+    jobPreviewHeading: "Lo Que Realmente Implica el Trabajo",
+    jobPreviewAlsoLabel: "También vas a:",
+    careerGrowthHeading: "Crece con Mama's",
+    mamasHeading: "El Camino MAMAS",
+    openPositionsHeading: "Posiciones Disponibles",
+    noOpenPositions: "No tenemos posiciones disponibles en este momento — ¡vuelve a revisar pronto!",
+    applyNow: "Postularme",
+    faqHeading: "¿Preguntas? Tenemos Respuestas.",
+  },
+};
+
 export default function CareersPageV2({
   postings,
   videoUrl,
   content,
+  locale,
 }: {
   postings: { slug: string; titleEn: string; positionType: string | null; descriptionEn: string }[];
   videoUrl: string | null;
   content: CareersV2Content;
+  locale: CareersLocale;
 }) {
+  const t = UI_STRINGS[locale];
   const atAGlance = [
     { label: "Schedule", value: content.atAGlance.schedule },
     { label: "Service Area", value: content.atAGlance.serviceArea },
@@ -40,6 +99,26 @@ export default function CareersPageV2({
 
   return (
     <div className="min-h-screen bg-white">
+      {/* HEADER BANNER */}
+      <header className="flex items-center justify-between border-b border-neutral-200 px-4 py-3 sm:px-8">
+        <Logo />
+        <nav className="flex items-center gap-3 text-sm font-medium" aria-label="Language">
+          <Link
+            href="/careers"
+            className={locale === "en" ? "text-brand-800 underline" : "text-neutral-500 hover:text-brand-700"}
+          >
+            English
+          </Link>
+          <span className="text-neutral-300">|</span>
+          <Link
+            href="/careers?lang=es"
+            className={locale === "es" ? "text-brand-800 underline" : "text-neutral-500 hover:text-brand-700"}
+          >
+            Español
+          </Link>
+        </nav>
+      </header>
+
       {/* HERO */}
       <SectionContainer tint className="pb-16 pt-14 text-center sm:pb-20 sm:pt-20">
         <p className="text-lg font-semibold uppercase tracking-widest text-gold-600">Mama&apos;s Cleaning Crew</p>
@@ -65,15 +144,17 @@ export default function CareersPageV2({
       </SectionContainer>
 
       {/* OUR STORY — Learn About Mama's */}
-      <SectionContainer id="our-story">
-        <h2 className="text-center text-2xl font-bold text-brand-800">Our Story</h2>
-        <p className="mt-2 text-center text-sm font-medium text-brand-600">{content.ourStoryTagline}</p>
-        <div className="mx-auto mt-6 max-w-2xl space-y-4 text-sm leading-relaxed text-neutral-700">
-          {content.ourStoryParagraphs.map((paragraph, i) => (
-            <p key={i}>{paragraph}</p>
-          ))}
-        </div>
-      </SectionContainer>
+      {content.sectionVisibility.ourStory && (
+        <SectionContainer id="our-story">
+          <h2 className="text-center text-2xl font-bold text-brand-800">{t.ourStoryHeading}</h2>
+          <p className="mt-2 text-center text-sm font-medium text-brand-600">{content.ourStoryTagline}</p>
+          <div className="mx-auto mt-6 max-w-2xl space-y-4 text-sm leading-relaxed text-neutral-700">
+            {content.ourStoryParagraphs.map((paragraph, i) => (
+              <p key={i}>{paragraph}</p>
+            ))}
+          </div>
+        </SectionContainer>
+      )}
 
       {/* RECRUITING VIDEO — See What It's Like to Work Here. Completely hidden
           from the public page until an Admin sets a real video URL — no
@@ -81,7 +162,7 @@ export default function CareersPageV2({
           own "Recruiting Video Not Yet Added" state instead). */}
       {videoUrl && (
         <SectionContainer className="text-center">
-          <h2 className="text-2xl font-bold text-brand-800">See What It&apos;s Like to Work at Mama&apos;s</h2>
+          <h2 className="text-2xl font-bold text-brand-800">{t.videoHeading}</h2>
           <div className="mx-auto mt-6 aspect-video max-w-2xl overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50">
             <iframe
               src={videoUrl}
@@ -94,9 +175,9 @@ export default function CareersPageV2({
       )}
 
       {/* JOB DESCRIPTION — Understand the Cleaning Technician Position */}
-      {postings.length > 0 && (
+      {content.sectionVisibility.jobDescription && postings.length > 0 && (
         <SectionContainer tint>
-          <h2 className="text-center text-2xl font-bold text-brand-800">The Cleaning Technician Position</h2>
+          <h2 className="text-center text-2xl font-bold text-brand-800">{t.jobDescriptionHeading}</h2>
           <div className="mx-auto mt-8 max-w-2xl space-y-6">
             {postings.map((p) => (
               <div key={p.slug} className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
@@ -122,125 +203,133 @@ export default function CareersPageV2({
       )}
 
       {/* WHY WORK AT MAMA'S — Understand What MCC Offers */}
-      <SectionContainer>
-        <h2 className="text-center text-2xl font-bold text-brand-800">Why Work at Mama&apos;s</h2>
-        <p className="mt-2 text-center text-sm font-medium text-brand-600">{content.whyWorkTagline}</p>
-        <ul className="mx-auto mt-8 grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-2">
-          {content.whyWorkItems.map((item, i) => (
-            <li key={i} className="flex items-start gap-3 rounded-xl bg-white p-4 shadow-sm">
-              <span className="text-gold-500">★</span>
-              <span className="text-sm text-neutral-700">
-                <span className="font-semibold text-brand-800">{item.title}</span>
-                <br />
-                {item.description}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </SectionContainer>
+      {content.sectionVisibility.whyWork && (
+        <SectionContainer>
+          <h2 className="text-center text-2xl font-bold text-brand-800">{t.whyWorkHeading}</h2>
+          <p className="mt-2 text-center text-sm font-medium text-brand-600">{content.whyWorkTagline}</p>
+          <ul className="mx-auto mt-8 grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-2">
+            {content.whyWorkItems.map((item, i) => (
+              <li key={i} className="flex items-start gap-3 rounded-xl bg-white p-4 shadow-sm">
+                <span className="text-gold-500">★</span>
+                <span className="text-sm text-neutral-700">
+                  <span className="font-semibold text-brand-800">{item.title}</span>
+                  <br />
+                  {item.description}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </SectionContainer>
+      )}
 
       {/* REALISTIC JOB PREVIEW — Understand Expectations */}
-      <SectionContainer tint>
-        <h2 className="text-2xl font-bold text-brand-800">What the Job Actually Involves</h2>
-        <div className="mx-auto mt-4 max-w-2xl space-y-3 text-sm text-neutral-700">
-          {content.jobPreviewIntro.map((paragraph, i) => (
-            <p key={i}>{paragraph}</p>
-          ))}
-          <p className="font-medium text-neutral-800">You&apos;ll also:</p>
-        </div>
-        <ul className="mx-auto mt-3 max-w-2xl space-y-3">
-          {content.jobPreviewBullets.map((item, i) => (
-            <li key={i} className="flex items-start gap-3 text-sm text-neutral-700">
-              <span className="mt-0.5 text-brand-500">•</span>
-              {item}
-            </li>
-          ))}
-        </ul>
-        <p className="mx-auto mt-6 max-w-2xl text-sm text-neutral-700">{content.jobPreviewClosing}</p>
-      </SectionContainer>
+      {content.sectionVisibility.jobPreview && (
+        <SectionContainer tint>
+          <h2 className="text-2xl font-bold text-brand-800">{t.jobPreviewHeading}</h2>
+          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-sm text-neutral-700">
+            {content.jobPreviewIntro.map((paragraph, i) => (
+              <p key={i}>{paragraph}</p>
+            ))}
+            <p className="font-medium text-neutral-800">{t.jobPreviewAlsoLabel}</p>
+          </div>
+          <ul className="mx-auto mt-3 max-w-2xl space-y-3">
+            {content.jobPreviewBullets.map((item, i) => (
+              <li key={i} className="flex items-start gap-3 text-sm text-neutral-700">
+                <span className="mt-0.5 text-brand-500">•</span>
+                {item}
+              </li>
+            ))}
+          </ul>
+          <p className="mx-auto mt-6 max-w-2xl text-sm text-neutral-700">{content.jobPreviewClosing}</p>
+        </SectionContainer>
+      )}
 
       {/* CAREER GROWTH — See Career Growth */}
-      <SectionContainer className="text-center">
-        <h2 className="text-2xl font-bold text-brand-800">Grow With Mama&apos;s</h2>
-        <p className="mt-2 text-sm font-medium text-brand-600">{content.careerGrowthTagline}</p>
-        <p className="mx-auto mt-2 max-w-xl text-sm text-neutral-600">{content.careerGrowthBody}</p>
-        <div className="mx-auto mt-8 flex max-w-3xl flex-col items-center gap-2 sm:flex-row sm:justify-center sm:gap-3">
-          {CAREER_LADDER.map((role, i) => (
-            <div key={role} className="flex items-center gap-2">
-              <span className="rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white sm:text-xs md:text-sm">
-                {role}
-              </span>
-              {i < CAREER_LADDER.length - 1 && (
-                <span className="text-gold-500" aria-hidden="true">
-                  <span className="sm:hidden">↓</span>
-                  <span className="hidden sm:inline">→</span>
+      {content.sectionVisibility.careerGrowth && (
+        <SectionContainer className="text-center">
+          <h2 className="text-2xl font-bold text-brand-800">{t.careerGrowthHeading}</h2>
+          <p className="mt-2 text-sm font-medium text-brand-600">{content.careerGrowthTagline}</p>
+          <p className="mx-auto mt-2 max-w-xl text-sm text-neutral-600">{content.careerGrowthBody}</p>
+          <div className="mx-auto mt-8 flex max-w-3xl flex-col items-center gap-2 sm:flex-row sm:justify-center sm:gap-3">
+            {t.careerLadder.map((role, i) => (
+              <div key={role} className="flex items-center gap-2">
+                <span className="rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white sm:text-xs md:text-sm">
+                  {role}
                 </span>
-              )}
-            </div>
-          ))}
-        </div>
-        <p className="mx-auto mt-4 max-w-xl text-xs text-neutral-500">{content.careerGrowthClosing}</p>
-      </SectionContainer>
+                {i < t.careerLadder.length - 1 && (
+                  <span className="text-gold-500" aria-hidden="true">
+                    <span className="sm:hidden">↓</span>
+                    <span className="hidden sm:inline">→</span>
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="mx-auto mt-4 max-w-xl text-xs text-neutral-500">{content.careerGrowthClosing}</p>
+        </SectionContainer>
+      )}
 
       {/* MCC CULTURE / MAMAS VALUES */}
-      <SectionContainer tint>
-        <h2 className="text-center text-2xl font-bold text-brand-800">The MAMAS Way</h2>
-        <p className="mt-2 text-center text-sm font-medium text-brand-600">{content.mamasValuesTagline}</p>
-        <div className="mx-auto mt-8 grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-5">
-          {MAMAS_LETTERS.map((v, i) => (
-            <div key={`${v.letter}-${v.word}`} className="rounded-xl border border-neutral-200 bg-white p-4 text-center">
-              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-gold-500 text-lg font-bold text-brand-900">
-                {v.letter}
+      {content.sectionVisibility.mamasValues && (
+        <SectionContainer tint>
+          <h2 className="text-center text-2xl font-bold text-brand-800">{t.mamasHeading}</h2>
+          <p className="mt-2 text-center text-sm font-medium text-brand-600">{content.mamasValuesTagline}</p>
+          <div className="mx-auto mt-8 grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-5">
+            {MAMAS_LETTERS.map((v, i) => (
+              <div key={`${v.letter}-${v.word}`} className="rounded-xl border border-neutral-200 bg-white p-4 text-center">
+                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-gold-500 text-lg font-bold text-brand-900">
+                  {v.letter}
+                </div>
+                <p className="font-semibold text-brand-800">{v.word}</p>
+                <p className="mt-1 text-xs text-neutral-600">{content.mamasValuesDescriptions[i]}</p>
               </div>
-              <p className="font-semibold text-brand-800">{v.word}</p>
-              <p className="mt-1 text-xs text-neutral-600">{content.mamasValuesDescriptions[i]}</p>
-            </div>
-          ))}
-        </div>
-        <p className="mx-auto mt-6 max-w-2xl text-center text-xs text-neutral-500">{content.mamasValuesClosing}</p>
-      </SectionContainer>
+            ))}
+          </div>
+          <p className="mx-auto mt-6 max-w-2xl text-center text-xs text-neutral-500">{content.mamasValuesClosing}</p>
+        </SectionContainer>
+      )}
 
       {/* WHO THRIVES / SELF-SELECTION */}
-      <SectionContainer>
-        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
-          <div>
-            <h2 className="text-xl font-bold text-brand-800">{content.whoThrivesHeading}</h2>
-            <ul className="mt-4 space-y-2">
-              {content.whoThrivesItems.map((item, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-neutral-700">
-                  <span className="text-green-600">✓</span> {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-brand-800">{content.notRightFitHeading}</h2>
-            <div className="mt-4 space-y-2">
-              {content.notRightFitIntro.map((paragraph, i) => (
-                <p key={i} className="text-sm text-neutral-600">
-                  {paragraph}
-                </p>
-              ))}
+      {content.sectionVisibility.whoThrives && (
+        <SectionContainer>
+          <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
+            <div>
+              <h2 className="text-xl font-bold text-brand-800">{content.whoThrivesHeading}</h2>
+              <ul className="mt-4 space-y-2">
+                {content.whoThrivesItems.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-neutral-700">
+                    <span className="text-green-600">✓</span> {item}
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul className="mt-2 space-y-2">
-              {content.notRightFitItems.map((item, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-neutral-600">
-                  <span className="text-neutral-400">–</span> {item}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-4 text-sm text-neutral-600">{content.notRightFitClosing}</p>
+            <div>
+              <h2 className="text-xl font-bold text-brand-800">{content.notRightFitHeading}</h2>
+              <div className="mt-4 space-y-2">
+                {content.notRightFitIntro.map((paragraph, i) => (
+                  <p key={i} className="text-sm text-neutral-600">
+                    {paragraph}
+                  </p>
+                ))}
+              </div>
+              <ul className="mt-2 space-y-2">
+                {content.notRightFitItems.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-neutral-600">
+                    <span className="text-neutral-400">–</span> {item}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-4 text-sm text-neutral-600">{content.notRightFitClosing}</p>
+            </div>
           </div>
-        </div>
-      </SectionContainer>
+        </SectionContainer>
+      )}
 
       {/* OPEN POSITIONS — View Open Position */}
       <SectionContainer tint id="open-positions">
-        <h2 className="text-center text-2xl font-bold text-brand-800">Open Positions</h2>
+        <h2 className="text-center text-2xl font-bold text-brand-800">{t.openPositionsHeading}</h2>
         {postings.length === 0 ? (
-          <p className="mt-6 text-center text-neutral-500">
-            We don&apos;t have any open positions right now — check back soon!
-          </p>
+          <p className="mt-6 text-center text-neutral-500">{t.noOpenPositions}</p>
         ) : (
           <ul className="mx-auto mt-8 max-w-2xl space-y-3">
             {postings.map((p) => (
@@ -254,7 +343,7 @@ export default function CareersPageV2({
                     {p.positionType && <p className="text-xs text-neutral-500">{p.positionType}</p>}
                   </div>
                   <span className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white">
-                    Apply Now
+                    {t.applyNow}
                   </span>
                 </Link>
               </li>
@@ -264,28 +353,32 @@ export default function CareersPageV2({
       </SectionContainer>
 
       {/* FAQ */}
-      <SectionContainer>
-        <h2 className="text-center text-2xl font-bold text-brand-800">Questions? We&apos;ve Got Answers.</h2>
-        <div className="mx-auto mt-8 max-w-2xl space-y-5">
-          {content.faqs.map((f, i) => (
-            <div key={i}>
-              <p className="font-semibold text-brand-800">{f.q}</p>
-              <p className="mt-1 text-sm text-neutral-600">{f.a}</p>
-            </div>
-          ))}
-        </div>
-      </SectionContainer>
+      {content.sectionVisibility.faq && (
+        <SectionContainer>
+          <h2 className="text-center text-2xl font-bold text-brand-800">{t.faqHeading}</h2>
+          <div className="mx-auto mt-8 max-w-2xl space-y-5">
+            {content.faqs.map((f, i) => (
+              <div key={i}>
+                <p className="font-semibold text-brand-800">{f.q}</p>
+                <p className="mt-1 text-sm text-neutral-600">{f.a}</p>
+              </div>
+            ))}
+          </div>
+        </SectionContainer>
+      )}
 
       {/* FINAL CTA */}
-      <SectionContainer tint className="text-center">
-        <h2 className="text-2xl font-bold text-brand-800">{content.finalCtaHeadline}</h2>
-        <p className="mx-auto mt-3 max-w-xl text-sm text-neutral-600">{content.finalCtaBody}</p>
-        <div className="mt-6">
-          <a href="#open-positions">
-            <Button size="lg">{content.finalCtaButtonLabel}</Button>
-          </a>
-        </div>
-      </SectionContainer>
+      {content.sectionVisibility.finalCta && (
+        <SectionContainer tint className="text-center">
+          <h2 className="text-2xl font-bold text-brand-800">{content.finalCtaHeadline}</h2>
+          <p className="mx-auto mt-3 max-w-xl text-sm text-neutral-600">{content.finalCtaBody}</p>
+          <div className="mt-6">
+            <a href="#open-positions">
+              <Button size="lg">{content.finalCtaButtonLabel}</Button>
+            </a>
+          </div>
+        </SectionContainer>
+      )}
 
       <footer className="border-t border-neutral-200 bg-neutral-50 px-4 py-10 text-xs leading-relaxed text-neutral-500 sm:px-8">
         <div className="mx-auto max-w-3xl space-y-3">

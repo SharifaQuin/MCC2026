@@ -5,8 +5,9 @@ import { getSession } from "@/lib/session";
 import {
   setCareersV2Content,
   resetCareersV2Content,
-  DEFAULT_CAREERS_V2_CONTENT,
+  defaultCareersV2Content,
   type CareersV2Content,
+  type CareersLocale,
 } from "@/lib/recruiting";
 
 // Editing the public Careers V2 copy is ADMIN-only, same reasoning as the
@@ -53,8 +54,18 @@ function parseQaBlocks(raw: string): { q: string; a: string }[] {
   return parseTitledBlocks(raw).map(({ title, description }) => ({ q: title, a: description }));
 }
 
+// Checkboxes only appear in FormData when checked, so presence = visible.
+function checked(formData: FormData, name: string): boolean {
+  return formData.get(name) != null;
+}
+
+function localeFromForm(formData: FormData): CareersLocale {
+  return field(formData, "locale") === "es" ? "es" : "en";
+}
+
 export async function setCareersV2ContentAction(formData: FormData) {
   await requireAdmin();
+  const locale = localeFromForm(formData);
 
   const heroBody = parseBlocks(field(formData, "heroBody"));
   const ourStoryParagraphs = parseBlocks(field(formData, "ourStoryParagraphs"));
@@ -68,7 +79,7 @@ export async function setCareersV2ContentAction(formData: FormData) {
   const faqs = parseQaBlocks(field(formData, "faqs"));
   const mamasValuesDescriptions = parseLines(field(formData, "mamasValuesDescriptions"));
 
-  const d = DEFAULT_CAREERS_V2_CONTENT;
+  const d = defaultCareersV2Content(locale);
   const content: CareersV2Content = {
     heroHeadline: field(formData, "heroHeadline") || d.heroHeadline,
     heroSubheadline: field(formData, "heroSubheadline") || d.heroSubheadline,
@@ -110,16 +121,28 @@ export async function setCareersV2ContentAction(formData: FormData) {
     finalCtaHeadline: field(formData, "finalCtaHeadline") || d.finalCtaHeadline,
     finalCtaBody: field(formData, "finalCtaBody") || d.finalCtaBody,
     finalCtaButtonLabel: field(formData, "finalCtaButtonLabel") || d.finalCtaButtonLabel,
+    sectionVisibility: {
+      ourStory: checked(formData, "visible_ourStory"),
+      jobDescription: checked(formData, "visible_jobDescription"),
+      whyWork: checked(formData, "visible_whyWork"),
+      jobPreview: checked(formData, "visible_jobPreview"),
+      careerGrowth: checked(formData, "visible_careerGrowth"),
+      mamasValues: checked(formData, "visible_mamasValues"),
+      whoThrives: checked(formData, "visible_whoThrives"),
+      faq: checked(formData, "visible_faq"),
+      finalCta: checked(formData, "visible_finalCta"),
+    },
   };
 
-  await setCareersV2Content(content);
+  await setCareersV2Content(locale, content);
   revalidatePath("/recruiting/careers-content");
   revalidatePath("/careers");
 }
 
-export async function resetCareersV2ContentAction() {
+export async function resetCareersV2ContentAction(formData: FormData) {
   await requireAdmin();
-  await resetCareersV2Content();
+  const locale = localeFromForm(formData);
+  await resetCareersV2Content(locale);
   revalidatePath("/recruiting/careers-content");
   revalidatePath("/careers");
 }

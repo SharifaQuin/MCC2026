@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
-import { getCareersV2Content, type CareersV2Content } from "@/lib/recruiting";
+import { getCareersV2Content, type CareersV2Content, type CareersLocale } from "@/lib/recruiting";
 import { setCareersV2ContentAction, resetCareersV2ContentAction } from "@/app/actions/careersContent";
 
 const joinLines = (items: string[]) => items.join("\n");
@@ -52,10 +52,28 @@ function TextArea({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+  visibilityName,
+  visibleByDefault,
+}: {
+  title: string;
+  children: React.ReactNode;
+  visibilityName?: string;
+  visibleByDefault?: boolean;
+}) {
   return (
     <div className="space-y-4 rounded-lg border border-neutral-200 bg-white p-6">
-      <h2 className="font-semibold text-neutral-900">{title}</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold text-neutral-900">{title}</h2>
+        {visibilityName && (
+          <label className="flex items-center gap-2 text-sm text-neutral-600">
+            <input type="checkbox" name={visibilityName} defaultChecked={visibleByDefault} className="h-4 w-4" />
+            Show this section
+          </label>
+        )}
+      </div>
       {children}
     </div>
   );
@@ -67,12 +85,18 @@ const TITLED_HELP =
   "Separate entries with a blank line. Within an entry, the first line is the title and the rest is the description.";
 const QA_HELP = "Separate entries with a blank line. Within an entry, the first line is the question, the rest is the answer.";
 
-export default async function CareersContentPage() {
+export default async function CareersContentPage({
+  searchParams,
+}: {
+  searchParams: { lang?: string };
+}) {
   await requireRecruitingAccess();
   const session = await getSession();
   if (!session || session.role !== "ADMIN") redirect("/recruiting");
 
-  const c: CareersV2Content = await getCareersV2Content();
+  const locale: CareersLocale = searchParams?.lang === "es" ? "es" : "en";
+  const c: CareersV2Content = await getCareersV2Content(locale);
+  const previewHref = locale === "es" ? "/careers?lang=es" : "/careers";
 
   return (
     <div className="mx-auto max-w-3xl pb-16">
@@ -80,9 +104,9 @@ export default async function CareersContentPage() {
         ← Back to Careers Page Experience
       </Link>
       <h1 className="mb-2 mt-2 text-2xl font-semibold">Edit Careers Page Copy</h1>
-      <p className="mb-6 text-sm text-neutral-500">
+      <p className="mb-4 text-sm text-neutral-500">
         Every sentence on the public{" "}
-        <a href="/careers" target="_blank" rel="noopener noreferrer" className="underline">
+        <a href={previewHref} target="_blank" rel="noopener noreferrer" className="underline">
           /careers
         </a>{" "}
         page (Draft 2 only) is editable here — no code change or deploy needed. Section headings, the
@@ -90,7 +114,27 @@ export default async function CareersContentPage() {
         fixed; everything else on the page comes from the fields below.
       </p>
 
+      <div className="mb-6 flex gap-2 border-b border-neutral-200">
+        <Link
+          href="/recruiting/careers-content"
+          className={`border-b-2 px-3 py-2 text-sm font-medium ${
+            locale === "en" ? "border-brand-600 text-brand-800" : "border-transparent text-neutral-500 hover:text-brand-700"
+          }`}
+        >
+          English
+        </Link>
+        <Link
+          href="/recruiting/careers-content?lang=es"
+          className={`border-b-2 px-3 py-2 text-sm font-medium ${
+            locale === "es" ? "border-brand-600 text-brand-800" : "border-transparent text-neutral-500 hover:text-brand-700"
+          }`}
+        >
+          Español
+        </Link>
+      </div>
+
       <form action={setCareersV2ContentAction} className="space-y-6">
+        <input type="hidden" name="locale" value={locale} />
         <Section title="Hero">
           <Field label="Headline" name="heroHeadline" defaultValue={c.heroHeadline} />
           <Field label="Subheadline" name="heroSubheadline" defaultValue={c.heroSubheadline} />
@@ -101,7 +145,7 @@ export default async function CareersContentPage() {
           </div>
         </Section>
 
-        <Section title="Our Story">
+        <Section title="Our Story" visibilityName="visible_ourStory" visibleByDefault={c.sectionVisibility.ourStory}>
           <Field label="Tagline" name="ourStoryTagline" defaultValue={c.ourStoryTagline} />
           <TextArea
             label="Paragraphs"
@@ -112,7 +156,11 @@ export default async function CareersContentPage() {
           />
         </Section>
 
-        <Section title="The Cleaning Technician Position (Job Description)">
+        <Section
+          title="The Cleaning Technician Position (Job Description)"
+          visibilityName="visible_jobDescription"
+          visibleByDefault={c.sectionVisibility.jobDescription}
+        >
           <TextArea
             label="Paragraphs"
             name="jobDescriptionParagraphs"
@@ -131,7 +179,7 @@ export default async function CareersContentPage() {
           </div>
         </Section>
 
-        <Section title="Why Work at Mama's">
+        <Section title="Why Work at Mama's" visibilityName="visible_whyWork" visibleByDefault={c.sectionVisibility.whyWork}>
           <Field label="Tagline" name="whyWorkTagline" defaultValue={c.whyWorkTagline} />
           <TextArea
             label="Cards"
@@ -142,7 +190,7 @@ export default async function CareersContentPage() {
           />
         </Section>
 
-        <Section title="What the Job Actually Involves">
+        <Section title="What the Job Actually Involves" visibilityName="visible_jobPreview" visibleByDefault={c.sectionVisibility.jobPreview}>
           <TextArea
             label="Intro paragraphs"
             name="jobPreviewIntro"
@@ -165,7 +213,7 @@ export default async function CareersContentPage() {
           />
         </Section>
 
-        <Section title="Grow With Mama's">
+        <Section title="Grow With Mama's" visibilityName="visible_careerGrowth" visibleByDefault={c.sectionVisibility.careerGrowth}>
           <Field label="Tagline" name="careerGrowthTagline" defaultValue={c.careerGrowthTagline} />
           <TextArea label="Body" name="careerGrowthBody" defaultValue={c.careerGrowthBody} rows={2} />
           <TextArea
@@ -176,7 +224,7 @@ export default async function CareersContentPage() {
           />
         </Section>
 
-        <Section title="The MAMAS Way">
+        <Section title="The MAMAS Way" visibilityName="visible_mamasValues" visibleByDefault={c.sectionVisibility.mamasValues}>
           <Field label="Tagline" name="mamasValuesTagline" defaultValue={c.mamasValuesTagline} />
           <TextArea
             label="Descriptions (in order: Meticulous, Authentic, Mindful, Allegiant, Sincere)"
@@ -188,7 +236,7 @@ export default async function CareersContentPage() {
           <TextArea label="Closing line" name="mamasValuesClosing" defaultValue={c.mamasValuesClosing} rows={2} />
         </Section>
 
-        <Section title="Who Thrives / Is This Right for You">
+        <Section title="Who Thrives / Is This Right for You" visibilityName="visible_whoThrives" visibleByDefault={c.sectionVisibility.whoThrives}>
           <Field label="'Who thrives' heading" name="whoThrivesHeading" defaultValue={c.whoThrivesHeading} />
           <TextArea
             label="'Who thrives' bullets"
@@ -215,11 +263,11 @@ export default async function CareersContentPage() {
           <TextArea label="Closing line" name="notRightFitClosing" defaultValue={c.notRightFitClosing} rows={2} />
         </Section>
 
-        <Section title="Recruiting FAQ">
+        <Section title="Recruiting FAQ" visibilityName="visible_faq" visibleByDefault={c.sectionVisibility.faq}>
           <TextArea label="Questions & answers" name="faqs" defaultValue={joinQaBlocks(c.faqs)} help={QA_HELP} rows={20} />
         </Section>
 
-        <Section title="Final CTA">
+        <Section title="Final CTA" visibilityName="visible_finalCta" visibleByDefault={c.sectionVisibility.finalCta}>
           <Field label="Headline" name="finalCtaHeadline" defaultValue={c.finalCtaHeadline} />
           <TextArea label="Body" name="finalCtaBody" defaultValue={c.finalCtaBody} rows={2} />
           <Field label="Button label" name="finalCtaButtonLabel" defaultValue={c.finalCtaButtonLabel} />
@@ -233,7 +281,7 @@ export default async function CareersContentPage() {
             Save Changes
           </button>
           <a
-            href="/careers"
+            href={previewHref}
             target="_blank"
             rel="noopener noreferrer"
             className="rounded-md border border-neutral-300 px-5 py-2.5 font-medium text-neutral-700 hover:bg-neutral-50"
@@ -244,8 +292,9 @@ export default async function CareersContentPage() {
       </form>
 
       <form action={resetCareersV2ContentAction} className="mt-6 border-t border-neutral-200 pt-6">
+        <input type="hidden" name="locale" value={locale} />
         <p className="mb-2 text-sm text-neutral-500">
-          Discard all edits above and restore the last approved copy.
+          Discard all edits above and restore the last approved {locale === "es" ? "Spanish" : "English"} copy.
         </p>
         <button
           type="submit"

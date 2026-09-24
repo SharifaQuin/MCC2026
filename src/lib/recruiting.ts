@@ -373,7 +373,36 @@ export interface CareersV2Content {
   finalCtaHeadline: string;
   finalCtaBody: string;
   finalCtaButtonLabel: string;
+  // Per-section show/hide for Draft 2. Hero, Open Positions, and the legal
+  // footer aren't included — those always show. The recruiting video has
+  // its own always-on rule (hidden until a URL is set) and isn't part of
+  // this list either.
+  sectionVisibility: CareersV2SectionVisibility;
 }
+
+export interface CareersV2SectionVisibility {
+  ourStory: boolean;
+  jobDescription: boolean;
+  whyWork: boolean;
+  jobPreview: boolean;
+  careerGrowth: boolean;
+  mamasValues: boolean;
+  whoThrives: boolean;
+  faq: boolean;
+  finalCta: boolean;
+}
+
+const DEFAULT_SECTION_VISIBILITY: CareersV2SectionVisibility = {
+  ourStory: true,
+  jobDescription: true,
+  whyWork: true,
+  jobPreview: true,
+  careerGrowth: true,
+  mamasValues: true,
+  whoThrives: true,
+  faq: true,
+  finalCta: true,
+};
 
 // The approved copy as of the last content review — this is what Draft 2
 // shows whenever no Admin edit has been saved yet, and what "Reset to
@@ -531,17 +560,196 @@ export const DEFAULT_CAREERS_V2_CONTENT: CareersV2Content = {
   finalCtaBody:
     "If you're dependable, hardworking, open to learning, and ready to take pride in the work you do, we'd love to learn more about you.",
   finalCtaButtonLabel: "View Open Positions",
+  sectionVisibility: DEFAULT_SECTION_VISIBILITY,
 };
 
-const CAREERS_V2_CONTENT_KEY = "careers_v2_content";
+// Spanish translation of the same approved copy above, shown when a
+// candidate switches the public page's language toggle to Español. Kept
+// as a fully separate, independently-editable set (its own OwnerSetting
+// row) rather than a per-field {en, es} pair, so editing one language
+// never risks the other and the admin form for each stays the same shape.
+export const DEFAULT_CAREERS_V2_CONTENT_ES: CareersV2Content = {
+  heroHeadline: "Ven a Crecer con Mama's",
+  heroSubheadline: "Más que un Trabajo de Limpieza. Un Lugar para Crecer.",
+  heroBody: [
+    "En Mama's Cleaning Crew, estamos formando un equipo de personas confiables y trabajadoras que se enorgullecen de crear espacios limpios y tranquilos para nuestros clientes.",
+    "Si buscas un equipo donde puedas aprender, crecer, recibir apoyo y sentirte orgulloso(a) del trabajo que haces, nos encantaría que conocieras más sobre nosotros.",
+  ],
+  primaryCtaLabel: "Ver Posiciones Disponibles",
+  secondaryCtaLabel: "Conoce a Mama's",
+  ourStoryTagline: "Más que Limpieza",
+  ourStoryParagraphs: [
+    "Mama's Cleaning Crew fue fundada por Sharifa Quinland con una idea sencilla: construir una empresa de limpieza basada en valores familiares, el cuidado y la creencia de que un espacio limpio puede traer un poco más de paz a la vida de alguien.",
+    "Nuestro trabajo va más allá de marcar tareas en una lista de limpieza.",
+    "Queremos que nuestros clientes lleguen a casa y sientan alivio. Queremos que nuestros empleados entiendan que el trabajo que hacen importa. Y queremos construir una empresa donde los altos estándares y el cuidado genuino puedan existir juntos.",
+    "Ese es el corazón detrás de Mama's Cleaning Crew.",
+  ],
+  jobDescriptionParagraphs: [
+    "Como Técnico(a) de Limpieza en Mama's Cleaning Crew, ayudarás a cuidar hogares en todo el Condado de Orange mientras trabajas como parte de un equipo de limpieza profesional.",
+    "Seguirás los procedimientos de limpieza de MCC, trabajarás de manera eficiente sin perder la atención al detalle, te comunicarás profesionalmente con clientes y compañeros de equipo, y ayudarás a asegurar que cada hogar reciba el nivel de cuidado que nuestros clientes esperan.",
+    "La limpieza profesional es un trabajo activo y físico. Pasarás gran parte de tu día de pie, caminando, agachándote, estirándote, cargando suministros de limpieza y moviéndote entre tareas y ubicaciones de clientes.",
+    "Te enseñaremos la forma de trabajar de Mama's a través de capacitación estructurada, procedimientos claros, acompañamiento y retroalimentación. Para quienes estén interesados en asumir más responsabilidad, existen oportunidades para crecer hacia roles de liderazgo y capacitación dentro de MCC.",
+  ],
+  atAGlance: {
+    schedule: "Lunes a viernes, disponibilidad diurna entre 8:00 a.m. y 6:00 p.m.",
+    serviceArea: "Condado de Orange",
+    teamEnvironment: "Trabaja junto a otros Técnicos de Limpieza de MCC como parte de nuestro modelo de limpieza en equipo",
+    experience: "1+ año de experiencia profesional en limpieza residencial O 3+ años de experiencia limpiando de forma independiente",
+    transportation: "Se requiere vehículo confiable, licencia de conducir vigente y seguro de auto vigente",
+    growthPath: "Técnico de Limpieza → Técnico Líder → Capacitador(a) → Supervisor(a) de Campo → Gerente de Servicio",
+  },
+  whyWorkTagline: "Un Equipo Basado en Estándares, Apoyo y Crecimiento",
+  whyWorkItems: [
+    { title: "Horario Diurno", description: "El horario de los Técnicos de Limpieza opera de lunes a viernes durante el día." },
+    {
+      title: "Capacitación Estructurada",
+      description: "Aprende los procedimientos de limpieza de MCC, los estándares de calidad, las expectativas de seguridad y nuestro enfoque de hospitalidad con los clientes.",
+    },
+    {
+      title: "Ambiente de Equipo",
+      description: "Eres parte de un equipo. La comunicación, el trabajo en equipo y el apoyo mutuo son partes importantes de cómo trabajamos.",
+    },
+    {
+      title: "Expectativas Claras",
+      description:
+        "Creemos que los empleados deben entender lo que se espera de ellos. MCC utiliza procedimientos definidos, capacitación y estándares de calidad en lugar de dejar que resuelvas todo por tu cuenta.",
+    },
+    {
+      title: "Oportunidad de Crecer",
+      description:
+        "Técnico de Limpieza es el punto de partida de nuestra trayectoria profesional. Los miembros del equipo que demuestren buen desempeño, confiabilidad, liderazgo y dominio de los procedimientos de MCC pueden tener oportunidades de avanzar a medida que la empresa crece.",
+    },
+    {
+      title: "Trabajo con Significado",
+      description:
+        "El trabajo que haces impacta directamente a nuestros clientes. Un hogar limpio puede devolverle tiempo a alguien, reducir el estrés y crear un espacio donde simplemente pueda disfrutar estar en casa.",
+    },
+    {
+      title: "Reembolso de Millaje",
+      description: "El millaje elegible entre ubicaciones de trabajo asignadas se reembolsa por separado según la política de MCC.",
+    },
+  ],
+  jobPreviewIntro: [
+    "Queremos que entiendas el trabajo antes de postularte.",
+    "La limpieza profesional es un trabajo activo y práctico. Pasarás gran parte de tu turno moviéndote, de pie, agachándote, estirándote, cargando suministros y limpiando distintas áreas de los hogares de nuestros clientes.",
+  ],
+  jobPreviewBullets: [
+    "Viajar entre las ubicaciones de clientes asignadas dentro de nuestra área de servicio en el Condado de Orange.",
+    "Limpiar cocinas, baños, dormitorios, áreas comunes y otros espacios asignados según el servicio del cliente.",
+    "Seguir los procedimientos de limpieza y los estándares de calidad de MCC.",
+    "Trabajar con rapidez y propósito sin sacrificar la calidad.",
+    "Trabajar de forma colaborativa con tu compañero(a) y el resto del equipo de MCC.",
+    "Revisar tu trabajo antes de continuar y ayudar a asegurar que el hogar quede listo antes de que tu equipo se retire.",
+    "Tratar el hogar, las pertenencias y la privacidad de cada cliente con cuidado y respeto.",
+    "Comunicarte de manera profesional con los clientes, tus compañeros y la oficina.",
+    "Llegar preparado(a) y a tiempo al trabajo programado.",
+    "Recibir acompañamiento y retroalimentación mientras aprendes y creces.",
+  ],
+  jobPreviewClosing:
+    "Este es un trabajo para alguien que disfruta mantenerse activo(a) y que puede sentirse orgulloso(a) al ver la diferencia que su trabajo genera.",
+  careerGrowthTagline: "Tu Camino Puede Comenzar Aquí",
+  careerGrowthBody:
+    "Buscamos miembros del equipo interesados en aprender, desarrollar sus habilidades y asumir mayor responsabilidad con el tiempo.",
+  careerGrowthClosing:
+    "El ascenso no es automático — se gana a través de un buen desempeño, confiabilidad, liderazgo, conocimiento de los procedimientos de MCC y disposición para asumir mayor responsabilidad.",
+  mamasValuesTagline: "Nuestros Valores Guían Cómo Trabajamos",
+  mamasValuesDescriptions: [
+    "Prestamos atención a los detalles y nos enorgullece hacer bien el trabajo.",
+    "Nos comunicamos con honestidad, asumimos responsabilidad y construimos confianza a través de nuestras acciones.",
+    "Respetamos a nuestros clientes, sus hogares, a nuestros compañeros y el medio ambiente que nos rodea.",
+    "Estamos comprometidos con nuestro equipo, nuestros clientes y los estándares que nos hemos comprometido a mantener.",
+    "Lideramos con cuidado genuino, profesionalismo y respeto.",
+  ],
+  mamasValuesClosing:
+    "Estas no son solo palabras en una pared. Son el estándar que queremos reflejar en cómo limpiamos, nos comunicamos, resolvemos problemas y nos tratamos unos a otros.",
+  whoThrivesHeading: "Puede que Encajes Perfecto Aquí Si Tú...",
+  whoThrivesItems: [
+    "Cumples cuando la gente cuenta contigo.",
+    "Te fijas en los detalles que otros podrían pasar por alto.",
+    "Te enorgulleces de hacer bien tu trabajo.",
+    "Estás dispuesto(a) a aprender la forma de trabajar de la empresa.",
+    "Sabes recibir retroalimentación y aplicarla.",
+    "Disfrutas trabajar en equipo.",
+    "Te comunicas con honestidad y profesionalismo.",
+    "Respetas los hogares, las pertenencias y la privacidad de otras personas.",
+    "Te sientes cómodo(a) manteniéndote activo(a) durante tu jornada laboral.",
+    "Entiendes que tanto la calidad COMO la eficiencia importan.",
+  ],
+  notRightFitHeading: "Queremos que Esto Sea lo Correcto para Ambos",
+  notRightFitIntro: [
+    "La limpieza profesional no es el trabajo indicado para todos — y está bien.",
+    "Esta posición podría no ser la más adecuada si tú:",
+  ],
+  notRightFitItems: [
+    "Tienes dificultades frecuentes con la asistencia o la puntualidad.",
+    "No disfrutas el trabajo activo y físico.",
+    "No cuentas con transporte confiable.",
+    "No puedes cumplir con la disponibilidad requerida entre semana.",
+    "Prefieres trabajar completamente de forma independiente en lugar de en equipo.",
+    "No te gusta seguir procedimientos establecidos.",
+    "No te sientes cómodo(a) recibiendo acompañamiento o retroalimentación constructiva.",
+    "Prefieres trabajar a tu propio ritmo sin importar el horario del equipo.",
+  ],
+  notRightFitClosing:
+    "Preferimos ser claros sobre el trabajo desde el principio para que puedas decidir si Mama's es lo correcto para ti.",
+  faqs: [
+    {
+      q: "¿Cuál es el horario?",
+      a: "Las posiciones de Técnico de Limpieza requieren disponibilidad diurna de lunes a viernes entre 8:00 a.m. y 6:00 p.m. Tu horario asignado real puede variar según las citas de los clientes y las necesidades del negocio.",
+    },
+    {
+      q: "¿Dónde trabajaré?",
+      a: "Mama's Cleaning Crew atiende a clientes en todo el Condado de Orange. Los Técnicos de Limpieza viajan entre las ubicaciones de clientes asignadas durante la jornada laboral.",
+    },
+    {
+      q: "¿Necesito tener mi propio vehículo?",
+      a: "Sí. Los Técnicos de Limpieza deben contar con transporte confiable, licencia de conducir vigente y seguro de auto vigente.",
+    },
+    {
+      q: "¿Necesito experiencia en limpieza residencial?",
+      a: "Sí. Para la posición de Técnico de Limpieza, actualmente buscamos candidatos con al menos un año de experiencia profesional en limpieza residencial o al menos tres años de experiencia limpiando de forma independiente.",
+    },
+    {
+      q: "¿Necesito currículum?",
+      a: "No. El currículum es opcional para los solicitantes de Técnico de Limpieza. Si tienes uno, puedes adjuntarlo con tu solicitud.",
+    },
+    {
+      q: "¿Recibiré capacitación?",
+      a: "Sí. Los nuevos Técnicos de Limpieza reciben capacitación estructurada sobre los procedimientos de MCC, las expectativas de calidad, seguridad, trabajo en equipo y hospitalidad con el cliente. El acompañamiento y la retroalimentación continúan mientras te desarrollas en el puesto.",
+    },
+    {
+      q: "¿Hay oportunidad de crecer?",
+      a: "Sí. La trayectoria profesional de MCC incluye Técnico de Limpieza, Técnico Líder, Capacitador(a), Supervisor(a) de Campo y Gerente de Servicio. El ascenso depende del desempeño, la confiabilidad, el dominio de los procedimientos de MCC, la capacidad de liderazgo, las necesidades del negocio y la disponibilidad de posiciones.",
+    },
+    {
+      q: "¿Qué sucede después de postularme?",
+      a: "Confirmaremos que hemos recibido tu solicitud y revisaremos la información que proporcionaste. Si eres seleccionado(a) para continuar, te contactaremos con el siguiente paso. Los candidatos invitados a una entrevista podrán elegir entre los horarios disponibles que ofrezca MCC.",
+    },
+  ],
+  finalCtaHeadline: "¿Listo(a) para Crecer con Mama's?",
+  finalCtaBody:
+    "Si eres confiable, trabajador(a), estás dispuesto(a) a aprender y listo(a) para enorgullecerte del trabajo que haces, nos encantaría conocerte más.",
+  finalCtaButtonLabel: "Ver Posiciones Disponibles",
+  sectionVisibility: DEFAULT_SECTION_VISIBILITY,
+};
 
-// Deep-merges a partial/possibly-stale saved value over the current
+export type CareersLocale = "en" | "es";
+
+const CAREERS_V2_CONTENT_KEYS: Record<CareersLocale, string> = {
+  en: "careers_v2_content",
+  es: "careers_v2_content_es",
+};
+
+export function defaultCareersV2Content(locale: CareersLocale): CareersV2Content {
+  return locale === "es" ? DEFAULT_CAREERS_V2_CONTENT_ES : DEFAULT_CAREERS_V2_CONTENT;
+}
+
+// Deep-merges a partial/possibly-stale saved value over the given
 // defaults, field by field, so adding a new field to CareersV2Content (or
 // a save from an older shape) never breaks the public page — anything
 // missing or malformed just falls back to the approved default for that
 // field rather than the whole page erroring.
-function mergeCareersV2Content(saved: unknown): CareersV2Content {
-  const d = DEFAULT_CAREERS_V2_CONTENT;
+function mergeCareersV2Content(saved: unknown, d: CareersV2Content): CareersV2Content {
   const s = (saved && typeof saved === "object" ? (saved as Record<string, unknown>) : {}) as Partial<
     Record<keyof CareersV2Content, unknown>
   >;
@@ -573,6 +781,23 @@ function mergeCareersV2Content(saved: unknown): CareersV2Content {
     s.mamasValuesDescriptions.every((x) => typeof x === "string")
       ? (s.mamasValuesDescriptions as [string, string, string, string, string])
       : d.mamasValuesDescriptions;
+
+  const savedVisibility =
+    s.sectionVisibility && typeof s.sectionVisibility === "object"
+      ? (s.sectionVisibility as Partial<Record<keyof CareersV2SectionVisibility, unknown>>)
+      : {};
+  const bool = (v: unknown, fallback: boolean) => (typeof v === "boolean" ? v : fallback);
+  const sectionVisibility: CareersV2SectionVisibility = {
+    ourStory: bool(savedVisibility.ourStory, d.sectionVisibility.ourStory),
+    jobDescription: bool(savedVisibility.jobDescription, d.sectionVisibility.jobDescription),
+    whyWork: bool(savedVisibility.whyWork, d.sectionVisibility.whyWork),
+    jobPreview: bool(savedVisibility.jobPreview, d.sectionVisibility.jobPreview),
+    careerGrowth: bool(savedVisibility.careerGrowth, d.sectionVisibility.careerGrowth),
+    mamasValues: bool(savedVisibility.mamasValues, d.sectionVisibility.mamasValues),
+    whoThrives: bool(savedVisibility.whoThrives, d.sectionVisibility.whoThrives),
+    faq: bool(savedVisibility.faq, d.sectionVisibility.faq),
+    finalCta: bool(savedVisibility.finalCta, d.sectionVisibility.finalCta),
+  };
 
   return {
     heroHeadline: str(s.heroHeadline, d.heroHeadline),
@@ -612,25 +837,28 @@ function mergeCareersV2Content(saved: unknown): CareersV2Content {
     finalCtaHeadline: str(s.finalCtaHeadline, d.finalCtaHeadline),
     finalCtaBody: str(s.finalCtaBody, d.finalCtaBody),
     finalCtaButtonLabel: str(s.finalCtaButtonLabel, d.finalCtaButtonLabel),
+    sectionVisibility,
   };
 }
 
-export async function getCareersV2Content(): Promise<CareersV2Content> {
-  const row = await prisma.ownerSetting.findUnique({ where: { key: CAREERS_V2_CONTENT_KEY } });
-  if (!row) return DEFAULT_CAREERS_V2_CONTENT;
-  return mergeCareersV2Content(row.value);
+export async function getCareersV2Content(locale: CareersLocale = "en"): Promise<CareersV2Content> {
+  const row = await prisma.ownerSetting.findUnique({ where: { key: CAREERS_V2_CONTENT_KEYS[locale] } });
+  const defaults = defaultCareersV2Content(locale);
+  if (!row) return defaults;
+  return mergeCareersV2Content(row.value, defaults);
 }
 
-export async function setCareersV2Content(content: CareersV2Content): Promise<void> {
+export async function setCareersV2Content(locale: CareersLocale, content: CareersV2Content): Promise<void> {
+  const key = CAREERS_V2_CONTENT_KEYS[locale];
   await prisma.ownerSetting.upsert({
-    where: { key: CAREERS_V2_CONTENT_KEY },
-    create: { key: CAREERS_V2_CONTENT_KEY, value: content as unknown as Prisma.InputJsonValue },
+    where: { key },
+    create: { key, value: content as unknown as Prisma.InputJsonValue },
     update: { value: content as unknown as Prisma.InputJsonValue },
   });
 }
 
-export async function resetCareersV2Content(): Promise<void> {
-  await prisma.ownerSetting.deleteMany({ where: { key: CAREERS_V2_CONTENT_KEY } });
+export async function resetCareersV2Content(locale: CareersLocale = "en"): Promise<void> {
+  await prisma.ownerSetting.deleteMany({ where: { key: CAREERS_V2_CONTENT_KEYS[locale] } });
 }
 
 // Pings the recruiting inbox whenever a new applicant lands in the pipeline —
