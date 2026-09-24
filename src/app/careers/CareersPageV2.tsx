@@ -170,7 +170,12 @@ export default function CareersPageV2({
               <span className="rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white sm:text-xs md:text-sm">
                 {role}
               </span>
-              {i < CAREER_LADDER.length - 1 && <span className="text-gold-500">↓</span>}
+              {i < CAREER_LADDER.length - 1 && (
+                <span className="text-gold-500" aria-hidden="true">
+                  <span className="sm:hidden">↓</span>
+                  <span className="hidden sm:inline">→</span>
+                </span>
+              )}
             </div>
           ))}
         </div>
