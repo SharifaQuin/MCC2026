@@ -118,6 +118,17 @@ export default async function RecruitingExperiencePage() {
           Save Video URL
         </button>
       </form>
+
+      <Link
+        href="/recruiting/careers-content"
+        className="mt-6 block rounded-lg border border-neutral-200 bg-white p-6 hover:border-gold-400 hover:shadow-sm"
+      >
+        <p className="font-medium text-neutral-900">Edit Careers Page Copy →</p>
+        <p className="mt-1 text-sm text-neutral-500">
+          Rewrite every sentence on the Draft 2 careers page — hero, story, job description, FAQ, and
+          more — without a code change.
+        </p>
+      </Link>
     </div>
   );
 }

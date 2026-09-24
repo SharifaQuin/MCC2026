@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getRecruitingExperienceVersion, getRecruitingVideoUrl } from "@/lib/recruiting";
+import { getRecruitingExperienceVersion, getRecruitingVideoUrl, getCareersV2Content } from "@/lib/recruiting";
 import CareersPageV1 from "./CareersPageV1";
 import CareersPageV2 from "./CareersPageV2";
 
@@ -20,7 +20,8 @@ export default async function CareersPage() {
   ]);
 
   if (version === "v2") {
-    return <CareersPageV2 postings={postings} videoUrl={videoUrl} />;
+    const content = await getCareersV2Content();
+    return <CareersPageV2 postings={postings} videoUrl={videoUrl} content={content} />;
   }
 
   return <CareersPageV1 postings={postings} />;

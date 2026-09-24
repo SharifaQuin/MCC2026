@@ -328,6 +328,311 @@ export async function setRecruitingVideoUrl(url: string | null): Promise<void> {
   });
 }
 
+// All of the editable candidate-facing copy on Careers V2 (/careers, Draft
+// 2 only) — stored as one JSON blob rather than a field per sentence, so an
+// Admin can rewrite the page's message without a code change or migration.
+// Structural elements (the MAMAS letters/words, the career ladder role
+// names, the "At a Glance" field labels, section headings) stay fixed in
+// CareersPageV2 itself — only the actual sentences are editable here.
+export interface CareersV2Content {
+  heroHeadline: string;
+  heroSubheadline: string;
+  heroBody: string[];
+  primaryCtaLabel: string;
+  secondaryCtaLabel: string;
+  ourStoryTagline: string;
+  ourStoryParagraphs: string[];
+  jobDescriptionParagraphs: string[];
+  atAGlance: {
+    schedule: string;
+    serviceArea: string;
+    teamEnvironment: string;
+    experience: string;
+    transportation: string;
+    growthPath: string;
+  };
+  whyWorkTagline: string;
+  whyWorkItems: { title: string; description: string }[];
+  jobPreviewIntro: string[];
+  jobPreviewBullets: string[];
+  jobPreviewClosing: string;
+  careerGrowthTagline: string;
+  careerGrowthBody: string;
+  careerGrowthClosing: string;
+  mamasValuesTagline: string;
+  // Fixed M-A-M-A-S order (Meticulous, Authentic, Mindful, Allegiant, Sincere).
+  mamasValuesDescriptions: [string, string, string, string, string];
+  mamasValuesClosing: string;
+  whoThrivesHeading: string;
+  whoThrivesItems: string[];
+  notRightFitHeading: string;
+  notRightFitIntro: string[];
+  notRightFitItems: string[];
+  notRightFitClosing: string;
+  faqs: { q: string; a: string }[];
+  finalCtaHeadline: string;
+  finalCtaBody: string;
+  finalCtaButtonLabel: string;
+}
+
+// The approved copy as of the last content review — this is what Draft 2
+// shows whenever no Admin edit has been saved yet, and what "Reset to
+// Default" restores.
+export const DEFAULT_CAREERS_V2_CONTENT: CareersV2Content = {
+  heroHeadline: "Come Grow With Mama's",
+  heroSubheadline: "More Than a Cleaning Job. A Place to Grow.",
+  heroBody: [
+    "At Mama's Cleaning Crew, we're building a team of dependable, hardworking people who take pride in creating clean, peaceful spaces for our clients.",
+    "If you're looking for a team where you can learn, grow, be supported, and take pride in the work you do, we'd love for you to learn more about us.",
+  ],
+  primaryCtaLabel: "View Open Positions",
+  secondaryCtaLabel: "Meet Mama's",
+  ourStoryTagline: "More Than Cleaning",
+  ourStoryParagraphs: [
+    "Mama's Cleaning Crew was founded by Sharifa Quinland with a simple idea: build a cleaning company around family values, care, and the belief that a clean space can bring a little more peace into someone's life.",
+    "Our work goes beyond checking items off a cleaning list.",
+    "We want our clients to come home and feel a sense of relief. We want our employees to understand that the work they do matters. And we want to build a company where high standards and genuine care can exist together.",
+    "That's the heart behind Mama's Cleaning Crew.",
+  ],
+  jobDescriptionParagraphs: [
+    "As a Cleaning Technician with Mama's Cleaning Crew, you'll help care for homes throughout Orange County while working as part of a professional cleaning team.",
+    "You'll follow MCC's cleaning procedures, work efficiently while maintaining attention to detail, communicate professionally with clients and teammates, and help make sure every home receives the level of care our clients expect.",
+    "Professional cleaning is active, physical work. You'll spend much of your day standing, walking, bending, reaching, carrying cleaning supplies, and moving between cleaning tasks and client locations.",
+    "We'll teach you the Mama's way through structured training, clear procedures, coaching, and feedback. For team members interested in taking on more responsibility, there are opportunities to grow into leadership and training roles within MCC.",
+  ],
+  atAGlance: {
+    schedule: "Monday–Friday, daytime availability between 8:00 AM and 6:00 PM",
+    serviceArea: "Orange County",
+    teamEnvironment: "Work alongside other MCC Cleaning Technicians as part of our team-based cleaning model",
+    experience: "1+ year professional residential cleaning experience OR 3+ years independent residential cleaning experience",
+    transportation: "Reliable vehicle, valid driver's license, and current auto insurance required",
+    growthPath: "Cleaning Technician → Lead Technician → Trainer → Field Supervisor → Service Manager",
+  },
+  whyWorkTagline: "A Team Built Around Standards, Support & Growth",
+  whyWorkItems: [
+    { title: "Daytime Work", description: "Our Cleaning Technician schedule operates Monday through Friday during daytime hours." },
+    { title: "Structured Training", description: "Learn MCC's cleaning procedures, quality standards, safety expectations, and approach to client hospitality." },
+    { title: "Team Environment", description: "You're part of a team. Communication, teamwork, and supporting one another are important parts of how we work." },
+    {
+      title: "Clear Expectations",
+      description:
+        "We believe employees should understand what's expected of them. MCC uses defined procedures, training, and quality standards rather than leaving you to figure everything out on your own.",
+    },
+    {
+      title: "Opportunity to Grow",
+      description:
+        "Cleaning Technician is the starting point of our career path. Team members who demonstrate strong performance, reliability, leadership, and mastery of MCC procedures may have opportunities to advance as the company grows.",
+    },
+    {
+      title: "Meaningful Work",
+      description:
+        "The work you do directly impacts our clients. A clean home can give someone back time, reduce stress, and create a space where they can simply enjoy being home.",
+    },
+    { title: "Mileage Reimbursement", description: "Eligible mileage between assigned job locations is reimbursed separately according to MCC policy." },
+  ],
+  jobPreviewIntro: [
+    "We want you to understand the job before you apply.",
+    "Professional cleaning is active, hands-on work. You'll spend much of your shift moving, standing, bending, reaching, carrying supplies, and cleaning different areas of our clients' homes.",
+  ],
+  jobPreviewBullets: [
+    "Travel between assigned client locations throughout our Orange County service area.",
+    "Clean kitchens, bathrooms, bedrooms, common areas, and other assigned spaces according to the client's service.",
+    "Follow MCC's cleaning procedures and quality standards.",
+    "Work with speed and purpose without sacrificing quality.",
+    "Work collaboratively with your teammate and the rest of the MCC team.",
+    "Check your work before moving on and help make sure the home is ready before your team leaves.",
+    "Treat every client's home, belongings, and privacy with care and respect.",
+    "Communicate professionally with clients, teammates, and the office.",
+    "Arrive prepared and on time for scheduled work.",
+    "Receive coaching and feedback as you learn and grow.",
+  ],
+  jobPreviewClosing:
+    "This is a job for someone who enjoys staying active and can take pride in seeing the difference their work makes.",
+  careerGrowthTagline: "Your Journey Can Start Here",
+  careerGrowthBody:
+    "We want team members who are interested in learning, developing their skills, and taking on greater responsibility over time.",
+  careerGrowthClosing:
+    "Advancement isn't automatic — it's earned through strong performance, reliability, leadership, knowledge of MCC procedures, and readiness for greater responsibility.",
+  mamasValuesTagline: "Our Values Guide How We Work",
+  mamasValuesDescriptions: [
+    "We pay attention to the details and take pride in doing the job right.",
+    "We communicate honestly, take accountability, and build trust through our actions.",
+    "We respect our clients, their homes, our teammates, and the environment around us.",
+    "We are committed to our team, our clients, and the standards we've agreed to uphold.",
+    "We lead with genuine care, professionalism, and respect.",
+  ],
+  mamasValuesClosing:
+    "These aren't just words on a wall. They're the standard we want reflected in how we clean, communicate, solve problems, and treat one another.",
+  whoThrivesHeading: "You May Feel Right at Home Here If You...",
+  whoThrivesItems: [
+    "Show up when people are counting on you.",
+    "Notice the details other people may overlook.",
+    "Take pride in doing a job correctly.",
+    "Are open to learning a company's way of doing things.",
+    "Can receive feedback and apply it.",
+    "Enjoy working as part of a team.",
+    "Communicate honestly and professionally.",
+    "Respect other people's homes, belongings, and privacy.",
+    "Are comfortable staying active throughout your workday.",
+    "Understand that both quality AND efficiency matter.",
+  ],
+  notRightFitHeading: "We Want This to Be the Right Fit for Both of Us",
+  notRightFitIntro: [
+    "Professional cleaning isn't the right job for everyone — and that's okay.",
+    "This position may not be the best fit if you:",
+  ],
+  notRightFitItems: [
+    "Regularly struggle with attendance or punctuality.",
+    "Don't enjoy active, physical work.",
+    "Don't have reliable transportation.",
+    "Cannot meet the required weekday availability.",
+    "Prefer working completely independently rather than as part of a team.",
+    "Don't like following established procedures.",
+    "Aren't comfortable receiving coaching or constructive feedback.",
+    "Prefer working at your own pace regardless of the team's schedule.",
+  ],
+  notRightFitClosing:
+    "We'd rather be clear about the job upfront so you can decide whether Mama's feels right for you.",
+  faqs: [
+    {
+      q: "What is the schedule?",
+      a: "Cleaning Technician positions require Monday–Friday daytime availability between 8:00 AM and 6:00 PM. Your actual assigned schedule may vary based on client appointments and business needs.",
+    },
+    {
+      q: "Where will I work?",
+      a: "Mama's Cleaning Crew serves clients throughout Orange County. Cleaning Technicians travel between assigned client locations during the workday.",
+    },
+    {
+      q: "Do I need my own vehicle?",
+      a: "Yes. Cleaning Technicians must have reliable transportation, a valid driver's license, and current auto insurance.",
+    },
+    {
+      q: "Do I need residential cleaning experience?",
+      a: "Yes. For the Cleaning Technician position, we're currently looking for candidates with at least one year of professional residential cleaning experience or at least three years of independent residential cleaning experience.",
+    },
+    {
+      q: "Do I need a resume?",
+      a: "No. A resume is optional for Cleaning Technician applicants. If you have one, you're welcome to upload it with your application.",
+    },
+    {
+      q: "Will I receive training?",
+      a: "Yes. New Cleaning Technicians receive structured training on MCC procedures, quality expectations, safety, teamwork, and client hospitality. Coaching and feedback continue as you develop in the role.",
+    },
+    {
+      q: "Is there room to grow?",
+      a: "Yes. MCC's career path includes Cleaning Technician, Lead Technician, Trainer, Field Supervisor, and Service Manager. Advancement depends on performance, reliability, mastery of MCC procedures, leadership ability, business needs, and position availability.",
+    },
+    {
+      q: "What happens after I apply?",
+      a: "We'll confirm that we've received your application and review the information you provided. If you're selected to move forward, we'll contact you with the next step. Candidates invited to interview will be able to choose from available interview times provided by MCC.",
+    },
+  ],
+  finalCtaHeadline: "Ready to Grow With Mama's?",
+  finalCtaBody:
+    "If you're dependable, hardworking, open to learning, and ready to take pride in the work you do, we'd love to learn more about you.",
+  finalCtaButtonLabel: "View Open Positions",
+};
+
+const CAREERS_V2_CONTENT_KEY = "careers_v2_content";
+
+// Deep-merges a partial/possibly-stale saved value over the current
+// defaults, field by field, so adding a new field to CareersV2Content (or
+// a save from an older shape) never breaks the public page — anything
+// missing or malformed just falls back to the approved default for that
+// field rather than the whole page erroring.
+function mergeCareersV2Content(saved: unknown): CareersV2Content {
+  const d = DEFAULT_CAREERS_V2_CONTENT;
+  const s = (saved && typeof saved === "object" ? (saved as Record<string, unknown>) : {}) as Partial<
+    Record<keyof CareersV2Content, unknown>
+  >;
+  const str = (v: unknown, fallback: string) => (typeof v === "string" && v.trim() ? v : fallback);
+  const strArr = (v: unknown, fallback: string[]) =>
+    Array.isArray(v) && v.every((x) => typeof x === "string") && v.length > 0 ? (v as string[]) : fallback;
+
+  const atAGlance = (s.atAGlance && typeof s.atAGlance === "object" ? (s.atAGlance as Record<string, unknown>) : {}) as Record<
+    string,
+    unknown
+  >;
+  const whyWorkItems =
+    Array.isArray(s.whyWorkItems) && s.whyWorkItems.length > 0
+      ? (s.whyWorkItems as Array<{ title?: unknown; description?: unknown }>).map((item, i) => ({
+          title: str(item?.title, d.whyWorkItems[i]?.title ?? ""),
+          description: str(item?.description, d.whyWorkItems[i]?.description ?? ""),
+        }))
+      : d.whyWorkItems;
+  const faqs =
+    Array.isArray(s.faqs) && s.faqs.length > 0
+      ? (s.faqs as Array<{ q?: unknown; a?: unknown }>).map((item, i) => ({
+          q: str(item?.q, d.faqs[i]?.q ?? ""),
+          a: str(item?.a, d.faqs[i]?.a ?? ""),
+        }))
+      : d.faqs;
+  const mamasValuesDescriptions =
+    Array.isArray(s.mamasValuesDescriptions) &&
+    s.mamasValuesDescriptions.length === 5 &&
+    s.mamasValuesDescriptions.every((x) => typeof x === "string")
+      ? (s.mamasValuesDescriptions as [string, string, string, string, string])
+      : d.mamasValuesDescriptions;
+
+  return {
+    heroHeadline: str(s.heroHeadline, d.heroHeadline),
+    heroSubheadline: str(s.heroSubheadline, d.heroSubheadline),
+    heroBody: strArr(s.heroBody, d.heroBody),
+    primaryCtaLabel: str(s.primaryCtaLabel, d.primaryCtaLabel),
+    secondaryCtaLabel: str(s.secondaryCtaLabel, d.secondaryCtaLabel),
+    ourStoryTagline: str(s.ourStoryTagline, d.ourStoryTagline),
+    ourStoryParagraphs: strArr(s.ourStoryParagraphs, d.ourStoryParagraphs),
+    jobDescriptionParagraphs: strArr(s.jobDescriptionParagraphs, d.jobDescriptionParagraphs),
+    atAGlance: {
+      schedule: str(atAGlance.schedule, d.atAGlance.schedule),
+      serviceArea: str(atAGlance.serviceArea, d.atAGlance.serviceArea),
+      teamEnvironment: str(atAGlance.teamEnvironment, d.atAGlance.teamEnvironment),
+      experience: str(atAGlance.experience, d.atAGlance.experience),
+      transportation: str(atAGlance.transportation, d.atAGlance.transportation),
+      growthPath: str(atAGlance.growthPath, d.atAGlance.growthPath),
+    },
+    whyWorkTagline: str(s.whyWorkTagline, d.whyWorkTagline),
+    whyWorkItems,
+    jobPreviewIntro: strArr(s.jobPreviewIntro, d.jobPreviewIntro),
+    jobPreviewBullets: strArr(s.jobPreviewBullets, d.jobPreviewBullets),
+    jobPreviewClosing: str(s.jobPreviewClosing, d.jobPreviewClosing),
+    careerGrowthTagline: str(s.careerGrowthTagline, d.careerGrowthTagline),
+    careerGrowthBody: str(s.careerGrowthBody, d.careerGrowthBody),
+    careerGrowthClosing: str(s.careerGrowthClosing, d.careerGrowthClosing),
+    mamasValuesTagline: str(s.mamasValuesTagline, d.mamasValuesTagline),
+    mamasValuesDescriptions,
+    mamasValuesClosing: str(s.mamasValuesClosing, d.mamasValuesClosing),
+    whoThrivesHeading: str(s.whoThrivesHeading, d.whoThrivesHeading),
+    whoThrivesItems: strArr(s.whoThrivesItems, d.whoThrivesItems),
+    notRightFitHeading: str(s.notRightFitHeading, d.notRightFitHeading),
+    notRightFitIntro: strArr(s.notRightFitIntro, d.notRightFitIntro),
+    notRightFitItems: strArr(s.notRightFitItems, d.notRightFitItems),
+    notRightFitClosing: str(s.notRightFitClosing, d.notRightFitClosing),
+    faqs,
+    finalCtaHeadline: str(s.finalCtaHeadline, d.finalCtaHeadline),
+    finalCtaBody: str(s.finalCtaBody, d.finalCtaBody),
+    finalCtaButtonLabel: str(s.finalCtaButtonLabel, d.finalCtaButtonLabel),
+  };
+}
+
+export async function getCareersV2Content(): Promise<CareersV2Content> {
+  const row = await prisma.ownerSetting.findUnique({ where: { key: CAREERS_V2_CONTENT_KEY } });
+  if (!row) return DEFAULT_CAREERS_V2_CONTENT;
+  return mergeCareersV2Content(row.value);
+}
+
+export async function setCareersV2Content(content: CareersV2Content): Promise<void> {
+  await prisma.ownerSetting.upsert({
+    where: { key: CAREERS_V2_CONTENT_KEY },
+    create: { key: CAREERS_V2_CONTENT_KEY, value: content as unknown as Prisma.InputJsonValue },
+    update: { value: content as unknown as Prisma.InputJsonValue },
+  });
+}
+
+export async function resetCareersV2Content(): Promise<void> {
+  await prisma.ownerSetting.deleteMany({ where: { key: CAREERS_V2_CONTENT_KEY } });
+}
+
 // Pings the recruiting inbox whenever a new applicant lands in the pipeline —
 // from the careers page, Indeed/ZipRecruiter (once those postings point at
 // the shared /apply/[slug] link), or a manual entry — so nobody has to keep
