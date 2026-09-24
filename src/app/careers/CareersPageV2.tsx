@@ -81,8 +81,16 @@ const FAQS = [
     a: "We look for at least 1 year of paid/professional residential cleaning experience, or at least 3 years of independent/personal cleaning experience — professional experience isn't the only path in.",
   },
   {
+    q: "Is a resume required?",
+    a: "No — a resume is optional for this position. You're welcome to attach one, but it's not required to apply.",
+  },
+  {
     q: "Is there training?",
     a: "Yes — every new Cleaning Technician goes through structured training before working independently with clients, and continues to get coaching and feedback on the job.",
+  },
+  {
+    q: "Is there room to grow?",
+    a: "Yes — Cleaning Technician is the entry point to a career path at MCC, with growth into Lead Technician, Trainer, Field Supervisor, and Service Manager roles for those who want to take it on.",
   },
   {
     q: "What happens after I apply?",
@@ -90,11 +98,23 @@ const FAQS = [
   },
 ];
 
+const JOB_AT_A_GLANCE = [
+  { label: "Schedule", value: "Monday–Friday, daytime hours" },
+  { label: "Service Area", value: "Orange County" },
+  { label: "Team Structure", value: "Paired with the same teammate every day" },
+  {
+    label: "Experience",
+    value: "1+ year professional residential cleaning, or 3+ years cleaning independently",
+  },
+  { label: "Transportation", value: "Reliable vehicle, valid driver's license, current auto insurance" },
+  { label: "Growth Path", value: "Lead Technician → Trainer → Field Supervisor → Service Manager" },
+];
+
 export default function CareersPageV2({
   postings,
   videoUrl,
 }: {
-  postings: { slug: string; titleEn: string; positionType: string | null }[];
+  postings: { slug: string; titleEn: string; positionType: string | null; descriptionEn: string }[];
   videoUrl: string | null;
 }) {
   return (
@@ -124,98 +144,8 @@ export default function CareersPageV2({
         </div>
       </SectionContainer>
 
-      {/* RECRUITING VIDEO */}
-      <SectionContainer className="text-center">
-        <h2 className="text-2xl font-bold text-brand-800">See What It&apos;s Like to Work at Mama&apos;s</h2>
-        <div className="mx-auto mt-6 aspect-video max-w-2xl overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50">
-          {videoUrl ? (
-            <iframe
-              src={videoUrl}
-              className="h-full w-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          ) : (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-8 text-neutral-400">
-              <span className="text-4xl">🎬</span>
-              <p className="text-sm">Our team video is on its way — check back soon!</p>
-            </div>
-          )}
-        </div>
-      </SectionContainer>
-
-      {/* WHY WORK AT MAMA'S */}
-      <SectionContainer tint>
-        <h2 className="text-center text-2xl font-bold text-brand-800">Why Work at Mama&apos;s</h2>
-        <ul className="mx-auto mt-8 grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-2">
-          {WHY_WORK_HERE.map((item, i) => (
-            <li key={i} className="flex items-start gap-3 rounded-xl bg-white p-4 shadow-sm">
-              <span className="text-gold-500">★</span>
-              <span className="text-sm text-neutral-700">{item}</span>
-            </li>
-          ))}
-        </ul>
-      </SectionContainer>
-
-      {/* CAREER GROWTH */}
-      <SectionContainer className="text-center">
-        <h2 className="text-2xl font-bold text-brand-800">Career Growth</h2>
-        <p className="mx-auto mt-2 max-w-xl text-sm text-neutral-600">
-          Cleaning Technician is the beginning of a career path at MCC — not a dead end.
-        </p>
-        <div className="mx-auto mt-8 flex max-w-3xl flex-col items-center gap-2 sm:flex-row sm:justify-center sm:gap-3">
-          {CAREER_LADDER.map((role, i) => (
-            <div key={role} className="flex items-center gap-2">
-              <span className="rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white sm:text-xs md:text-sm">
-                {role}
-              </span>
-              {i < CAREER_LADDER.length - 1 && <span className="text-gold-500">↓</span>}
-            </div>
-          ))}
-        </div>
-      </SectionContainer>
-
-      {/* REALISTIC JOB PREVIEW */}
-      <SectionContainer tint>
-        <h2 className="text-2xl font-bold text-brand-800">What the Job Actually Involves</h2>
-        <ul className="mx-auto mt-6 max-w-2xl space-y-3">
-          {REALISTIC_PREVIEW.map((item, i) => (
-            <li key={i} className="flex items-start gap-3 text-sm text-neutral-700">
-              <span className="mt-0.5 text-brand-500">•</span>
-              {item}
-            </li>
-          ))}
-        </ul>
-      </SectionContainer>
-
-      {/* WHO THRIVES / NOT RIGHT FIT */}
-      <SectionContainer>
-        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
-          <div>
-            <h2 className="text-xl font-bold text-brand-800">Who Thrives at Mama&apos;s</h2>
-            <ul className="mt-4 space-y-2">
-              {WHO_THRIVES.map((item, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-neutral-700">
-                  <span className="text-green-600">✓</span> {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-brand-800">This May Not Be the Right Fit If…</h2>
-            <ul className="mt-4 space-y-2">
-              {NOT_RIGHT_FIT.map((item, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-neutral-600">
-                  <span className="text-neutral-400">–</span> {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </SectionContainer>
-
-      {/* OUR STORY */}
-      <SectionContainer tint id="our-story">
+      {/* OUR STORY — Learn About Mama's */}
+      <SectionContainer id="our-story">
         <h2 className="text-center text-2xl font-bold text-brand-800">Our Story</h2>
         <div className="mx-auto mt-6 max-w-2xl space-y-4 text-sm leading-relaxed text-neutral-700">
           <p>
@@ -236,12 +166,106 @@ export default function CareersPageV2({
         </div>
       </SectionContainer>
 
-      {/* MAMAS CORE VALUES */}
+      {/* RECRUITING VIDEO — See What It's Like to Work Here */}
+      <SectionContainer className="text-center">
+        <h2 className="text-2xl font-bold text-brand-800">See What It&apos;s Like to Work at Mama&apos;s</h2>
+        <div className="mx-auto mt-6 aspect-video max-w-2xl overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50">
+          {videoUrl ? (
+            <iframe
+              src={videoUrl}
+              className="h-full w-full"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          ) : (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-8 text-neutral-400">
+              <span className="text-4xl">🎬</span>
+              <p className="text-sm">Our team video is on its way — check back soon!</p>
+            </div>
+          )}
+        </div>
+      </SectionContainer>
+
+      {/* JOB DESCRIPTION — Understand the Cleaning Technician Position */}
+      {postings.length > 0 && (
+        <SectionContainer tint>
+          <h2 className="text-center text-2xl font-bold text-brand-800">The Cleaning Technician Position</h2>
+          <div className="mx-auto mt-8 max-w-2xl space-y-6">
+            {postings.map((p) => (
+              <div key={p.slug} className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+                <p className="text-lg font-semibold text-brand-800">{p.titleEn}</p>
+                {p.positionType && <p className="text-xs text-neutral-500">{p.positionType}</p>}
+                <p className="mt-4 text-sm leading-relaxed text-neutral-700">{p.descriptionEn}</p>
+                <dl className="mt-6 grid grid-cols-1 gap-3 border-t border-neutral-100 pt-6 sm:grid-cols-2">
+                  {JOB_AT_A_GLANCE.map((f) => (
+                    <div key={f.label}>
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-neutral-400">{f.label}</dt>
+                      <dd className="mt-0.5 text-sm text-neutral-700">{f.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            ))}
+          </div>
+        </SectionContainer>
+      )}
+
+      {/* WHY WORK AT MAMA'S — Understand What MCC Offers */}
       <SectionContainer>
-        <h2 className="text-center text-2xl font-bold text-brand-800">Our Core Values — MAMAS</h2>
+        <h2 className="text-center text-2xl font-bold text-brand-800">Why Work at Mama&apos;s</h2>
+        <ul className="mx-auto mt-8 grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-2">
+          {WHY_WORK_HERE.map((item, i) => (
+            <li key={i} className="flex items-start gap-3 rounded-xl bg-white p-4 shadow-sm">
+              <span className="text-gold-500">★</span>
+              <span className="text-sm text-neutral-700">{item}</span>
+            </li>
+          ))}
+        </ul>
+      </SectionContainer>
+
+      {/* REALISTIC JOB PREVIEW — Understand Expectations */}
+      <SectionContainer tint>
+        <h2 className="text-2xl font-bold text-brand-800">What the Job Actually Involves</h2>
+        <ul className="mx-auto mt-6 max-w-2xl space-y-3">
+          {REALISTIC_PREVIEW.map((item, i) => (
+            <li key={i} className="flex items-start gap-3 text-sm text-neutral-700">
+              <span className="mt-0.5 text-brand-500">•</span>
+              {item}
+            </li>
+          ))}
+        </ul>
+      </SectionContainer>
+
+      {/* CAREER GROWTH — See Career Growth */}
+      <SectionContainer className="text-center">
+        <h2 className="text-2xl font-bold text-brand-800">Grow With Mama&apos;s</h2>
+        <p className="mx-auto mt-2 max-w-xl text-sm text-neutral-600">
+          Cleaning Technician is the beginning of a career path at MCC — not a dead end. We want
+          people who are interested in learning, developing their skills, taking on responsibility,
+          and growing with the company.
+        </p>
+        <div className="mx-auto mt-8 flex max-w-3xl flex-col items-center gap-2 sm:flex-row sm:justify-center sm:gap-3">
+          {CAREER_LADDER.map((role, i) => (
+            <div key={role} className="flex items-center gap-2">
+              <span className="rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white sm:text-xs md:text-sm">
+                {role}
+              </span>
+              {i < CAREER_LADDER.length - 1 && <span className="text-gold-500">↓</span>}
+            </div>
+          ))}
+        </div>
+        <p className="mx-auto mt-4 max-w-xl text-xs text-neutral-500">
+          Growth isn&apos;t automatic or guaranteed — it&apos;s earned through performance, reliability, and
+          readiness. But the path is real, and it starts here.
+        </p>
+      </SectionContainer>
+
+      {/* MCC CULTURE / MAMAS VALUES */}
+      <SectionContainer tint>
+        <h2 className="text-center text-2xl font-bold text-brand-800">The MAMAS Way</h2>
         <div className="mx-auto mt-8 grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-5">
           {MAMAS_VALUES.map((v) => (
-            <div key={v.word} className="rounded-xl border border-neutral-200 p-4 text-center">
+            <div key={v.word} className="rounded-xl border border-neutral-200 bg-white p-4 text-center">
               <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-gold-500 text-lg font-bold text-brand-900">
                 {v.letter}
               </div>
@@ -252,7 +276,34 @@ export default function CareersPageV2({
         </div>
       </SectionContainer>
 
-      {/* OPEN POSITIONS */}
+      {/* WHO THRIVES / SELF-SELECTION */}
+      <SectionContainer>
+        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
+          <div>
+            <h2 className="text-xl font-bold text-brand-800">Who Thrives at Mama&apos;s</h2>
+            <ul className="mt-4 space-y-2">
+              {WHO_THRIVES.map((item, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-neutral-700">
+                  <span className="text-green-600">✓</span> {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-brand-800">Is Mama&apos;s Right for You?</h2>
+            <p className="mt-4 text-sm text-neutral-600">This role may not be a strong fit if:</p>
+            <ul className="mt-2 space-y-2">
+              {NOT_RIGHT_FIT.map((item, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-neutral-600">
+                  <span className="text-neutral-400">–</span> {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </SectionContainer>
+
+      {/* OPEN POSITIONS — View Open Position */}
       <SectionContainer tint id="open-positions">
         <h2 className="text-center text-2xl font-bold text-brand-800">Open Positions</h2>
         {postings.length === 0 ? (
@@ -291,6 +342,20 @@ export default function CareersPageV2({
               <p className="mt-1 text-sm text-neutral-600">{f.a}</p>
             </div>
           ))}
+        </div>
+      </SectionContainer>
+
+      {/* FINAL CTA */}
+      <SectionContainer tint className="text-center">
+        <h2 className="text-2xl font-bold text-brand-800">Ready to Grow With Mama&apos;s?</h2>
+        <p className="mx-auto mt-3 max-w-xl text-sm text-neutral-600">
+          Explore our open positions and see if Mama&apos;s Cleaning Crew could be the right next
+          step for you.
+        </p>
+        <div className="mt-6">
+          <a href="#open-positions">
+            <Button size="lg">View Open Positions</Button>
+          </a>
         </div>
       </SectionContainer>
 

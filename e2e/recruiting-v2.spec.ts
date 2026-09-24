@@ -42,21 +42,29 @@ test.describe.serial("Recruiting 2.0 acceptance", () => {
     await prisma.$disconnect();
   });
 
-  test("Draft 1 is the default careers experience", async ({ page }) => {
+  test("Draft 2 (Recruiting 2.0) is the default careers experience", async ({ page }) => {
     const res = await page.goto("/careers");
     expect(res?.status()).toBe(200);
-    await expect(page.locator("h1")).toContainText("OUR CREW");
+    await expect(page.locator("h1")).toContainText("Come Grow With Mama's");
   });
 
-  test("Admin can switch to Draft 2 from Careers Page Experience settings", async ({ page }) => {
+  test("Admin can switch to Draft 1 and back to Draft 2 — Draft 1 stays a real rollback", async ({ page }) => {
     await loginAsAdmin(page);
     await page.goto("/recruiting/experience");
     await expect(page.locator("h1")).toContainText("Careers Page Experience");
+
+    await page.check('input[name="version"][value="v1"]');
+    await page.click('button:has-text("Save")');
+    await page.waitForLoadState("networkidle");
+    let res = await page.goto("/careers");
+    expect(res?.status()).toBe(200);
+    await expect(page.locator("h1")).toContainText("OUR CREW");
+
+    await page.goto("/recruiting/experience");
     await page.check('input[name="version"][value="v2"]');
     await page.click('button:has-text("Save")');
     await page.waitForLoadState("networkidle");
-
-    const res = await page.goto("/careers");
+    res = await page.goto("/careers");
     expect(res?.status()).toBe(200);
     await expect(page.locator("h1")).toContainText("Come Grow With Mama's");
   });

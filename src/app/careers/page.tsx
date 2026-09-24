@@ -13,7 +13,7 @@ export default async function CareersPage() {
     prisma.jobPosting.findMany({
       where: { active: true },
       orderBy: { createdAt: "desc" },
-      select: { slug: true, titleEn: true, positionType: true },
+      select: { slug: true, titleEn: true, positionType: true, descriptionEn: true },
     }),
     getRecruitingExperienceVersion(),
     getRecruitingVideoUrl(),

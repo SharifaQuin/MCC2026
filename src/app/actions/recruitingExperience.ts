@@ -7,6 +7,7 @@ import {
   setRecruitingVideoUrl,
   type RecruitingExperienceVersion,
 } from "@/lib/recruiting";
+import { normalizeVideoUrl } from "@/lib/videoUrl";
 
 // The Draft 1 / Draft 2 careers-page toggle is deliberately ADMIN-only —
 // stricter than the SERVICE_MANAGER-inclusive recruiting access most of
@@ -27,8 +28,8 @@ export async function setRecruitingExperienceVersionAction(formData: FormData) {
 
 export async function setRecruitingVideoUrlAction(formData: FormData) {
   await requireAdmin();
-  const url = String(formData.get("videoUrl") ?? "").trim();
-  await setRecruitingVideoUrl(url || null);
+  const raw = String(formData.get("videoUrl") ?? "").trim();
+  await setRecruitingVideoUrl(normalizeVideoUrl(raw));
   revalidatePath("/recruiting/experience");
   revalidatePath("/careers");
 }

@@ -280,9 +280,11 @@ export function parseUtmParams(searchParams: URLSearchParams): UtmParams {
 // owner_draw_policy etc. — no new table needed) controls which public
 // careers/application experience renders. No session/auth check happens
 // inside the read — /careers and /apply/[slug] are anonymous, public pages
-// and need to read this with no one logged in. Defaults to "v1" whenever
-// unset, so nothing changes for anyone until an Admin explicitly flips it.
-// Writing it is gated ADMIN-only at the call site (see
+// and need to read this with no one logged in. Recruiting 2.0 (Draft 2) is
+// now the active default whenever this is unset (e.g. a fresh environment
+// that's never had the setting written); an Admin explicitly choosing
+// Draft 1 stores "v1" and that choice always wins, so Draft 1 stays a real
+// one-click rollback. Writing it is gated ADMIN-only at the call site (see
 // setRecruitingExperienceVersionAction in app/actions/recruitingExperience.ts).
 export type RecruitingExperienceVersion = "v1" | "v2";
 const RECRUITING_EXPERIENCE_VERSION_KEY = "recruiting_experience_version";
@@ -291,7 +293,7 @@ export async function getRecruitingExperienceVersion(): Promise<RecruitingExperi
   const row = await prisma.ownerSetting.findUnique({
     where: { key: RECRUITING_EXPERIENCE_VERSION_KEY },
   });
-  return row?.value === "v2" ? "v2" : "v1";
+  return row?.value === "v1" ? "v1" : "v2";
 }
 
 export async function setRecruitingExperienceVersion(version: RecruitingExperienceVersion): Promise<void> {

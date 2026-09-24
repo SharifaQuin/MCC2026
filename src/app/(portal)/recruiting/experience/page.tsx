@@ -83,13 +83,31 @@ export default async function RecruitingExperiencePage() {
       >
         <p className="font-medium text-neutral-900">Recruiting Video (Draft 2 only)</p>
         <p className="text-sm text-neutral-500">
-          Paste an embeddable video URL (e.g. a YouTube or Vimeo embed link). Until this is set,
-          Draft 2 shows a placeholder in place of the video — never a fake or stock clip.
+          Paste a YouTube, Vimeo, Loom, or Synthesia link (a normal share link is fine — it's
+          automatically converted to its embeddable form). Until this is set, Draft 2 shows a
+          placeholder in place of the video — never a fake or stock clip.
         </p>
+
+        <div className="aspect-video w-full max-w-sm overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50">
+          {videoUrl ? (
+            <iframe
+              src={videoUrl}
+              className="h-full w-full"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          ) : (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-1 p-4 text-center text-neutral-400">
+              <span className="text-2xl">🎬</span>
+              <p className="text-xs font-medium">Recruiting Video Not Yet Added</p>
+            </div>
+          )}
+        </div>
+
         <input
           name="videoUrl"
           type="url"
-          placeholder="https://www.youtube.com/embed/..."
+          placeholder="https://www.youtube.com/watch?v=..."
           defaultValue={videoUrl ?? ""}
           className="w-full rounded-md border border-neutral-300 px-3 py-2"
         />
