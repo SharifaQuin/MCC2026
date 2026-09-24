@@ -149,42 +149,34 @@ export default function CareersPageV2({
         <h2 className="text-center text-2xl font-bold text-brand-800">Our Story</h2>
         <div className="mx-auto mt-6 max-w-2xl space-y-4 text-sm leading-relaxed text-neutral-700">
           <p>
-            Mama&apos;s Cleaning Crew started back in 2023, founded by Sharifa Quinland with a simple idea:
-            build a cleaning company around family values, not just a service list. Since then, we&apos;ve
-            grown into a team of more than forty-five staff, all carrying forward that same founding
-            spirit.
+            Mama&apos;s Cleaning Crew was founded by Sharifa Quinland with a simple idea: build a cleaning
+            company around family values, not just a service list.
           </p>
           <p>
             Our mission is the heart of everything we do here: a clean space is the foundation of a
             peaceful life. We don&apos;t just clean — we care, we rejuvenate, and we create spaces where
             memories are made and cherished.
           </p>
-          <p>
-            We&apos;re proud of giving back, too — we provide free housecleaning for women battling cancer,
-            and for the firefighters and police officers who protect our communities.
-          </p>
         </div>
       </SectionContainer>
 
-      {/* RECRUITING VIDEO — See What It's Like to Work Here */}
-      <SectionContainer className="text-center">
-        <h2 className="text-2xl font-bold text-brand-800">See What It&apos;s Like to Work at Mama&apos;s</h2>
-        <div className="mx-auto mt-6 aspect-video max-w-2xl overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50">
-          {videoUrl ? (
+      {/* RECRUITING VIDEO — See What It's Like to Work Here. Completely hidden
+          from the public page until an Admin sets a real video URL — no
+          placeholder shown to candidates (the Admin settings page shows its
+          own "Recruiting Video Not Yet Added" state instead). */}
+      {videoUrl && (
+        <SectionContainer className="text-center">
+          <h2 className="text-2xl font-bold text-brand-800">See What It&apos;s Like to Work at Mama&apos;s</h2>
+          <div className="mx-auto mt-6 aspect-video max-w-2xl overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50">
             <iframe
               src={videoUrl}
               className="h-full w-full"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
             />
-          ) : (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-8 text-neutral-400">
-              <span className="text-4xl">🎬</span>
-              <p className="text-sm">Our team video is on its way — check back soon!</p>
-            </div>
-          )}
-        </div>
-      </SectionContainer>
+          </div>
+        </SectionContainer>
+      )}
 
       {/* JOB DESCRIPTION — Understand the Cleaning Technician Position */}
       {postings.length > 0 && (
