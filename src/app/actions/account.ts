@@ -11,6 +11,17 @@ async function requireAdminOrServiceManager() {
   return session;
 }
 
+// A SERVICE_MANAGER can manage any non-Admin account, but never an Admin's
+// — otherwise they could force a password reset (and log in as that Admin)
+// or lock an Admin out entirely. Only another Admin can manage an Admin
+// account. Checked against the target's *current* role on every call,
+// not cached, since roles can change between requests.
+async function assertCanManageTarget(callerRole: string, targetUserId: string) {
+  if (callerRole === "ADMIN") return;
+  const target = await prisma.user.findUnique({ where: { id: targetUserId }, select: { role: true } });
+  if (target?.role === "ADMIN") throw new Error("Not authorized to manage an Admin account.");
+}
+
 export interface ResetPasswordState {
   error?: string;
   inviteUrl?: string;
@@ -21,7 +32,8 @@ export async function resetPasswordAction(
   _prevState: ResetPasswordState,
   _formData: FormData
 ): Promise<ResetPasswordState> {
-  await requireAdminOrServiceManager();
+  const session = await requireAdminOrServiceManager();
+  await assertCanManageTarget(session.role, userId);
 
   const inviteToken = generateInviteToken();
   await prisma.user.update({
@@ -40,7 +52,8 @@ export async function resetPasswordAction(
 }
 
 export async function setAccountActiveAction(userId: string, active: boolean) {
-  await requireAdminOrServiceManager();
+  const session = await requireAdminOrServiceManager();
+  await assertCanManageTarget(session.role, userId);
   await prisma.user.update({ where: { id: userId }, data: { active } });
   revalidatePath(`/admin/employees/${userId}`);
   revalidatePath("/admin/employees");

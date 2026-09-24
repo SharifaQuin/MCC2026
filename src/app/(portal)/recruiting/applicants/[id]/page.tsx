@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
-import { STAGE_LABELS, SCHEDULING_STAGES, INTERVIEW_SCORECARD_COMPETENCIES, DEFAULT_PHONE_SCREEN_CRITERIA, WORKING_SESSION_CHECKLIST_ITEMS, getOnboardingChecklist } from "@/lib/recruiting";
+import { STAGE_LABELS, SCHEDULING_STAGES, INTERVIEW_SCORECARD_COMPETENCIES, DEFAULT_PHONE_SCREEN_CRITERIA, WORKING_SESSION_CHECKLIST_ITEMS, getOnboardingChecklist, SCORED_CATEGORIES } from "@/lib/recruiting";
 import { getMessageTemplates } from "@/lib/messageTemplates";
 import { formatInBusinessTimezone } from "@/lib/timezone";
 import StageControls from "./StageControls";
+import InterviewDecisionPanel from "./InterviewDecisionPanel";
 import CommunicationPanel from "./CommunicationPanel";
 import ApplicantTabs from "./ApplicantTabs";
 import PhoneScreenTab from "./PhoneScreenTab";
@@ -19,7 +20,7 @@ export default async function ApplicantDetailPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { duplicate?: string };
+  searchParams: { duplicate?: string; tab?: string };
 }) {
   const { session, canEdit } = await requireRecruitingAccess();
 
@@ -230,17 +231,47 @@ export default async function ApplicantDetailPage({
               ({applicant.prescreenPassed ? "Passed" : "Below threshold"})
             </span>
           </h2>
-          <ul className="space-y-2 text-sm">
-            {applicant.answers.map((a) => (
-              <li key={a.id}>
-                <p className="text-neutral-500">{a.question.textEn}</p>
-                <p className="font-medium text-neutral-900">
-                  {a.option.textEn} ({a.option.points} pts)
-                </p>
-              </li>
-            ))}
+          {/* Every application answer, in question order, whatever its
+              type — the full profile is always the source for a complete
+              read of everything the applicant submitted, not just what
+              Quick Review chooses to surface. MULTI_SELECT answers are
+              grouped by question since each checked option is its own row. */}
+          <ul className="space-y-3 text-sm">
+            {Object.entries(
+              applicant.answers.reduce<Record<string, typeof applicant.answers>>((acc, a) => {
+                (acc[a.questionId] ??= []).push(a);
+                return acc;
+              }, {})
+            ).map(([questionId, group]) => {
+              const question = group[0].question;
+              return (
+                <li key={questionId}>
+                  <p className="text-neutral-500">{question.textEn}</p>
+                  {question.type === "SINGLE_SELECT" && group[0].option && (
+                    <p className="font-medium text-neutral-900">
+                      {group[0].option.textEn}
+                      {SCORED_CATEGORIES.has(question.category) && ` (${group[0].option.points} pts)`}
+                    </p>
+                  )}
+                  {question.type === "MULTI_SELECT" && (
+                    <p className="font-medium text-neutral-900">
+                      {group.map((a) => a.option?.textEn).filter(Boolean).join(", ")}
+                    </p>
+                  )}
+                  {(question.type === "TEXT" || question.type === "DATE") && group[0].answerText && (
+                    <p className="whitespace-pre-wrap font-medium text-neutral-900">
+                      {group[0].answerText}
+                    </p>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
+      )}
+
+      {applicant.stage === "IN_PERSON_SCHEDULED" && (
+        <InterviewDecisionPanel applicantId={applicant.id} />
       )}
 
       <div className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -410,7 +441,7 @@ export default async function ApplicantDetailPage({
         </div>
       </div>
 
-      <ApplicantTabs tabs={tabs} />
+      <ApplicantTabs tabs={tabs} initialTab={typeof searchParams.tab === "string" ? searchParams.tab : undefined} />
     </div>
   );
 }

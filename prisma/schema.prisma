@@ -47,6 +47,11 @@ enum ApplicantStage {
   NEW
   PRESCREEN_FAILED
   PRESCREEN_PASSED
+  // Recruiting 2.0: Shar tapped "Invite to Interview" — a booking-link
+  // email/text went out, but the candidate hasn't picked a slot yet. Once
+  // they book (see InterviewAvailabilitySlot), the applicant moves to
+  // IN_PERSON_SCHEDULED exactly like every other scheduled interview.
+  INTERVIEW_INVITE_SENT
   PHONE_INTERVIEW_SCHEDULED
   PHONE_INTERVIEW_PASSED
   PHONE_INTERVIEW_FAILED
@@ -65,6 +70,9 @@ enum ApplicantSource {
   ZIPRECRUITER
   REFERRAL
   WALK_IN
+  // Facebook/Instagram paid or organic traffic (Recruiting 2.0) — kept
+  // distinct from the generic OTHER bucket now that MCC advertises there.
+  META
   OTHER
 }
 
@@ -219,6 +227,8 @@ model User {
 
   complianceDocuments        ComplianceDocument[] @relation("ComplianceDocumentEmployee")
   complianceDocumentsCreated ComplianceDocument[] @relation("ComplianceDocumentCreatedBy")
+
+  interviewAvailabilitySlotsCreated InterviewAvailabilitySlot[]
 
   @@index([role])
 }
@@ -409,6 +419,11 @@ model JobPosting {
   titleEs      String?
   positionType String?
   descriptionEn String  @db.Text
+  // Recruiting 2.0: whether the mobile application form requires a resume
+  // before it can be submitted. Off by default (a Cleaning Technician
+  // applicant frequently has no polished resume) — future office/admin
+  // postings can turn this on per posting without a code change.
+  resumeRequired Boolean @default(false)
   // Percentage of the max possible prescreen score an applicant needs to
   // auto-pass and move on to scheduling a phone/Zoom interview.
   passThresholdPct Int  @default(70)
@@ -424,6 +439,47 @@ model JobPosting {
   phoneScreenQuestions PhoneScreenQuestion[]
   interviewQuestions  InterviewQuestion[]
   applicants          Applicant[]
+  availabilitySlots   InterviewAvailabilitySlot[]
+}
+
+// REQUIRED questions gate prescreen pass/fail (their option points count
+// toward passThresholdPct, exactly as every prescreen question already
+// did before Recruiting 2.0 — default preserves that behavior for every
+// existing question). PREFERRED questions are informational only —
+// scorePrescreenAnswers excludes them from the score/maxScore entirely, so
+// they can never disqualify anyone, but the applicant's answer is still
+// saved and shown as a transparent "meets preferred qualification" signal
+// on the Quick Review card.
+// QUALIFICATION/APPLICATION/CULTURE_BEHAVIORAL/OPTIONAL (added for the full
+// Cleaning Technician application) are the same two behaviors under new
+// names: QUALIFICATION scores exactly like REQUIRED; APPLICATION,
+// CULTURE_BEHAVIORAL, and OPTIONAL are all informational-only exactly like
+// PREFERRED. Kept as separate enum values (rather than reusing
+// REQUIRED/PREFERRED) purely so a question's category in the admin UI and
+// on the Quick Review card reads as what it actually is — a hard
+// requirement, general application info, a behavioral/culture question, or
+// a nice-to-know — without relabeling anything that already shipped.
+enum PrescreenQuestionCategory {
+  REQUIRED
+  PREFERRED
+  QUALIFICATION
+  APPLICATION
+  CULTURE_BEHAVIORAL
+  OPTIONAL
+}
+
+// SINGLE_SELECT (default) is the original — and only — shape every
+// pre-Recruiting-2.0 question used, so every existing question keeps
+// working unchanged. MULTI_SELECT lets an applicant check more than one
+// option (stored as one PrescreenAnswer row per checked option). TEXT is a
+// free-written response (stored in PrescreenAnswer.answerText, no option).
+// DATE is a single date value, also stored in answerText as an ISO date
+// string — not worth a whole separate column for one field.
+enum PrescreenQuestionType {
+  SINGLE_SELECT
+  MULTI_SELECT
+  TEXT
+  DATE
 }
 
 model PrescreenQuestion {
@@ -432,25 +488,52 @@ model PrescreenQuestion {
   jobPosting   JobPosting @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
   order        Int
   textEn       String
+  // A short 1-3 word label for tight spaces (the Quick Review requirement
+  // checklist, e.g. "M-F Availability" instead of the full question
+  // sentence). Falls back to textEn wherever unset, so every existing
+  // question keeps rendering exactly as before.
+  shortLabel   String?
+  category     PrescreenQuestionCategory @default(REQUIRED)
+  type         PrescreenQuestionType     @default(SINGLE_SELECT)
+  // Whether the applicant must answer this before submitting. Defaults to
+  // true since every pre-Recruiting-2.0 question was implicitly required.
+  required     Boolean    @default(true)
+  // Recommended character count shown to the applicant as they type a
+  // TEXT answer — purely a UI hint, never enforced as a hard cutoff.
+  maxLength    Int?
+  // Free-text grouping label for the multi-step application wizard (e.g.
+  // "Cleaning Experience", "Let's Get to Know You") — display-only, never
+  // used for scoring, so it can be renamed later without touching logic.
+  stepLabel    String?
+  // Set when this question should only be shown/counted if the applicant
+  // selected a specific option on another question (e.g. an "Other, please
+  // explain" follow-up, or "how many years cleaned independently" only
+  // after choosing "I primarily cleaned independently"). A conditional
+  // QUALIFICATION question is excluded from both score and maxScore for
+  // any applicant who never triggered it — see scorePrescreenAnswers.
+  conditionalOnOptionId String?
+  conditionalOnOption   PrescreenOption? @relation("ConditionalTrigger", fields: [conditionalOnOptionId], references: [id])
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  options PrescreenOption[]
+  options PrescreenOption[] @relation("QuestionOptions")
   answers PrescreenAnswer[]
 
   @@index([jobPostingId, order])
+  @@index([conditionalOnOptionId])
 }
 
 model PrescreenOption {
   id         String            @id @default(cuid())
   questionId String
-  question   PrescreenQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  question   PrescreenQuestion @relation("QuestionOptions", fields: [questionId], references: [id], onDelete: Cascade)
   order      Int
   textEn     String
   // Point value toward the applicant's auto-calculated compatibility score.
   points     Int               @default(0)
 
   answers PrescreenAnswer[]
+  triggeredQuestions PrescreenQuestion[] @relation("ConditionalTrigger")
 
   @@index([questionId, order])
 }
@@ -474,6 +557,20 @@ model Applicant {
   // postings that link there (see parseApplicantSource), or picked
   // explicitly on the manual "add applicant" form.
   source         ApplicantSource @default(OTHER)
+  // Recruiting 2.0: the city they typed on the application — shown on the
+  // Quick Review card ("where are they?") only. The "lives near the office"
+  // preferred qualifier is a self-attested Yes/No prescreen question instead
+  // of a city match against this field, since there's no verified office
+  // address or real distance data to match against.
+  city           String?
+  // Full click-through attribution, captured from the application URL's
+  // query string alongside (not replacing) the existing ?src= handling.
+  // Nullable since most existing/organic applicants never had these.
+  utmSource      String?
+  utmMedium      String?
+  utmCampaign    String?
+  utmContent     String?
+  utmTerm        String?
   prescreenScore    Int?
   prescreenMaxScore Int?
   prescreenPassed   Boolean?
@@ -516,6 +613,7 @@ model Applicant {
   workingSession       WorkingSessionRecord?
   referenceChecks      ReferenceCheck[]
   onboardingChecklist  OnboardingChecklistItem[]
+  bookedSlot           InterviewAvailabilitySlot?
 
   @@index([jobPostingId, stage])
 }
@@ -558,16 +656,24 @@ model ApplicantNote {
   @@index([applicantId, createdAt])
 }
 
+// One row per selected option (SINGLE_SELECT: exactly one row; MULTI_SELECT:
+// one row per checked option) or, for TEXT/DATE questions, one row with
+// optionId null and the value in answerText. Answers are only ever written
+// once, at application submission, so there's no update path that could
+// race and create duplicates — the old @@unique([applicantId, questionId])
+// is gone since MULTI_SELECT needs more than one row per question, but the
+// application-create flow itself still only ever creates the right set.
 model PrescreenAnswer {
   id          String            @id @default(cuid())
   applicantId String
   applicant   Applicant         @relation(fields: [applicantId], references: [id], onDelete: Cascade)
   questionId  String
   question    PrescreenQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  optionId    String
-  option      PrescreenOption   @relation(fields: [optionId], references: [id])
+  optionId    String?
+  option      PrescreenOption?  @relation(fields: [optionId], references: [id])
+  answerText  String?           @db.Text
 
-  @@unique([applicantId, questionId])
+  @@index([applicantId, questionId])
 }
 
 enum CommChannel {
@@ -749,6 +855,34 @@ enum InterviewRecommendation {
   HIRE
   NO_HIRE
   STRONG_NO_HIRE
+}
+
+// Recruiting 2.0 — a specific interview time Shar has explicitly made
+// available. This is NOT a calendar/availability engine: there is no
+// recurrence, no external calendar sync, and no auto-generation. An admin
+// types in exact slots by hand; a candidate invited to interview can only
+// pick from open (bookedById: null) ones. jobPostingId is optional so the
+// default admin experience is "general availability" not tied to a single
+// posting — only set it when MCC is running multiple concurrent hiring
+// pushes and needs to keep their slots separate.
+model InterviewAvailabilitySlot {
+  id              String     @id @default(cuid())
+  jobPostingId    String?
+  jobPosting      JobPosting? @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+  startsAt        DateTime
+  durationMins    Int        @default(30)
+  // Set the moment a candidate claims this slot — the update that sets
+  // this is conditioned on it still being null (see bookInterviewSlot in
+  // lib/recruiting.ts), which is what actually prevents double-booking;
+  // this column being non-null is just the resulting state.
+  bookedById      String?    @unique
+  bookedApplicant Applicant? @relation(fields: [bookedById], references: [id], onDelete: SetNull)
+  createdById     String
+  createdBy       User       @relation(fields: [createdById], references: [id])
+  createdAt       DateTime   @default(now())
+
+  @@unique([startsAt, jobPostingId])
+  @@index([jobPostingId, startsAt])
 }
 
 // The competency scorecard completed after the interview (Structured

@@ -7,24 +7,70 @@ import { generateNextEmployeeId } from "@/lib/employeeId";
 import { createCalendarEvent } from "@/lib/calendar";
 import { formatInBusinessTimezone } from "@/lib/timezone";
 import { postSlackDMToOwner } from "@/lib/slack";
+import { assignDefaultOnboardingDocuments } from "@/lib/onboarding";
+
+// Categories whose answers count toward pass/fail. REQUIRED/QUALIFICATION
+// are the same behavior under two names (see PrescreenQuestionCategory) —
+// every other category (PREFERRED, APPLICATION, CULTURE_BEHAVIORAL,
+// OPTIONAL) is informational-only and never touches score or maxScore.
+export const SCORED_CATEGORIES = new Set(["REQUIRED", "QUALIFICATION"]);
 
 // Auto-scores an applicant's prescreen answers against the question bank's
 // point values and returns whether they cleared the posting's threshold.
+// Only SINGLE_SELECT questions in a scored category are ever counted — a
+// TEXT/DATE/MULTI_SELECT question has no single point value to score, and
+// every non-scored category is purely informational (see
+// getApplicantQualificationSummary). Every existing pre-Recruiting-2.0
+// question defaults to REQUIRED + SINGLE_SELECT, so this is identical to
+// the old behavior for every posting that predates it.
+//
+// A conditional question (conditionalOnOptionId set — e.g. "how many years
+// did you clean independently?", only relevant if the applicant chose
+// "I primarily cleaned independently" on the question before it) is
+// skipped entirely, in both score AND maxScore, for any applicant who
+// never triggered it. And the reverse case matters just as much: the
+// PARENT question that routed into a triggered child is itself excluded
+// from scoring — otherwise its own 0-point "I primarily cleaned
+// independently" answer would count as a missed point even though the
+// child fully confirms the requirement, unfairly dragging down an
+// applicant who qualifies via that branch relative to one who directly
+// answers "5+ years" on the parent (which never triggers a child, and so
+// counts on its own, at full value). That's what lets a compound hard
+// requirement like "≥1yr professional OR ≥3yr independent" live entirely
+// in configurable question/option data instead of hardcoded business
+// logic: whichever branch the applicant actually took is the only one
+// that counts, in full, with nothing else deducted for it.
 export async function scorePrescreenAnswers(
   jobPostingId: string,
-  answers: { questionId: string; optionId: string }[]
+  answers: { questionId: string; optionId?: string | null }[]
 ) {
   const posting = await prisma.jobPosting.findUniqueOrThrow({
     where: { id: jobPostingId },
     include: { prescreenQuestions: { include: { options: true } } },
   });
 
+  const triggerOptionIds = new Set(
+    posting.prescreenQuestions.filter((q) => q.conditionalOnOptionId).map((q) => q.conditionalOnOptionId!)
+  );
+
   let score = 0;
   let maxScore = 0;
   for (const question of posting.prescreenQuestions) {
+    if (!SCORED_CATEGORIES.has(question.category)) continue;
+    if (question.type !== "SINGLE_SELECT") continue;
+
+    const answer = answers.find((a) => a.questionId === question.id);
+    if (question.conditionalOnOptionId) {
+      const triggered = answers.some((a) => a.optionId === question.conditionalOnOptionId);
+      if (!triggered) continue;
+    } else if (answer?.optionId && triggerOptionIds.has(answer.optionId)) {
+      // This question's own answer routed into a conditional child —
+      // defer entirely to that child rather than also counting this one.
+      continue;
+    }
+
     const maxForQuestion = Math.max(0, ...question.options.map((o) => o.points));
     maxScore += maxForQuestion;
-    const answer = answers.find((a) => a.questionId === question.id);
     const option = answer && question.options.find((o) => o.id === answer.optionId);
     if (option) score += option.points;
   }
@@ -35,21 +81,249 @@ export async function scorePrescreenAnswers(
   return { score, maxScore, scorePct, passed };
 }
 
-const APPLICANT_SOURCE_ALIASES: Record<string, "INDEED" | "ZIPRECRUITER" | "REFERRAL" | "WALK_IN"> = {
+// Live-derived Quick Review summary — reads straight from PrescreenAnswer/
+// Question/Option on every call rather than storing a snapshot, per the
+// "keep it simple, add caching later if it's ever actually slow" decision
+// (deliberately NOT a stored `qualificationChecklist` snapshot column).
+//
+// Fully generic over category/type rather than hardcoded per-question, so
+// it works for both the original 9+6 REQUIRED/PREFERRED questions and the
+// richer QUALIFICATION/APPLICATION/CULTURE_BEHAVIORAL/OPTIONAL question set:
+//  - requirements: one line per top-level scored SINGLE_SELECT question
+//    (never a conditional child on its own — see below), met = the
+//    applicant's own answer scored points, OR any conditional child
+//    question triggered by that answer also scored points. That merge is
+//    what lets a compound rule ("≥1yr professional OR ≥3yr independent")
+//    show as a single "Experience" line instead of two.
+//  - additionalExperience: MULTI_SELECT answers, shown as a plain option
+//    list (e.g. cleaning-experience-type checkboxes) — never scored.
+//  - writtenResponses: every TEXT/DATE answer, plus every non-conditional
+//    SINGLE_SELECT answer in an unscored category, grouped by shortLabel
+//    so a "select an option, then always explain why" pair (Coachability,
+//    Reliability, …) renders as one card with both the pick and the
+//    explanation — never an AI summary, always the applicant's own words.
+//  - preferredIndicators: transparent, derived-from-real-answers signals
+//    (e.g. "5+ Years Experience") — informational only, never a score.
+export interface QualificationChecklistItem {
+  label: string;
+  met: boolean;
+}
+
+export interface ApplicationResponseItem {
+  label: string;
+  selectedOption?: string;
+  text?: string;
+}
+
+export interface ApplicantApplicationSummary {
+  requirements: QualificationChecklistItem[];
+  experienceSummary: string | null;
+  additionalExperience: string[];
+  writtenResponses: ApplicationResponseItem[];
+  preferredIndicators: string[];
+  howHeard: string | null;
+  continuedInterest: boolean | null;
+}
+
+export async function getApplicantQualificationSummary(
+  applicantId: string
+): Promise<ApplicantApplicationSummary> {
+  const answers = await prisma.prescreenAnswer.findMany({
+    where: { applicantId },
+    include: { question: true, option: true },
+    orderBy: { question: { order: "asc" } },
+  });
+
+  const scoredSingleSelect = (a: (typeof answers)[number]) =>
+    SCORED_CATEGORIES.has(a.question.category) && a.question.type === "SINGLE_SELECT";
+
+  const requirements: QualificationChecklistItem[] = [];
+  let experienceSummary: string | null = null;
+  const preferredIndicators: string[] = [];
+
+  for (const a of answers) {
+    if (!scoredSingleSelect(a) || a.question.conditionalOnOptionId) continue;
+    const ownMet = (a.option?.points ?? 0) > 0;
+    const child = answers.find(
+      (c) => c.question.conditionalOnOptionId === a.optionId && scoredSingleSelect(c)
+    );
+    const met = ownMet || (child ? (child.option?.points ?? 0) > 0 : false);
+    requirements.push({ label: a.question.shortLabel ?? a.question.textEn, met });
+
+    // The "Experience" line doubles as a plain-language summary and, at
+    // 5+ years, a preferred-qualification indicator — same merge logic as
+    // the checklist line above, just rendered as a sentence instead of a
+    // checkmark.
+    const label = (a.question.shortLabel ?? "").toLowerCase();
+    if (label === "experience") {
+      const winningOption = child?.option && (child.option.points ?? 0) > 0 ? child.option : a.option;
+      if (winningOption && (winningOption.points ?? 0) > 0) {
+        experienceSummary = `${winningOption.textEn} Residential Cleaning`;
+        if (/^5\+/.test(winningOption.textEn)) preferredIndicators.push("5+ Years Experience");
+      }
+    }
+  }
+
+  const additionalExperience = answers
+    .filter((a) => a.question.type === "MULTI_SELECT" && a.option)
+    .map((a) => a.option!.textEn)
+    .filter((label) => !/^other$/i.test(label) && !/do not have/i.test(label));
+
+  const responseGroups = new Map<string, ApplicationResponseItem>();
+  for (const a of answers) {
+    if (scoredSingleSelect(a) && !a.question.conditionalOnOptionId) continue; // already a requirement
+    if (a.question.type === "MULTI_SELECT") continue; // already additionalExperience
+    const key = a.question.shortLabel ?? a.question.textEn;
+    // "How did you hear" and "still interested?" get their own dedicated
+    // fields below rather than showing up as generic written responses.
+    if (key === "How Heard" || key === "Continued Interest") continue;
+
+    const existing = responseGroups.get(key) ?? { label: key };
+    if (a.question.type === "SINGLE_SELECT" && a.option) {
+      existing.selectedOption = a.option.textEn;
+    } else if (a.answerText) {
+      existing.text = existing.text ? `${existing.text} ${a.answerText}` : a.answerText;
+    }
+    responseGroups.set(key, existing);
+  }
+
+  const heardAnswer = answers.find((a) => (a.question.shortLabel ?? "") === "How Heard");
+  const heardDetail = answers.find((a) => a.question.conditionalOnOptionId === heardAnswer?.optionId);
+  const howHeard = heardAnswer?.option
+    ? [heardAnswer.option.textEn, heardDetail?.answerText].filter(Boolean).join(" — ")
+    : null;
+
+  const continuedInterestAnswer = answers.find(
+    (a) => (a.question.shortLabel ?? "") === "Continued Interest"
+  );
+  const continuedInterest = continuedInterestAnswer?.option
+    ? continuedInterestAnswer.option.textEn.trim().toLowerCase() === "yes"
+    : null;
+
+  return {
+    requirements,
+    experienceSummary,
+    additionalExperience,
+    writtenResponses: [...responseGroups.values()],
+    preferredIndicators,
+    howHeard,
+    continuedInterest,
+  };
+}
+
+const APPLICANT_SOURCE_ALIASES: Record<
+  string,
+  "INDEED" | "ZIPRECRUITER" | "REFERRAL" | "WALK_IN" | "META"
+> = {
   indeed: "INDEED",
   zip: "ZIPRECRUITER",
   ziprecruiter: "ZIPRECRUITER",
   referral: "REFERRAL",
   walkin: "WALK_IN",
   "walk-in": "WALK_IN",
+  // Recruiting 2.0 — Facebook/Instagram ad traffic.
+  facebook: "META",
+  meta: "META",
+  instagram: "META",
+  ig: "META",
 };
 
 // Job-board postings (Indeed, ZipRecruiter) all point at the same shared
 // /apply/[slug] link, so a query param (?src=indeed) is the only way to tell
-// them apart from direct careers-page traffic.
-export function parseApplicantSource(raw: string | null | undefined): "CAREERS_PAGE" | "INDEED" | "ZIPRECRUITER" | "REFERRAL" | "WALK_IN" {
+// them apart from direct careers-page traffic. Every existing alias keeps
+// working unchanged — only new aliases (facebook/meta/instagram/ig) were
+// added for Recruiting 2.0.
+// A short, human "applied 47 minutes ago" string for the Quick Review
+// card — Shar needs to gauge freshness at a glance, not an exact timestamp.
+export function formatRelativeTime(date: Date): string {
+  const diffMs = Date.now() - date.getTime();
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
+export function parseApplicantSource(
+  raw: string | null | undefined
+): "CAREERS_PAGE" | "INDEED" | "ZIPRECRUITER" | "REFERRAL" | "WALK_IN" | "META" {
   const key = (raw ?? "").trim().toLowerCase();
   return APPLICANT_SOURCE_ALIASES[key] ?? "CAREERS_PAGE";
+}
+
+// Standard click-through attribution, captured from the application URL's
+// query string alongside (not replacing) ?src=. Every field is optional —
+// most applicants (organic, referral, walk-in) will never have any of these.
+export interface UtmParams {
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  utmContent: string | null;
+  utmTerm: string | null;
+}
+
+export function parseUtmParams(searchParams: URLSearchParams): UtmParams {
+  const get = (key: string) => searchParams.get(key)?.trim() || null;
+  return {
+    utmSource: get("utm_source"),
+    utmMedium: get("utm_medium"),
+    utmCampaign: get("utm_campaign"),
+    utmContent: get("utm_content"),
+    utmTerm: get("utm_term"),
+  };
+}
+
+// ── Recruiting 2.0 / V1 experience toggle ──
+// A single OwnerSetting row (same generic key-value store already used for
+// owner_draw_policy etc. — no new table needed) controls which public
+// careers/application experience renders. No session/auth check happens
+// inside the read — /careers and /apply/[slug] are anonymous, public pages
+// and need to read this with no one logged in. Defaults to "v1" whenever
+// unset, so nothing changes for anyone until an Admin explicitly flips it.
+// Writing it is gated ADMIN-only at the call site (see
+// setRecruitingExperienceVersionAction in app/actions/recruitingExperience.ts).
+export type RecruitingExperienceVersion = "v1" | "v2";
+const RECRUITING_EXPERIENCE_VERSION_KEY = "recruiting_experience_version";
+
+export async function getRecruitingExperienceVersion(): Promise<RecruitingExperienceVersion> {
+  const row = await prisma.ownerSetting.findUnique({
+    where: { key: RECRUITING_EXPERIENCE_VERSION_KEY },
+  });
+  return row?.value === "v2" ? "v2" : "v1";
+}
+
+export async function setRecruitingExperienceVersion(version: RecruitingExperienceVersion): Promise<void> {
+  await prisma.ownerSetting.upsert({
+    where: { key: RECRUITING_EXPERIENCE_VERSION_KEY },
+    create: { key: RECRUITING_EXPERIENCE_VERSION_KEY, value: version },
+    update: { value: version },
+  });
+}
+
+// The Careers V2 "See What It's Like to Work at Mama's" video — a plain
+// URL an Admin pastes in, no code change needed. Public-safe read, same
+// reasoning as the experience-version flag above. Left unset by default;
+// the careers page renders a graceful empty state rather than a broken
+// player when there's nothing here yet — never a fake/placeholder video.
+const RECRUITING_VIDEO_URL_KEY = "recruiting_video_url";
+
+export async function getRecruitingVideoUrl(): Promise<string | null> {
+  const row = await prisma.ownerSetting.findUnique({ where: { key: RECRUITING_VIDEO_URL_KEY } });
+  return typeof row?.value === "string" ? row.value : null;
+}
+
+export async function setRecruitingVideoUrl(url: string | null): Promise<void> {
+  if (!url) {
+    await prisma.ownerSetting.deleteMany({ where: { key: RECRUITING_VIDEO_URL_KEY } });
+    return;
+  }
+  await prisma.ownerSetting.upsert({
+    where: { key: RECRUITING_VIDEO_URL_KEY },
+    create: { key: RECRUITING_VIDEO_URL_KEY, value: url },
+    update: { value: url },
+  });
 }
 
 // Pings the recruiting inbox whenever a new applicant lands in the pipeline —
@@ -80,6 +354,57 @@ export async function notifyNewApplicant(
     });
   } catch {
     // Swallow — a notification failure should never break the apply flow.
+  }
+}
+
+// Recruiting 2.0 — sent to the CANDIDATE (not staff) right after they
+// submit an application, regardless of prescreen result, so the gap
+// between "applied" and "heard back from MCC" is minutes, not days.
+// Deliberately does not promise an interview or reveal any scoring — that
+// only goes out once Shar actually taps Invite to Interview (see
+// sendInterviewInviteAction). Logged to CommunicationLog like every other
+// applicant-facing message.
+export async function sendApplicantAcknowledgmentEmail(
+  applicant: { id: string; firstName: string; email: string },
+  jobPostingTitle: string
+) {
+  const subject = "We received your application — Mama's Cleaning Crew";
+  const body = [
+    `Hi ${applicant.firstName},`,
+    "",
+    `Thanks so much for applying to the ${jobPostingTitle} position at Mama's Cleaning Crew! We've received your application and someone from our team will be reviewing it shortly.`,
+    "",
+    "We'll be in touch soon with next steps.",
+    "",
+    "Warmly,",
+    "Mama's Cleaning Crew",
+  ].join("\n");
+
+  try {
+    const result = await sendEmail({ to: applicant.email, subject, body });
+    await prisma.communicationLog.create({
+      data: {
+        applicantId: applicant.id,
+        channel: "EMAIL",
+        direction: "OUTBOUND",
+        subject,
+        body,
+        status: result.ok ? "SENT" : "FAILED",
+        errorMessage: result.ok ? null : result.error,
+      },
+    });
+  } catch (error) {
+    await prisma.communicationLog.create({
+      data: {
+        applicantId: applicant.id,
+        channel: "EMAIL",
+        direction: "OUTBOUND",
+        subject,
+        body,
+        status: "FAILED",
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
+      },
+    });
   }
 }
 
@@ -211,7 +536,9 @@ export async function sendInterviewConfirmationEmail(
   jobPostingTitle: string,
   stage: ApplicantStage,
   scheduledAt: Date,
-  loggedById: string,
+  // Optional — null when a candidate books their own slot via Recruiting
+  // 2.0's self-service booking page rather than a staffer picking a time.
+  loggedById: string | null | undefined,
   jobPostingTitleEs?: string | null
 ) {
   const whenText = `${formatInBusinessTimezone(scheduledAt)} Pacific Time`;
@@ -311,7 +638,7 @@ export async function sendInterviewConfirmationEmail(
         body,
         status: result.ok ? "SENT" : "FAILED",
         errorMessage: result.ok ? null : result.error,
-        sentById: loggedById,
+        sentById: loggedById ?? null,
       },
     });
   } catch (error) {
@@ -324,7 +651,7 @@ export async function sendInterviewConfirmationEmail(
         body,
         status: "FAILED",
         errorMessage: error instanceof Error ? error.message : "Unknown error",
-        sentById: loggedById,
+        sentById: loggedById ?? null,
       },
     });
   }
@@ -536,6 +863,160 @@ export async function notifyStaffApplicantCantMakeIt(
   );
 }
 
+// ── Recruiting 2.0: interview availability + self-service booking ──
+// Shar types in specific slots by hand (InterviewAvailabilitySlot) — this
+// is NOT a calendar/availability engine: no recurrence, no external sync,
+// no auto-generation. A candidate invited to interview can only pick from
+// currently-open ones.
+
+// Fired the moment Shar taps "Invite to Interview" on a qualified
+// applicant. Reuses the existing interviewConfirmToken field as the secure
+// booking-link token (same idiom as every other scheduling flow) and the
+// existing email/SMS senders. Does not touch scheduledAt — that's only set
+// once the candidate actually books a slot (see bookInterviewSlot).
+export async function sendInterviewInvite(applicantId: string) {
+  const applicant = await prisma.applicant.update({
+    where: { id: applicantId },
+    data: {
+      stage: "INTERVIEW_INVITE_SENT",
+      interviewConfirmToken: generateInviteToken(),
+      interviewConfirmedAt: null,
+      interviewCantMakeItAt: null,
+      interviewReminderDaySentAt: null,
+      interviewReminderHourSentAt: null,
+    },
+    include: { jobPosting: { select: { titleEn: true } } },
+  });
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+  const bookingLink = `${appUrl}/interview-book/${applicant.interviewConfirmToken}`;
+  const subject = "Great news! We'd love to meet you — pick your interview time";
+  const body = [
+    `Hi ${applicant.firstName},`,
+    "",
+    `Great news! We'd love to meet you for the ${applicant.jobPosting.titleEn} position at Mama's Cleaning Crew.`,
+    "",
+    `Choose one of our available interview times here: ${bookingLink}`,
+    "",
+    "This link only shows times that are currently open — once you pick one, it's yours.",
+    "",
+    "Mama's Cleaning Crew",
+  ].join("\n");
+
+  const emailResult = await sendEmail({ to: applicant.email, subject, body });
+  await prisma.communicationLog.create({
+    data: {
+      applicantId: applicant.id,
+      channel: "EMAIL",
+      direction: "OUTBOUND",
+      subject,
+      body,
+      status: emailResult.ok ? "SENT" : "FAILED",
+      errorMessage: emailResult.ok ? null : emailResult.error,
+    },
+  });
+
+  const smsResult = await sendSms({
+    to: applicant.phone,
+    text: `Hi ${applicant.firstName}, it's Mama's Cleaning Crew! We'd love to meet you — pick your interview time here: ${bookingLink}`,
+  });
+  await prisma.communicationLog.create({
+    data: {
+      applicantId: applicant.id,
+      channel: "SMS",
+      direction: "OUTBOUND",
+      body: `Pick your interview time: ${bookingLink}`,
+      status: smsResult.ok ? "SENT" : "FAILED",
+      errorMessage: smsResult.ok ? null : smsResult.error,
+    },
+  });
+
+  return applicant;
+}
+
+export interface OpenInterviewSlot {
+  id: string;
+  startsAt: string;
+  durationMins: number;
+}
+
+// Slots a candidate is allowed to see for their posting: general-
+// availability slots (jobPostingId null — the default admin experience)
+// plus any slot created specifically for their posting. Only ever open
+// (unbooked), future ones.
+export async function listOpenInterviewSlots(jobPostingId: string): Promise<OpenInterviewSlot[]> {
+  const slots = await prisma.interviewAvailabilitySlot.findMany({
+    where: {
+      bookedById: null,
+      startsAt: { gt: new Date() },
+      OR: [{ jobPostingId: null }, { jobPostingId }],
+    },
+    orderBy: { startsAt: "asc" },
+  });
+  return slots.map((s) => ({ id: s.id, startsAt: s.startsAt.toISOString(), durationMins: s.durationMins }));
+}
+
+// The one function that actually prevents double-booking: the update only
+// succeeds if the slot is still unbooked at the moment it runs (`updateMany`
+// with `bookedById: null` in the where clause), so two candidates racing for
+// the same slot can never both win — the second one's update affects zero
+// rows and gets told to pick another time. Reuses the same scheduling side
+// effects (calendar event, confirmation email, reminder-scheduler dedup
+// fields) as every other interview-scheduling path in the app.
+export async function bookInterviewSlot(
+  applicantId: string,
+  slotId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const [applicant, slot] = await Promise.all([
+    prisma.applicant.findUnique({
+      where: { id: applicantId },
+      include: { jobPosting: { select: { titleEn: true, titleEs: true } } },
+    }),
+    prisma.interviewAvailabilitySlot.findUnique({ where: { id: slotId } }),
+  ]);
+  if (!applicant) return { ok: false, error: "Applicant not found." };
+  if (applicant.stage !== "INTERVIEW_INVITE_SENT") {
+    return { ok: false, error: "This booking link is no longer active." };
+  }
+  if (!slot || slot.bookedById || slot.startsAt.getTime() <= Date.now()) {
+    return { ok: false, error: "That time was just taken — please pick another." };
+  }
+
+  const claim = await prisma.interviewAvailabilitySlot.updateMany({
+    where: { id: slotId, bookedById: null },
+    data: { bookedById: applicantId },
+  });
+  if (claim.count === 0) {
+    return { ok: false, error: "That time was just taken — please pick another." };
+  }
+
+  const updated = await prisma.applicant.update({
+    where: { id: applicantId },
+    data: {
+      stage: "IN_PERSON_SCHEDULED",
+      scheduledAt: slot.startsAt,
+      interviewConfirmToken: generateInviteToken(),
+      interviewConfirmedAt: null,
+      interviewCantMakeItAt: null,
+      interviewReminderDaySentAt: null,
+      interviewReminderHourSentAt: null,
+    },
+    include: { jobPosting: { select: { titleEn: true, titleEs: true } } },
+  });
+
+  await scheduleInterviewCalendarEvent(updated, updated.jobPosting.titleEn, "IN_PERSON_SCHEDULED", slot.startsAt);
+  await sendInterviewConfirmationEmail(
+    updated,
+    updated.jobPosting.titleEn,
+    "IN_PERSON_SCHEDULED",
+    slot.startsAt,
+    null,
+    updated.jobPosting.titleEs
+  );
+
+  return { ok: true };
+}
+
 // When an applicant is marked Hired, automatically create their training
 // account and email them an invite — closes the loop between Recruiting and
 // Training instead of leaving HR to separately invite them by hand. Safe to
@@ -579,6 +1060,13 @@ export async function createEmployeeAccountForHiredApplicant(
     where: { id: applicant.id },
     data: { hiredUserId: user.id },
   });
+
+  // Recruiting 2.0 fix: this is the one place a new employee account gets
+  // created without going through the single-invite or bulk-invite forms,
+  // both of which already call this — so a recruiting-pipeline hire used to
+  // get a training-account invite but no onboarding paperwork assigned,
+  // silently skipping the documents gate it's supposed to sit behind.
+  await assignDefaultOnboardingDocuments(user.id);
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
   try {
@@ -671,6 +1159,7 @@ export const STAGE_LABELS: Record<string, string> = {
   NEW: "New Applicant",
   PRESCREEN_FAILED: "Prescreen — Not a Fit",
   PRESCREEN_PASSED: "Prescreen Passed",
+  INTERVIEW_INVITE_SENT: "Invite Sent — Awaiting Booking",
   PHONE_INTERVIEW_SCHEDULED: "Phone/Zoom Interview Scheduled",
   PHONE_INTERVIEW_PASSED: "Phone/Zoom Interview Passed",
   PHONE_INTERVIEW_FAILED: "Phone/Zoom Interview — Not Advancing",
@@ -680,13 +1169,17 @@ export const STAGE_LABELS: Record<string, string> = {
   OFFER_SENT: "Offer Sent (via Gusto)",
   HIRED: "Hired",
   REJECTED: "Rejected",
-  BENCH: "Benched for Future Openings",
+  // Same underlying stage as always (BENCH) — just a friendlier label per
+  // Recruiting 2.0, since this is exactly the "keep good candidates on file
+  // without treating them as needing daily attention" Talent Pool concept.
+  BENCH: "Talent Pool",
 };
 
 export const STAGE_TONE: Record<string, string> = {
   NEW: "bg-neutral-100 text-neutral-600",
   PRESCREEN_FAILED: "bg-red-100 text-red-700",
   PRESCREEN_PASSED: "bg-green-100 text-green-700",
+  INTERVIEW_INVITE_SENT: "bg-amber-100 text-amber-700",
   PHONE_INTERVIEW_SCHEDULED: "bg-amber-100 text-amber-700",
   PHONE_INTERVIEW_PASSED: "bg-green-100 text-green-700",
   PHONE_INTERVIEW_FAILED: "bg-red-100 text-red-700",
@@ -696,7 +1189,7 @@ export const STAGE_TONE: Record<string, string> = {
   OFFER_SENT: "bg-brand-100 text-brand-700",
   HIRED: "bg-green-100 text-green-700",
   REJECTED: "bg-red-100 text-red-700",
-  BENCH: "bg-neutral-100 text-neutral-600",
+  BENCH: "bg-gold-100 text-gold-700",
 };
 
 // The main forward-moving columns for the pipeline board. REJECTED/BENCH/
@@ -705,6 +1198,7 @@ export const STAGE_TONE: Record<string, string> = {
 export const PIPELINE_COLUMNS: { stage: string; label: string }[] = [
   { stage: "NEW", label: "New" },
   { stage: "PRESCREEN_PASSED", label: "Prescreen Passed" },
+  { stage: "INTERVIEW_INVITE_SENT", label: "Invite Sent" },
   { stage: "PHONE_INTERVIEW_SCHEDULED", label: "Phone/Zoom Scheduled" },
   { stage: "PHONE_INTERVIEW_PASSED", label: "Phone/Zoom Passed" },
   { stage: "IN_PERSON_SCHEDULED", label: "In-Person Scheduled" },

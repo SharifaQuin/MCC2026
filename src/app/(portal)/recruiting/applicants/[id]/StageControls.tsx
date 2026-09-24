@@ -15,6 +15,10 @@ const NEXT_STAGES: Record<string, ApplicantStage[]> = {
   NEW: ["PRESCREEN_PASSED", "PRESCREEN_FAILED"],
   PRESCREEN_PASSED: ["PHONE_INTERVIEW_SCHEDULED", "IN_PERSON_SCHEDULED", "REJECTED", "BENCH"],
   PRESCREEN_FAILED: ["REJECTED", "BENCH", "PRESCREEN_PASSED"],
+  // Recruiting 2.0's own "Invite to Interview" button is what normally
+  // moves someone into this stage (see the Recruiting Inbox) — these are
+  // just the manual fallbacks if staff need to override from here.
+  INTERVIEW_INVITE_SENT: ["IN_PERSON_SCHEDULED", "PHONE_INTERVIEW_SCHEDULED", "REJECTED", "BENCH"],
   PHONE_INTERVIEW_SCHEDULED: ["PHONE_INTERVIEW_PASSED", "PHONE_INTERVIEW_FAILED", "IN_PERSON_SCHEDULED"],
   PHONE_INTERVIEW_PASSED: ["IN_PERSON_SCHEDULED", "REJECTED", "BENCH"],
   PHONE_INTERVIEW_FAILED: ["REJECTED", "BENCH", "IN_PERSON_SCHEDULED"],

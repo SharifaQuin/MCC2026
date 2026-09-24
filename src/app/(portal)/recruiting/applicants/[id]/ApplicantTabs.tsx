@@ -8,8 +8,10 @@ interface Tab {
   content: React.ReactNode;
 }
 
-export default function ApplicantTabs({ tabs }: { tabs: Tab[] }) {
-  const [active, setActive] = useState(tabs[0]?.id ?? "");
+export default function ApplicantTabs({ tabs, initialTab }: { tabs: Tab[]; initialTab?: string }) {
+  const [active, setActive] = useState(
+    initialTab && tabs.some((t) => t.id === initialTab) ? initialTab : tabs[0]?.id ?? ""
+  );
 
   return (
     <div>

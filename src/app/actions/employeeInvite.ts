@@ -14,6 +14,12 @@ export interface InviteState {
   addedWithoutInvite?: boolean;
 }
 
+// Same allow-list as the bulk-CSV invite path — the raw form value must
+// never be trusted with a bare type cast, since that's compile-time-only
+// and lets a caller submit any string (e.g. "ADMIN") that Prisma would
+// happily accept as a valid Role.
+const VALID_ROLES = new Set(["TRAINEE", "TRAINER"]);
+
 export async function inviteAction(
   _prevState: InviteState,
   formData: FormData
@@ -27,7 +33,8 @@ export async function inviteAction(
     .trim()
     .toLowerCase();
   const name = String(formData.get("name") ?? "").trim();
-  const role = String(formData.get("role") ?? "TRAINEE") as "TRAINEE" | "TRAINER";
+  const roleRaw = String(formData.get("role") ?? "TRAINEE").toUpperCase();
+  const role = VALID_ROLES.has(roleRaw) ? (roleRaw as "TRAINEE" | "TRAINER") : "TRAINEE";
   // Unchecked checkboxes submit nothing at all (not "off"), so presence is
   // the signal. Unchecked = add them to the roster now, send the actual
   // invite link later (e.g. once they've completed paperwork) via "Send

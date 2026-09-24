@@ -720,6 +720,475 @@ async function seedMessageTemplates() {
   console.log(`Seeded ${created} starter message template(s) (${starters.length} total defined).`);
 }
 
+// Recruiting 2.0 — the real Cleaning Technician posting and its full
+// 6-step application (see the "MCC RECRUITING 2.0 — IMPLEMENT THE CLEANING
+// TECHNICIAN APPLICATION" spec). Every question lives in the existing
+// PrescreenQuestion/PrescreenOption/PrescreenAnswer architecture — no
+// hardcoded per-question columns — using:
+//  - category: QUALIFICATION (scored, gates pass/fail) vs APPLICATION /
+//    CULTURE_BEHAVIORAL (informational only, never scored or auto-rejected)
+//  - type: SINGLE_SELECT / MULTI_SELECT / TEXT / DATE
+//  - conditionalOnOptionId: shows/counts a question only if a specific
+//    earlier option was chosen (an "Other, please explain" follow-up, or
+//    the compound "≥1yr professional OR ≥3yr independent" experience rule)
+//  - stepLabel: which of the 6 wizard steps a question belongs to
+//  - shortLabel: the short Quick Review checklist/section label
+// Idempotent by slug; if the posting already has real applicants, it skips
+// the prescreen reseed entirely rather than risk deleting their answers.
+const CLEANING_TECHNICIAN_SLUG = "cleaning-technician";
+
+type CtSeedOption = { key?: string; textEn: string; points?: number };
+type CtSeedQuestion = {
+  key: string;
+  textEn: string;
+  shortLabel?: string;
+  category: "QUALIFICATION" | "APPLICATION" | "CULTURE_BEHAVIORAL";
+  type: "SINGLE_SELECT" | "MULTI_SELECT" | "TEXT" | "DATE";
+  required?: boolean;
+  maxLength?: number;
+  stepLabel: string;
+  options?: CtSeedOption[];
+  conditionalOnKey?: string; // { parentQuestionKey}.{optionKey}
+};
+
+const YES_NO_OPTIONS: CtSeedOption[] = [
+  { textEn: "Yes", points: 1 },
+  { textEn: "No", points: 0 },
+];
+
+const CLEANING_TECHNICIAN_QUESTIONS: CtSeedQuestion[] = [
+  // STEP 1 — About You
+  {
+    key: "heard",
+    textEn: "How did you hear about Mama's Cleaning Crew?",
+    shortLabel: "How Heard",
+    category: "APPLICATION",
+    type: "SINGLE_SELECT",
+    stepLabel: "About You",
+    options: [
+      { textEn: "Facebook / Instagram" },
+      { textEn: "Google" },
+      { textEn: "Indeed" },
+      { textEn: "ZipRecruiter" },
+      { key: "referral", textEn: "Friend / Employee Referral" },
+      { textEn: "Mama's Cleaning Crew Website" },
+      { key: "other", textEn: "Other" },
+    ],
+  },
+  {
+    key: "heard_referral",
+    textEn: "Who referred you?",
+    category: "APPLICATION",
+    type: "TEXT",
+    maxLength: 100,
+    stepLabel: "About You",
+    conditionalOnKey: "heard.referral",
+  },
+  {
+    key: "heard_other",
+    textEn: "Please tell us where you heard about us.",
+    category: "APPLICATION",
+    type: "TEXT",
+    maxLength: 100,
+    stepLabel: "About You",
+    conditionalOnKey: "heard.other",
+  },
+
+  // STEP 2 — Cleaning Experience
+  {
+    key: "experience",
+    textEn: "How much residential cleaning experience do you have?",
+    shortLabel: "Experience",
+    category: "QUALIFICATION",
+    type: "SINGLE_SELECT",
+    stepLabel: "Cleaning Experience",
+    options: [
+      { textEn: "Less than 1 year", points: 0 },
+      { textEn: "1–2 years", points: 1 },
+      { textEn: "3–4 years", points: 1 },
+      { textEn: "5+ years", points: 1 },
+      { key: "independent", textEn: "I primarily cleaned independently / for my own clients", points: 0 },
+      { textEn: "I do not have residential cleaning experience", points: 0 },
+    ],
+  },
+  {
+    key: "experience_independent_years",
+    textEn: "How many years have you independently cleaned residential homes?",
+    shortLabel: "Experience",
+    category: "QUALIFICATION",
+    type: "SINGLE_SELECT",
+    stepLabel: "Cleaning Experience",
+    conditionalOnKey: "experience.independent",
+    options: [
+      { textEn: "Less than 1 year", points: 0 },
+      { textEn: "1–2 years", points: 0 },
+      { textEn: "3–4 years", points: 1 },
+      { textEn: "5+ years", points: 1 },
+    ],
+  },
+  {
+    key: "experience_types",
+    textEn: "What type of professional cleaning experience do you have?",
+    category: "APPLICATION",
+    type: "MULTI_SELECT",
+    stepLabel: "Cleaning Experience",
+    options: [
+      { textEn: "Residential cleaning company" },
+      { textEn: "Independent residential cleaning / my own clients" },
+      { textEn: "Hotel / housekeeping" },
+      { textEn: "Commercial / office cleaning" },
+      { textEn: "Move-in / move-out cleaning" },
+      { textEn: "Deep cleaning" },
+      { textEn: "Post-construction cleaning" },
+      { key: "other", textEn: "Other" },
+      { textEn: "I do not have professional cleaning experience" },
+    ],
+  },
+  {
+    key: "experience_types_other",
+    textEn: "Please briefly describe your other cleaning experience.",
+    category: "APPLICATION",
+    type: "TEXT",
+    maxLength: 200,
+    stepLabel: "Cleaning Experience",
+    conditionalOnKey: "experience_types.other",
+  },
+  {
+    key: "experience_describe",
+    textEn:
+      "Where did you work, approximately how long did you work there, and what were you typically responsible for during a cleaning?",
+    shortLabel: "Residential Experience",
+    category: "APPLICATION",
+    type: "TEXT",
+    maxLength: 500,
+    stepLabel: "Cleaning Experience",
+  },
+
+  // STEP 3 — Basic Job Requirements
+  {
+    key: "availability",
+    textEn: "Are you available to work Monday through Friday between 8:00 AM and 6:00 PM?",
+    shortLabel: "M-F Availability",
+    category: "QUALIFICATION",
+    type: "SINGLE_SELECT",
+    stepLabel: "Job Requirements",
+    options: YES_NO_OPTIONS,
+  },
+  {
+    key: "transportation",
+    textEn: "Do you have reliable transportation that you can use for work?",
+    shortLabel: "Vehicle",
+    category: "QUALIFICATION",
+    type: "SINGLE_SELECT",
+    stepLabel: "Job Requirements",
+    options: YES_NO_OPTIONS,
+  },
+  {
+    key: "license",
+    textEn: "Do you currently have a valid driver's license?",
+    shortLabel: "License",
+    category: "QUALIFICATION",
+    type: "SINGLE_SELECT",
+    stepLabel: "Job Requirements",
+    options: YES_NO_OPTIONS,
+  },
+  {
+    key: "insurance",
+    textEn: "Do you currently have active auto insurance?",
+    shortLabel: "Insurance",
+    category: "QUALIFICATION",
+    type: "SINGLE_SELECT",
+    stepLabel: "Job Requirements",
+    options: YES_NO_OPTIONS,
+  },
+  {
+    key: "travel",
+    textEn:
+      "Are you willing and able to travel between client locations throughout Mama's Cleaning Crew's Orange County service area during your workday?",
+    shortLabel: "Service Area",
+    category: "QUALIFICATION",
+    type: "SINGLE_SELECT",
+    stepLabel: "Job Requirements",
+    options: YES_NO_OPTIONS,
+  },
+  {
+    key: "work_auth",
+    textEn: "Are you legally authorized to work in the United States?",
+    shortLabel: "Work Authorization",
+    category: "QUALIFICATION",
+    type: "SINGLE_SELECT",
+    stepLabel: "Job Requirements",
+    options: YES_NO_OPTIONS,
+  },
+  {
+    key: "communication",
+    textEn:
+      "Are you comfortable communicating in basic English with clients, teammates, and management when needed?",
+    shortLabel: "Basic English",
+    category: "QUALIFICATION",
+    type: "SINGLE_SELECT",
+    stepLabel: "Job Requirements",
+    options: YES_NO_OPTIONS,
+  },
+
+  // STEP 4 — Let's Get to Know You
+  {
+    key: "why_mamas",
+    textEn: "What interested you in Mama's Cleaning Crew, and what are you looking for in your next workplace?",
+    shortLabel: "Why Mama's",
+    category: "CULTURE_BEHAVIORAL",
+    type: "TEXT",
+    maxLength: 400,
+    stepLabel: "Get to Know You",
+  },
+  {
+    key: "attention_detail",
+    textEn:
+      "You're finishing a client's home and your teammate says it's time to leave. During your final check, you notice something small was missed in a room that was already completed. What would you do, and why?",
+    shortLabel: "Attention to Detail",
+    category: "CULTURE_BEHAVIORAL",
+    type: "TEXT",
+    maxLength: 400,
+    stepLabel: "Get to Know You",
+  },
+  {
+    key: "accountability",
+    textEn:
+      "A client points out an area you cleaned that doesn't meet their expectations. You thought you cleaned it correctly. How would you handle the situation?",
+    shortLabel: "Accountability",
+    category: "CULTURE_BEHAVIORAL",
+    type: "TEXT",
+    maxLength: 400,
+    stepLabel: "Get to Know You",
+  },
+  {
+    key: "professionalism",
+    textEn:
+      "While cleaning inside a client's home, you notice something personal or unusual that catches your attention. What would you most likely do?",
+    shortLabel: "Professionalism",
+    category: "CULTURE_BEHAVIORAL",
+    type: "SINGLE_SELECT",
+    stepLabel: "Get to Know You",
+    options: [
+      { textEn: "Tell my teammate about it" },
+      { textEn: "Take a picture to show someone later" },
+      { textEn: "Remain professional, respect the client's privacy, and continue working" },
+      { textEn: "Ask the client about it" },
+      { key: "other", textEn: "Other" },
+    ],
+  },
+  {
+    key: "professionalism_other",
+    textEn: "Tell us what you would do.",
+    shortLabel: "Professionalism",
+    category: "CULTURE_BEHAVIORAL",
+    type: "TEXT",
+    maxLength: 200,
+    stepLabel: "Get to Know You",
+    conditionalOnKey: "professionalism.other",
+  },
+  {
+    key: "teamwork",
+    textEn:
+      "You're working with a teammate who is moving slower than expected and your team is starting to fall behind schedule. What would you do?",
+    shortLabel: "Teamwork",
+    category: "CULTURE_BEHAVIORAL",
+    type: "TEXT",
+    maxLength: 400,
+    stepLabel: "Get to Know You",
+  },
+  {
+    key: "coachability",
+    textEn:
+      "Your trainer tells you that you've been cleaning something incorrectly and asks you to use the Mama's Cleaning Crew method instead. What would you most likely do?",
+    shortLabel: "Coachability",
+    category: "CULTURE_BEHAVIORAL",
+    type: "SINGLE_SELECT",
+    stepLabel: "Get to Know You",
+    options: [
+      { textEn: "Continue using my method because it has always worked for me" },
+      { textEn: "Try the MCC method and ask questions if I don't understand something" },
+      { textEn: "Use the MCC method while the trainer is watching but return to my method later" },
+      { textEn: "Explain why I believe my method is better and continue doing it that way" },
+      { textEn: "Other" },
+    ],
+  },
+  {
+    key: "coachability_why",
+    textEn: "Why did you choose that answer?",
+    shortLabel: "Coachability",
+    category: "CULTURE_BEHAVIORAL",
+    type: "TEXT",
+    maxLength: 300,
+    stepLabel: "Get to Know You",
+  },
+  {
+    key: "reliability",
+    textEn:
+      "You wake up for work and realize you're having a transportation problem that may make you late. What would you do first?",
+    shortLabel: "Reliability",
+    category: "CULTURE_BEHAVIORAL",
+    type: "SINGLE_SELECT",
+    stepLabel: "Get to Know You",
+    options: [
+      { textEn: "Wait to see if I can fix the problem before telling anyone" },
+      { textEn: "Contact the company as soon as possible and explain what's happening" },
+      { textEn: "Ask my teammate to tell management for me" },
+      { textEn: "Arrive whenever I can and explain afterward" },
+      { textEn: "Other" },
+    ],
+  },
+  {
+    key: "reliability_why",
+    textEn: "Briefly explain your answer.",
+    shortLabel: "Reliability",
+    category: "CULTURE_BEHAVIORAL",
+    type: "TEXT",
+    maxLength: 300,
+    stepLabel: "Get to Know You",
+  },
+  {
+    key: "hospitality",
+    textEn:
+      "You're cleaning while the client is home. The client asks you to clean something, but you're not sure whether it's included in their service. What would you most likely do?",
+    shortLabel: "Hospitality",
+    category: "CULTURE_BEHAVIORAL",
+    type: "SINGLE_SELECT",
+    stepLabel: "Get to Know You",
+    options: [
+      { textEn: "Tell the client no because it wasn't on my list" },
+      { textEn: "Say yes and do it without telling anyone" },
+      { textEn: "Politely acknowledge the request and check with my Team Lead/office before making a promise" },
+      { textEn: "Ignore the request and continue cleaning" },
+      { key: "other", textEn: "Other" },
+    ],
+  },
+  {
+    key: "hospitality_other",
+    textEn: "What would you do?",
+    shortLabel: "Hospitality",
+    category: "CULTURE_BEHAVIORAL",
+    type: "TEXT",
+    maxLength: 200,
+    stepLabel: "Get to Know You",
+    conditionalOnKey: "hospitality.other",
+  },
+
+  // STEP 5 — Realistic Job Preview
+  {
+    key: "continued_interest",
+    textEn: "After reading the description above, are you still interested in being considered for this position?",
+    shortLabel: "Continued Interest",
+    category: "APPLICATION",
+    type: "SINGLE_SELECT",
+    stepLabel: "Realistic Job Preview",
+    options: [{ textEn: "Yes" }, { textEn: "No" }],
+  },
+  {
+    key: "self_awareness",
+    textEn:
+      "What part of this job do you think would come most naturally to you, and what part do you think might challenge you the most?",
+    shortLabel: "Self-Awareness",
+    category: "CULTURE_BEHAVIORAL",
+    type: "TEXT",
+    maxLength: 400,
+    stepLabel: "Realistic Job Preview",
+  },
+
+  // STEP 6 — Final Information (Resume is handled via Applicant.resumeDataUrl
+  // + JobPosting.resumeRequired, not a PrescreenQuestion.)
+  {
+    key: "start_date",
+    textEn: "If selected, when would you be available to start?",
+    shortLabel: "Start Date",
+    category: "APPLICATION",
+    type: "DATE",
+    stepLabel: "Final Information",
+  },
+  {
+    key: "anything_else",
+    textEn: "Is there anything else you'd like us to know about you?",
+    shortLabel: "Anything Else",
+    category: "APPLICATION",
+    type: "TEXT",
+    required: false,
+    maxLength: 500,
+    stepLabel: "Final Information",
+  },
+];
+
+async function seedCleaningTechnicianPosting() {
+  let posting = await prisma.jobPosting.findUnique({ where: { slug: CLEANING_TECHNICIAN_SLUG } });
+  if (!posting) {
+    posting = await prisma.jobPosting.create({
+      data: {
+        slug: CLEANING_TECHNICIAN_SLUG,
+        titleEn: "Cleaning Technician",
+        positionType: "Full-Time / Part-Time",
+        descriptionEn:
+          "Join Mama's Cleaning Crew as a Cleaning Technician! You'll travel between client homes throughout our Orange County service area, following our structured cleaning procedures to deliver a consistently excellent result. This is active, physical, on-your-feet work — you'll be moving, lifting, and cleaning for most of your shift. We provide structured training, clear procedures and expectations, regular coaching and feedback, and a real path to grow into Lead Technician, Trainer, Field Supervisor, and beyond.",
+        resumeRequired: false,
+        passThresholdPct: 100,
+        roleTrack: "OTHER",
+        active: true,
+      },
+    });
+    await seedDefaultHiringQuestions(posting.id);
+  }
+
+  const alreadyRichSeeded = await prisma.prescreenQuestion.findFirst({
+    where: { jobPostingId: posting.id, shortLabel: "Why Mama's" },
+  });
+  if (alreadyRichSeeded) {
+    console.log("Cleaning Technician full application already seeded, skipping.");
+    return;
+  }
+
+  const applicantCount = await prisma.applicant.count({ where: { jobPostingId: posting.id } });
+  if (applicantCount > 0) {
+    console.log(
+      "Cleaning Technician already has real applicants — skipping prescreen reseed so their submitted answers aren't lost. Reseed manually if you're sure this is safe."
+    );
+    return;
+  }
+
+  // Safe to replace: no real applicant has answered against the old
+  // question set yet, so drop it (cascades to its options only — no
+  // PrescreenAnswer rows exist to lose) and seed the full application.
+  await prisma.prescreenQuestion.deleteMany({ where: { jobPostingId: posting.id } });
+
+  const questionIds = new Map<string, string>();
+  const optionIds = new Map<string, string>(); // "questionKey.optionKey" -> id
+
+  for (const [i, q] of CLEANING_TECHNICIAN_QUESTIONS.entries()) {
+    const conditionalOnOptionId = q.conditionalOnKey ? optionIds.get(q.conditionalOnKey) : undefined;
+    const created = await prisma.prescreenQuestion.create({
+      data: {
+        jobPostingId: posting.id,
+        order: i,
+        textEn: q.textEn,
+        shortLabel: q.shortLabel,
+        category: q.category,
+        type: q.type,
+        required: q.required ?? true,
+        maxLength: q.maxLength,
+        stepLabel: q.stepLabel,
+        conditionalOnOptionId,
+        options: q.options
+          ? { create: q.options.map((o, oi) => ({ order: oi, textEn: o.textEn, points: o.points ?? 0 })) }
+          : undefined,
+      },
+      include: { options: true },
+    });
+    questionIds.set(q.key, created.id);
+    for (const [oi, o] of (q.options ?? []).entries()) {
+      if (o.key) optionIds.set(`${q.key}.${o.key}`, created.options[oi].id);
+    }
+  }
+
+  console.log(`Seeded the full Cleaning Technician application (${CLEANING_TECHNICIAN_QUESTIONS.length} questions).`);
+}
+
 async function main() {
   await seedAdmin();
   await seedTestAccounts();
@@ -729,6 +1198,7 @@ async function main() {
   await seedHiringQuestionsBackfill();
   await seedInterviewLogistics();
   await seedMessageTemplates();
+  await seedCleaningTechnicianPosting();
 }
 
 main()
