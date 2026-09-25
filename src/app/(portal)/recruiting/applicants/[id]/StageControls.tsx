@@ -26,10 +26,15 @@ const NEXT_STAGES: Record<string, ApplicantStage[]> = {
   IN_PERSON_PASSED: ["OFFER_SENT", "REJECTED", "BENCH"],
   IN_PERSON_FAILED: ["REJECTED", "BENCH"],
   OFFER_SENT: ["HIRED", "REJECTED"],
-  HIRED: [],
+  // A misclick straight to Hired is exactly the kind of mistake that used
+  // to have no way back — moving back to Offer Sent walks it off cleanly
+  // (see the Hired-exit cleanup in setApplicantStageAction).
+  HIRED: ["OFFER_SENT"],
   REJECTED: ["BENCH"],
   BENCH: ["PHONE_INTERVIEW_SCHEDULED"],
 };
+
+const ALL_STAGES = Object.keys(STAGE_LABELS) as ApplicantStage[];
 
 export default function StageControls({
   applicantId,
@@ -41,39 +46,47 @@ export default function StageControls({
   const [pending, startTransition] = useTransition();
   const [scheduling, setScheduling] = useState<ApplicantStage | null>(null);
   const [rejecting, setRejecting] = useState(false);
+  const [overriding, setOverriding] = useState(false);
   const options = NEXT_STAGES[stage] ?? [];
-
-  if (options.length === 0) return null;
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        {options.map((next) => (
-          <button
-            key={next}
-            type="button"
-            disabled={pending}
-            onClick={() => {
-              if (next === "REJECTED") {
-                setRejecting(true);
-              } else if ((SCHEDULING_STAGES as string[]).includes(next)) {
-                setScheduling(next);
-              } else {
-                startTransition(() => setApplicantStageAction(applicantId, next));
-              }
-            }}
-            className={`rounded-md px-3 py-2 text-sm font-medium disabled:opacity-60 ${
-              next === "REJECTED"
-                ? "border border-red-300 text-red-700 hover:bg-red-50"
-                : next === "BENCH"
-                  ? "border border-neutral-300 text-neutral-700 hover:bg-neutral-50"
-                  : "bg-brand-600 text-white hover:bg-brand-700"
-            }`}
-          >
-            Move to: {STAGE_LABELS[next]}
-          </button>
-        ))}
-      </div>
+      {options.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {options.map((next) => (
+            <button
+              key={next}
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                if (next === "REJECTED") {
+                  setRejecting(true);
+                } else if ((SCHEDULING_STAGES as string[]).includes(next)) {
+                  setScheduling(next);
+                } else {
+                  startTransition(() => setApplicantStageAction(applicantId, next));
+                }
+              }}
+              className={`rounded-md px-3 py-2 text-sm font-medium disabled:opacity-60 ${
+                next === "REJECTED"
+                  ? "border border-red-300 text-red-700 hover:bg-red-50"
+                  : next === "BENCH"
+                    ? "border border-neutral-300 text-neutral-700 hover:bg-neutral-50"
+                    : "bg-brand-600 text-white hover:bg-brand-700"
+              }`}
+            >
+              {stage === "HIRED" && next === "OFFER_SENT" ? "Undo Hire" : `Move to: ${STAGE_LABELS[next]}`}
+            </button>
+          ))}
+        </div>
+      )}
+      {stage === "HIRED" && (
+        <p className="text-xs text-neutral-500">
+          Undo Hire moves this applicant back to Offer Sent. If the training account created for
+          them has never been logged into, it&apos;s removed too — nothing is touched if they&apos;ve
+          already started using it.
+        </p>
+      )}
 
       {scheduling && (
         <form
@@ -162,6 +175,67 @@ export default function StageControls({
           </button>
         </div>
       )}
+
+      <div className="border-t border-neutral-100 pt-3">
+        {overriding ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const formData = new FormData(e.currentTarget);
+              const target = formData.get("targetStage") as ApplicantStage | null;
+              if (!target || target === stage) {
+                setOverriding(false);
+                return;
+              }
+              startTransition(async () => {
+                await setApplicantStageAction(applicantId, target);
+                setOverriding(false);
+              });
+            }}
+            className="rounded-md border border-neutral-200 bg-neutral-50 p-3"
+          >
+            <label className="mb-1 block text-xs font-medium text-neutral-700">
+              Set the stage directly — for correcting a wrong click. Any interview date/time already
+              on file is left as-is.
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                name="targetStage"
+                defaultValue={stage}
+                className="rounded-md border border-neutral-300 px-3 py-2 text-sm"
+              >
+                {ALL_STAGES.map((s) => (
+                  <option key={s} value={s}>
+                    {STAGE_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                disabled={pending}
+                className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+              >
+                {pending ? "Saving..." : "Confirm"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOverriding(false)}
+                className="rounded-md border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setOverriding(true)}
+            className="text-xs font-medium text-neutral-500 underline hover:text-neutral-700"
+          >
+            Made a mistake? Correct the stage manually
+          </button>
+        )}
+      </div>
     </div>
   );
 }

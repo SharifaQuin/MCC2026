@@ -54,11 +54,31 @@ export async function setApplicantStageAction(
   const scheduledAtDate =
     SCHEDULING_STAGES.includes(stage) && scheduledAt ? zonedTimeToUtc(scheduledAt) : undefined;
 
+  // Moving an applicant OFF of Hired (whether via the dedicated "Undo
+  // Hire" button or the manual stage override) needs to walk back the one
+  // real side effect Hired has: a training account gets created for them.
+  // Only ever remove that account if it's provably never been touched
+  // (no login, no password set) — an account someone has actually started
+  // using is real activity this can't silently erase.
+  const previous = await prisma.applicant.findUnique({
+    where: { id: applicantId },
+    select: { stage: true, hiredUserId: true },
+  });
+  const leavingHired = previous?.stage === "HIRED" && stage !== "HIRED" && previous.hiredUserId;
+  let clearHiredUser = false;
+  if (leavingHired) {
+    const hiredUser = await prisma.user.findUnique({ where: { id: previous!.hiredUserId! } });
+    if (hiredUser && !hiredUser.lastLoginAt && !hiredUser.passwordHash) {
+      clearHiredUser = true;
+    }
+  }
+
   const applicant = await prisma.applicant.update({
     where: { id: applicantId },
     data: {
       stage,
       ...(timestampField ? { [timestampField]: new Date() } : {}),
+      ...(leavingHired ? { hiredAt: null, ...(clearHiredUser ? { hiredUserId: null } : {}) } : {}),
       // A fresh (or rescheduled) interview time gets its own confirm token
       // and starts unconfirmed with no reminders sent yet — a stale
       // confirmation or an already-sent reminder from a previous time
@@ -76,6 +96,10 @@ export async function setApplicantStageAction(
     },
     include: { jobPosting: { select: { titleEn: true, titleEs: true } } },
   });
+
+  if (clearHiredUser) {
+    await prisma.user.delete({ where: { id: previous!.hiredUserId! } });
+  }
 
   if (stage === "HIRED") {
     await createEmployeeAccountForHiredApplicant(applicant, session.sub);
