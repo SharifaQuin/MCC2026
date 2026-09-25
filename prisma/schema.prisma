@@ -87,62 +87,62 @@ enum CertificationStatus {
 }
 
 model User {
-  id               String    @id @default(cuid())
+  id                  String          @id @default(cuid())
   // Human-facing identifier ("MCC-0001"), distinct from the internal cuid
   // `id` — assigned once at account creation from a Postgres sequence
   // (see the employee_id_seq migration), never reused or renumbered.
-  employeeId       String?   @unique
-  email            String    @unique
-  name             String
+  employeeId          String?         @unique
+  email               String          @unique
+  name                String
   // Alternate "Cleaner" names from payroll report workbooks that HR has
   // manually attached to this employee (e.g. the scheduling platform has
   // her down with a middle name this account's `name` doesn't have) — the
   // payroll importer checks these before giving up on a name it can't
   // match to anyone.
-  payrollAliasNames String[]  @default([])
-  role             Role      @default(TRAINEE)
-  passwordHash     String?
-  mustSetPassword  Boolean   @default(true)
-  active           Boolean   @default(true)
+  payrollAliasNames   String[]        @default([])
+  role                Role            @default(TRAINEE)
+  passwordHash        String?
+  mustSetPassword     Boolean         @default(true)
+  active              Boolean         @default(true)
   // Seeded demo/test employee accounts (owner "View As" impersonation) —
   // never real staff, so they're excluded from staff directories, turnover
   // stats, CSV exports, and other real-business-data reporting.
-  isTestAccount    Boolean   @default(false)
-  inviteToken      String?   @unique
-  inviteExpiresAt  DateTime?
-  language         Language  @default(EN)
-  lastLoginAt      DateTime?
+  isTestAccount       Boolean         @default(false)
+  inviteToken         String?         @unique
+  inviteExpiresAt     DateTime?
+  language            Language        @default(EN)
+  lastLoginAt         DateTime?
   // When this person actually started working, not when their account was
   // created — used for years-of-service and upcoming-anniversary tracking
   // on the Staff dashboard. Backfilled from createdAt for existing users;
   // editable afterward since that's rarely their true start date.
-  hireDate         DateTime?
-  phone            String?
-  address          String?
-  employmentType   EmploymentType?
+  hireDate            DateTime?
+  phone               String?
+  address             String?
+  employmentType      EmploymentType?
   // Free-text, not a fixed enum — a single-location business today, but
   // meant to grow into multiple physical locations/crew groupings without
   // a migration each time a new one is added.
-  officeLocation   String?
-  crewType         String?
+  officeLocation      String?
+  crewType            String?
   // Free-text name, not a relation to another User — MCC's roster includes
   // managers (e.g. the owner's own manager) who may not have an account in
   // this system at all, so this just records whatever name was on file.
-  managerName      String?
-  failedLoginAttempts Int    @default(0)
-  lockedUntil      DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  managerName         String?
+  failedLoginAttempts Int             @default(0)
+  lockedUntil         DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 
   // Departed is a distinct, HR-recorded roster status — not the same as a
   // plain `active=false` deactivation (which just revokes login access for
   // any reason). Marking someone departed also sets active=false; a rehire
   // clears these fields and reactivates the account.
-  lastDay               DateTime?
-  departureReason       String?   @db.Text
-  departureRecordedById String?
-  departureRecordedBy   User?     @relation("DepartureRecordedBy", fields: [departureRecordedById], references: [id], onDelete: SetNull)
-  departuresRecorded    User[]    @relation("DepartureRecordedBy")
+  lastDay                  DateTime?
+  departureReason          String?   @db.Text
+  departureRecordedById    String?
+  departureRecordedBy      User?     @relation("DepartureRecordedBy", fields: [departureRecordedById], references: [id], onDelete: SetNull)
+  departuresRecorded       User[]    @relation("DepartureRecordedBy")
   // Null = not yet determined (the usual case right when someone is marked
   // departed, before an exit interview has happened) — distinct from false
   // (determined not eligible), so the two states aren't conflated.
@@ -153,7 +153,7 @@ model User {
   progress       ModuleProgress[]
   lessonProgress LessonProgress[]
   quizAttempts   QuizAttempt[]
-  invitedBy    String?
+  invitedBy      String?
 
   fieldEvaluationsReceived FieldEvaluation[] @relation("TraineeFieldEvaluations")
   fieldEvaluationsGiven    FieldEvaluation[] @relation("GradedFieldEvaluations")
@@ -161,37 +161,37 @@ model User {
   certificationStatus CertificationStatus @default(NOT_RECOMMENDED)
   certNotes           String?             @db.Text
 
-  certRecommendedAt        DateTime?
-  certRecommendedById      String?
-  certRecommendedBy        User?     @relation("CertRecommendedBy", fields: [certRecommendedById], references: [id])
-  certRecommendationsMade  User[]    @relation("CertRecommendedBy")
+  certRecommendedAt       DateTime?
+  certRecommendedById     String?
+  certRecommendedBy       User?     @relation("CertRecommendedBy", fields: [certRecommendedById], references: [id])
+  certRecommendationsMade User[]    @relation("CertRecommendedBy")
 
-  certDecidedAt      DateTime?
-  certDecidedById    String?
-  certDecidedBy      User?     @relation("CertDecidedBy", fields: [certDecidedById], references: [id])
-  certDecisionsMade  User[]    @relation("CertDecidedBy")
+  certDecidedAt     DateTime?
+  certDecidedById   String?
+  certDecidedBy     User?     @relation("CertDecidedBy", fields: [certDecidedById], references: [id])
+  certDecisionsMade User[]    @relation("CertDecidedBy")
 
-  departmentAccess DepartmentAccess[]
-  sentCommunications CommunicationLog[]
-  sentLeadCommunications LeadCommunication[]
-  leadNotesWritten LeadNote[]
-  leadStageChangesMade LeadStageChange[]
-  assignedLeads Lead[] @relation("LeadAssignedTo")
-  hiredFromApplicant Applicant? @relation("ApplicantHiredUser")
-  applicantsViewed Applicant[] @relation("ApplicantViewedBy")
-  onboardingAssignments OnboardingAssignment[]
-  applicantNotesAuthored ApplicantNote[]
+  departmentAccess            DepartmentAccess[]
+  sentCommunications          CommunicationLog[]
+  sentLeadCommunications      LeadCommunication[]
+  leadNotesWritten            LeadNote[]
+  leadStageChangesMade        LeadStageChange[]
+  assignedLeads               Lead[]                 @relation("LeadAssignedTo")
+  hiredFromApplicant          Applicant?             @relation("ApplicantHiredUser")
+  applicantsViewed            Applicant[]            @relation("ApplicantViewedBy")
+  onboardingAssignments       OnboardingAssignment[]
+  applicantNotesAuthored      ApplicantNote[]
   phoneScreenResultsCompleted PhoneScreenResult[]
-  interviewScorecards InterviewScorecard[]
-  workingSessionsLed WorkingSessionRecord[]
-  referenceChecksCompleted ReferenceCheck[]
+  interviewScorecards         InterviewScorecard[]
+  workingSessionsLed          WorkingSessionRecord[]
+  referenceChecksCompleted    ReferenceCheck[]
 
-  complaintsReceived Complaint[]       @relation("EmployeeComplaints")
-  complaintsLogged   Complaint[]       @relation("ComplaintsLogged")
-  attendanceEvents       AttendanceEvent[] @relation("EmployeeAttendanceEvents")
-  attendanceEventsLogged AttendanceEvent[] @relation("AttendanceEventsLogged")
-  payrollEntries     PayrollEntry[]    @relation("EmployeePayrollEntries")
-  payrollOverridesRecorded PayrollEntry[] @relation("PayrollOverriddenBy")
+  complaintsReceived       Complaint[]       @relation("EmployeeComplaints")
+  complaintsLogged         Complaint[]       @relation("ComplaintsLogged")
+  attendanceEvents         AttendanceEvent[] @relation("EmployeeAttendanceEvents")
+  attendanceEventsLogged   AttendanceEvent[] @relation("AttendanceEventsLogged")
+  payrollEntries           PayrollEntry[]    @relation("EmployeePayrollEntries")
+  payrollOverridesRecorded PayrollEntry[]    @relation("PayrollOverriddenBy")
 
   weeklyUpdatesCreated  WeeklyUpdate[] @relation("WeeklyUpdateCreatedBy")
   weeklyUpdatesApproved WeeklyUpdate[] @relation("WeeklyUpdateApprovedBy")
@@ -206,29 +206,41 @@ model User {
 
   quickBooksConnectionsMade QuickBooksConnection[]
 
-  promotionAssessments       PromotionAssessment[] @relation("PromotionAssessmentEmployee")
-  promotionAssessmentsMade   PromotionAssessment[] @relation("PromotionAssessmentAssessedBy")
+  promotionAssessments     PromotionAssessment[] @relation("PromotionAssessmentEmployee")
+  promotionAssessmentsMade PromotionAssessment[] @relation("PromotionAssessmentAssessedBy")
 
   payReviewAssessments     PayReviewAssessment[] @relation("PayReviewAssessmentEmployee")
   payReviewAssessmentsMade PayReviewAssessment[] @relation("PayReviewAssessmentReviewedBy")
 
-  milestoneReviews       MilestoneReview[] @relation("MilestoneReviewEmployee")
-  milestoneReviewsMade   MilestoneReview[] @relation("MilestoneReviewReviewedBy")
+  milestoneReviews     MilestoneReview[] @relation("MilestoneReviewEmployee")
+  milestoneReviewsMade MilestoneReview[] @relation("MilestoneReviewReviewedBy")
 
   pafsAsEmployee PersonnelActionForm[] @relation("PafEmployee")
   pafsCreated    PersonnelActionForm[] @relation("PafCreatedBy")
   pafsApproved   PersonnelActionForm[] @relation("PafApprovedBy")
 
-  documentTemplatesCreated DocumentTemplate[] @relation("DocumentTemplateCreatedBy")
-  messageTemplatesCreated  MessageTemplate[]  @relation("MessageTemplateCreatedBy")
+  documentTemplatesCreated       DocumentTemplate[]        @relation("DocumentTemplateCreatedBy")
+  messageTemplatesCreated        MessageTemplate[]         @relation("MessageTemplateCreatedBy")
   onboardingChecklistCompletions OnboardingChecklistItem[] @relation("OnboardingChecklistCompletedBy")
-  signedDocuments          SignedDocument[]   @relation("SignedDocumentEmployee")
-  signedDocumentsCreated   SignedDocument[]   @relation("SignedDocumentCreatedBy")
+  signedDocuments                SignedDocument[]          @relation("SignedDocumentEmployee")
+  signedDocumentsCreated         SignedDocument[]          @relation("SignedDocumentCreatedBy")
 
   complianceDocuments        ComplianceDocument[] @relation("ComplianceDocumentEmployee")
   complianceDocumentsCreated ComplianceDocument[] @relation("ComplianceDocumentCreatedBy")
 
   interviewAvailabilitySlotsCreated InterviewAvailabilitySlot[]
+
+  rookieCheckoffsAsTrainee RookieFieldCheckoff[] @relation("RookieCheckoffTrainee")
+  rookieCheckoffsAsTrainer RookieFieldCheckoff[] @relation("RookieCheckoffTrainer")
+
+  rookieDay3Readiness              RookieDay3Readiness?  @relation("RookieDay3ReadinessTrainee")
+  rookieDay3ReadinessDecisionsMade RookieDay3Readiness[] @relation("RookieDay3ReadinessDecidedBy")
+
+  rookieDay10Review         RookieDay10Review?  @relation("RookieDay10ReviewTrainee")
+  rookieDay10ReviewsDecided RookieDay10Review[] @relation("RookieDay10ReviewDecidedBy")
+
+  sealEvaluationsReceived SealOfApprovalEvaluation[] @relation("SealEvalTrainee")
+  sealEvaluationsGiven    SealOfApprovalEvaluation[] @relation("SealEvalEvaluatedBy")
 
   @@index([role])
 }
@@ -250,16 +262,22 @@ model DepartmentAccess {
 }
 
 model Module {
-  id            String   @id @default(cuid())
-  slug          String   @unique
-  order         Int
-  titleEn       String
-  titleEs       String?
-  summaryEn     String?
-  summaryEs     String?
-  published     Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                 String              @id @default(cuid())
+  slug               String              @unique
+  order              Int
+  titleEn            String
+  titleEs            String?
+  summaryEn          String?
+  summaryEs          String?
+  published          Boolean             @default(true)
+  // Rookie Journey V2 foundation: classifies this module's quiz as a Quick
+  // Knowledge Check, a Critical Safety/Policy Check, or a Field Skill
+  // Checkoff (see KnowledgeCheckType). Null for every module today — this is
+  // support for the taxonomy only, not a reclassification of the existing
+  // 25 modules, which stay ungraded until that mapping is done separately.
+  knowledgeCheckType KnowledgeCheckType?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   lessons       Lesson[]
   quizQuestions QuizQuestion[]
@@ -270,24 +288,24 @@ model Module {
 }
 
 model Lesson {
-  id         String   @id @default(cuid())
-  moduleId   String
-  module     Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  order      Int
-  titleEn    String
-  titleEs    String?
-  contentEn  String   @db.Text
-  contentEs  String?  @db.Text
-  videoUrl   String?
+  id                   String   @id @default(cuid())
+  moduleId             String
+  module               Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  order                Int
+  titleEn              String
+  titleEs              String?
+  contentEn            String   @db.Text
+  contentEs            String?  @db.Text
+  videoUrl             String?
   // A separately-generated Spanish-dubbed version of the same video (e.g. via
   // Synthesia's translate/dub feature). Shown instead of videoUrl to trainees
   // whose language is Spanish, when present.
-  videoUrlEs String?
+  videoUrlEs           String?
   // A written transcript of what's spoken in the video, shown as text below
   // it — this app embeds videos from external platforms (Synthesia, YouTube,
   // Loom, Vimeo), so we can't add a synced subtitle track to them ourselves.
-  videoTranscriptEn String? @db.Text
-  videoTranscriptEs String? @db.Text
+  videoTranscriptEn    String?  @db.Text
+  videoTranscriptEs    String?  @db.Text
   // How long the trainee must keep this lesson open before "Continue"
   // unlocks — set by an admin to roughly the video's runtime. Null means
   // no minimum wait (text-only lessons, or a video without a known length).
@@ -295,17 +313,18 @@ model Lesson {
   // A compressed base64 data URI (or external URL) for an optional photo/
   // diagram shown above the lesson text. @db.Text since a data URI is
   // far longer than the default varchar limit.
-  imageUrl   String? @db.Text
-  estimatedMinutes Int?
+  imageUrl             String?  @db.Text
+  estimatedMinutes     Int?
   // Lets an admin hide a single lesson from trainees (e.g. still being
   // written, or pulled from the curriculum) without deleting it or
   // unpublishing the whole module. Defaults to true so existing/new
   // lessons stay visible unless explicitly hidden.
-  published  Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  published            Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  progress LessonProgress[]
+  progress         LessonProgress[]
+  rookieAssignment RookieLessonAssignment[]
 
   @@index([moduleId, order])
 }
@@ -324,15 +343,15 @@ model LessonProgress {
 }
 
 model QuizQuestion {
-  id         String       @id @default(cuid())
-  moduleId   String
-  module     Module       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  order      Int
-  textEn     String
-  textEs     String?
-  options    QuizOption[]
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  id        String       @id @default(cuid())
+  moduleId  String
+  module    Module       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  order     Int
+  textEn    String
+  textEs    String?
+  options   QuizOption[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 
   @@index([moduleId, order])
 }
@@ -410,36 +429,36 @@ model FieldEvalCategoryScore {
 // A single open position, e.g. a specific Indeed/ZipRecruiter ad. The
 // public application form lives at /apply/[slug].
 model JobPosting {
-  id           String   @id @default(cuid())
-  slug         String   @unique
-  titleEn      String
+  id               String              @id @default(cuid())
+  slug             String              @unique
+  titleEn          String
   // Optional Spanish translation of the title — falls back to titleEn
   // wherever a bilingual applicant-facing message needs the position name
   // (e.g. the in-person interview confirmation email) and this isn't set.
-  titleEs      String?
-  positionType String?
-  descriptionEn String  @db.Text
+  titleEs          String?
+  positionType     String?
+  descriptionEn    String              @db.Text
   // Recruiting 2.0: whether the mobile application form requires a resume
   // before it can be submitted. Off by default (a Cleaning Technician
   // applicant frequently has no polished resume) — future office/admin
   // postings can turn this on per posting without a code change.
-  resumeRequired Boolean @default(false)
+  resumeRequired   Boolean             @default(false)
   // Percentage of the max possible prescreen score an applicant needs to
   // auto-pass and move on to scheduling a phone/Zoom interview.
-  passThresholdPct Int  @default(70)
+  passThresholdPct Int                 @default(70)
   // Which hiring-toolkit track this posting follows — drives the interview
   // scorecard's competency list and which role-differentiated phone-screen
   // / interview questions apply. See JobPostingRoleTrack.
-  roleTrack    JobPostingRoleTrack @default(OTHER)
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  roleTrack        JobPostingRoleTrack @default(OTHER)
+  active           Boolean             @default(true)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
 
-  prescreenQuestions  PrescreenQuestion[]
+  prescreenQuestions   PrescreenQuestion[]
   phoneScreenQuestions PhoneScreenQuestion[]
-  interviewQuestions  InterviewQuestion[]
-  applicants          Applicant[]
-  availabilitySlots   InterviewAvailabilitySlot[]
+  interviewQuestions   InterviewQuestion[]
+  applicants           Applicant[]
+  availabilitySlots    InterviewAvailabilitySlot[]
 }
 
 // REQUIRED questions gate prescreen pass/fail (their option points count
@@ -483,28 +502,28 @@ enum PrescreenQuestionType {
 }
 
 model PrescreenQuestion {
-  id           String     @id @default(cuid())
-  jobPostingId String
-  jobPosting   JobPosting @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
-  order        Int
-  textEn       String
+  id                    String                    @id @default(cuid())
+  jobPostingId          String
+  jobPosting            JobPosting                @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+  order                 Int
+  textEn                String
   // A short 1-3 word label for tight spaces (the Quick Review requirement
   // checklist, e.g. "M-F Availability" instead of the full question
   // sentence). Falls back to textEn wherever unset, so every existing
   // question keeps rendering exactly as before.
-  shortLabel   String?
-  category     PrescreenQuestionCategory @default(REQUIRED)
-  type         PrescreenQuestionType     @default(SINGLE_SELECT)
+  shortLabel            String?
+  category              PrescreenQuestionCategory @default(REQUIRED)
+  type                  PrescreenQuestionType     @default(SINGLE_SELECT)
   // Whether the applicant must answer this before submitting. Defaults to
   // true since every pre-Recruiting-2.0 question was implicitly required.
-  required     Boolean    @default(true)
+  required              Boolean                   @default(true)
   // Recommended character count shown to the applicant as they type a
   // TEXT answer — purely a UI hint, never enforced as a hard cutoff.
-  maxLength    Int?
+  maxLength             Int?
   // Free-text grouping label for the multi-step application wizard (e.g.
   // "Cleaning Experience", "Let's Get to Know You") — display-only, never
   // used for scoring, so it can be renamed later without touching logic.
-  stepLabel    String?
+  stepLabel             String?
   // Set when this question should only be shown/counted if the applicant
   // selected a specific option on another question (e.g. an "Other, please
   // explain" follow-up, or "how many years cleaned independently" only
@@ -512,9 +531,9 @@ model PrescreenQuestion {
   // QUALIFICATION question is excluded from both score and maxScore for
   // any applicant who never triggered it — see scorePrescreenAnswers.
   conditionalOnOptionId String?
-  conditionalOnOption   PrescreenOption? @relation("ConditionalTrigger", fields: [conditionalOnOptionId], references: [id])
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  conditionalOnOption   PrescreenOption?          @relation("ConditionalTrigger", fields: [conditionalOnOptionId], references: [id])
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
 
   options PrescreenOption[] @relation("QuestionOptions")
   answers PrescreenAnswer[]
@@ -532,7 +551,7 @@ model PrescreenOption {
   // Point value toward the applicant's auto-calculated compatibility score.
   points     Int               @default(0)
 
-  answers PrescreenAnswer[]
+  answers            PrescreenAnswer[]
   triggeredQuestions PrescreenQuestion[] @relation("ConditionalTrigger")
 
   @@index([questionId, order])
@@ -542,45 +561,45 @@ model PrescreenOption {
 // lesson photos are (a base64 data URI directly on the row) since the app
 // has no separate file/blob storage.
 model Applicant {
-  id             String          @id @default(cuid())
-  jobPostingId   String
-  jobPosting     JobPosting      @relation(fields: [jobPostingId], references: [id])
-  firstName      String
-  lastName       String
-  email          String
-  phone          String
-  resumeDataUrl  String?         @db.Text
-  resumeFileName String?
-  stage          ApplicantStage  @default(NEW)
+  id                          String          @id @default(cuid())
+  jobPostingId                String
+  jobPosting                  JobPosting      @relation(fields: [jobPostingId], references: [id])
+  firstName                   String
+  lastName                    String
+  email                       String
+  phone                       String
+  resumeDataUrl               String?         @db.Text
+  resumeFileName              String?
+  stage                       ApplicantStage  @default(NEW)
   // Where this applicant came from — CAREERS_PAGE by default for the public
   // /apply/[slug] form, overridden by a ?src= query param on job-board
   // postings that link there (see parseApplicantSource), or picked
   // explicitly on the manual "add applicant" form.
-  source         ApplicantSource @default(OTHER)
+  source                      ApplicantSource @default(OTHER)
   // Recruiting 2.0: the city they typed on the application — shown on the
   // Quick Review card ("where are they?") only. The "lives near the office"
   // preferred qualifier is a self-attested Yes/No prescreen question instead
   // of a city match against this field, since there's no verified office
   // address or real distance data to match against.
-  city           String?
+  city                        String?
   // Full click-through attribution, captured from the application URL's
   // query string alongside (not replacing) the existing ?src= handling.
   // Nullable since most existing/organic applicants never had these.
-  utmSource      String?
-  utmMedium      String?
-  utmCampaign    String?
-  utmContent     String?
-  utmTerm        String?
-  prescreenScore    Int?
-  prescreenMaxScore Int?
-  prescreenPassed   Boolean?
-  notes          String?        @db.Text
-  scheduledAt    DateTime?
+  utmSource                   String?
+  utmMedium                   String?
+  utmCampaign                 String?
+  utmContent                  String?
+  utmTerm                     String?
+  prescreenScore              Int?
+  prescreenMaxScore           Int?
+  prescreenPassed             Boolean?
+  notes                       String?         @db.Text
+  scheduledAt                 DateTime?
   // Set whenever scheduledAt is (re)set for an interview stage — the token
   // in the "Yes, I'll be there" link sent with the reminders, and the
   // record of whether/when they clicked it. Cleared and regenerated on a
   // reschedule so a stale confirmation never carries over to a new time.
-  interviewConfirmToken       String?   @unique
+  interviewConfirmToken       String?         @unique
   interviewConfirmedAt        DateTime?
   // Set when the applicant clicks "I can't make it" on the confirm page —
   // deliberately does NOT let them pick a new time themselves; it just
@@ -589,31 +608,31 @@ model Applicant {
   interviewCantMakeItAt       DateTime?
   interviewReminderDaySentAt  DateTime?
   interviewReminderHourSentAt DateTime?
-  rejectedAt     DateTime?
-  benchedAt      DateTime?
-  hiredAt        DateTime?
-  hiredUserId    String?        @unique
-  hiredUser      User?          @relation("ApplicantHiredUser", fields: [hiredUserId], references: [id])
+  rejectedAt                  DateTime?
+  benchedAt                   DateTime?
+  hiredAt                     DateTime?
+  hiredUserId                 String?         @unique
+  hiredUser                   User?           @relation("ApplicantHiredUser", fields: [hiredUserId], references: [id])
   // Stamped once, the first time a recruiter opens this applicant's profile
   // — a persistent "I've already looked into this person" marker, distinct
   // from moving them through the pipeline.
-  viewedAt       DateTime?
-  viewedById     String?
-  viewedBy       User?          @relation("ApplicantViewedBy", fields: [viewedById], references: [id])
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  viewedAt                    DateTime?
+  viewedById                  String?
+  viewedBy                    User?           @relation("ApplicantViewedBy", fields: [viewedById], references: [id])
+  createdAt                   DateTime        @default(now())
+  updatedAt                   DateTime        @updatedAt
 
-  answers PrescreenAnswer[]
-  communications CommunicationLog[]
-  notesLog             ApplicantNote[]
-  phoneScreenAnswers   PhoneScreenAnswer[]
-  phoneScreenResult    PhoneScreenResult?
-  interviewAnswers     InterviewQuestionAnswer[]
-  interviewScorecards  InterviewScorecard[]
-  workingSession       WorkingSessionRecord?
-  referenceChecks      ReferenceCheck[]
-  onboardingChecklist  OnboardingChecklistItem[]
-  bookedSlot           InterviewAvailabilitySlot?
+  answers             PrescreenAnswer[]
+  communications      CommunicationLog[]
+  notesLog            ApplicantNote[]
+  phoneScreenAnswers  PhoneScreenAnswer[]
+  phoneScreenResult   PhoneScreenResult?
+  interviewAnswers    InterviewQuestionAnswer[]
+  interviewScorecards InterviewScorecard[]
+  workingSession      WorkingSessionRecord?
+  referenceChecks     ReferenceCheck[]
+  onboardingChecklist OnboardingChecklistItem[]
+  bookedSlot          InterviewAvailabilitySlot?
 
   @@index([jobPostingId, stage])
 }
@@ -794,18 +813,18 @@ enum PhoneScreenOutcome {
 // the Lead lead-form's customFields Json pattern) so the exact wording can
 // be adjusted without a migration.
 model PhoneScreenResult {
-  id             String              @id @default(cuid())
-  applicantId    String              @unique
-  applicant      Applicant           @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  id                String              @id @default(cuid())
+  applicantId       String              @unique
+  applicant         Applicant           @relation(fields: [applicantId], references: [id], onDelete: Cascade)
   criteriaChecklist Json?
-  languageNote   String?
-  outcome        PhoneScreenOutcome?
-  redFlagsNotes  String?             @db.Text
-  completedById  String?
-  completedBy    User?               @relation(fields: [completedById], references: [id])
-  completedAt    DateTime?
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+  languageNote      String?
+  outcome           PhoneScreenOutcome?
+  redFlagsNotes     String?             @db.Text
+  completedById     String?
+  completedBy       User?               @relation(fields: [completedById], references: [id])
+  completedAt       DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
 }
 
 enum InterviewQuestionRole {
@@ -866,20 +885,20 @@ enum InterviewRecommendation {
 // posting — only set it when MCC is running multiple concurrent hiring
 // pushes and needs to keep their slots separate.
 model InterviewAvailabilitySlot {
-  id              String     @id @default(cuid())
+  id              String      @id @default(cuid())
   jobPostingId    String?
   jobPosting      JobPosting? @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
   startsAt        DateTime
-  durationMins    Int        @default(30)
+  durationMins    Int         @default(30)
   // Set the moment a candidate claims this slot — the update that sets
   // this is conditioned on it still being null (see bookInterviewSlot in
   // lib/recruiting.ts), which is what actually prevents double-booking;
   // this column being non-null is just the resulting state.
-  bookedById      String?    @unique
-  bookedApplicant Applicant? @relation(fields: [bookedById], references: [id], onDelete: SetNull)
+  bookedById      String?     @unique
+  bookedApplicant Applicant?  @relation(fields: [bookedById], references: [id], onDelete: SetNull)
   createdById     String
-  createdBy       User       @relation(fields: [createdById], references: [id])
-  createdAt       DateTime   @default(now())
+  createdBy       User        @relation(fields: [createdById], references: [id])
+  createdAt       DateTime    @default(now())
 
   @@unique([startsAt, jobPostingId])
   @@index([jobPostingId, startsAt])
@@ -912,12 +931,12 @@ model InterviewScorecard {
 // Lead vs. Assistant lists). A child table rather than fixed columns since
 // the competency set differs by role track.
 model InterviewCompetencyScore {
-  id          String              @id @default(cuid())
+  id          String             @id @default(cuid())
   scorecardId String
-  scorecard   InterviewScorecard  @relation(fields: [scorecardId], references: [id], onDelete: Cascade)
+  scorecard   InterviewScorecard @relation(fields: [scorecardId], references: [id], onDelete: Cascade)
   competency  String
   score       Int?
-  evidence    String?             @db.Text
+  evidence    String?            @db.Text
 
   @@index([scorecardId])
 }
@@ -927,34 +946,34 @@ model InterviewCompetencyScore {
 // their written assessment + hire recommendation. One per applicant — the
 // working session is completed once, by the Lead who ran it.
 model WorkingSessionRecord {
-  id                    String                    @id @default(cuid())
-  applicantId           String                    @unique
-  applicant             Applicant                 @relation(fields: [applicantId], references: [id], onDelete: Cascade)
-  scheduledAt           DateTime?
-  housesToVisit         String?
+  id                   String                   @id @default(cuid())
+  applicantId          String                   @unique
+  applicant            Applicant                @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  scheduledAt          DateTime?
+  housesToVisit        String?
   // [{label, checked}] — the Form 5 pre-day checklist items.
-  preSessionChecklist   Json?
-  leadEvaluatorId       String?
-  leadEvaluator         User?                     @relation(fields: [leadEvaluatorId], references: [id])
-  technicalScore        Int?
-  technicalNotes        String?                   @db.Text
-  paceStaminaScore      Int?
-  paceStaminaNotes      String?                   @db.Text
-  attentionDetailScore  Int?
-  attentionDetailNotes  String?                   @db.Text
-  clientHomeScore       Int?
-  clientHomeNotes       String?                   @db.Text
-  coachabilityScore     Int?
-  coachabilityNotes     String?                   @db.Text
-  pairDynamicScore      Int?
-  pairDynamicNotes      String?                   @db.Text
-  safetyScore           Int?
-  safetyNotes           String?                   @db.Text
-  honestAssessment      String?                   @db.Text
-  concernsRaised         String?                  @db.Text
-  recommendation        InterviewRecommendation?
-  createdAt             DateTime                  @default(now())
-  updatedAt             DateTime                  @updatedAt
+  preSessionChecklist  Json?
+  leadEvaluatorId      String?
+  leadEvaluator        User?                    @relation(fields: [leadEvaluatorId], references: [id])
+  technicalScore       Int?
+  technicalNotes       String?                  @db.Text
+  paceStaminaScore     Int?
+  paceStaminaNotes     String?                  @db.Text
+  attentionDetailScore Int?
+  attentionDetailNotes String?                  @db.Text
+  clientHomeScore      Int?
+  clientHomeNotes      String?                  @db.Text
+  coachabilityScore    Int?
+  coachabilityNotes    String?                  @db.Text
+  pairDynamicScore     Int?
+  pairDynamicNotes     String?                  @db.Text
+  safetyScore          Int?
+  safetyNotes          String?                  @db.Text
+  honestAssessment     String?                  @db.Text
+  concernsRaised       String?                  @db.Text
+  recommendation       InterviewRecommendation?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
 }
 
 enum ReferenceVerdict {
@@ -968,28 +987,28 @@ enum ReferenceVerdict {
 // multiple rows here since the toolkit requires at least 2 reference calls
 // per finalist.
 model ReferenceCheck {
-  id                     String            @id @default(cuid())
-  applicantId            String
-  applicant              Applicant         @relation(fields: [applicantId], references: [id], onDelete: Cascade)
-  referenceName          String?
-  referenceRelationship  String?
-  durationKnown          String?
-  referencePhone         String?
-  calledAt               DateTime?
-  capacityDuration       String?           @db.Text
-  responsibilities       String?           @db.Text
-  strengths              String?           @db.Text
-  growthAreas            String?           @db.Text
-  customerFacing         String?           @db.Text
-  handledFeedback        String?           @db.Text
-  wouldRehire            String?           @db.Text
-  anythingElse           String?           @db.Text
-  verdict                ReferenceVerdict?
-  redFlagsSurfaced       String?           @db.Text
-  completedById          String?
-  completedBy            User?             @relation(fields: [completedById], references: [id])
-  createdAt              DateTime          @default(now())
-  updatedAt              DateTime          @updatedAt
+  id                    String            @id @default(cuid())
+  applicantId           String
+  applicant             Applicant         @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  referenceName         String?
+  referenceRelationship String?
+  durationKnown         String?
+  referencePhone        String?
+  calledAt              DateTime?
+  capacityDuration      String?           @db.Text
+  responsibilities      String?           @db.Text
+  strengths             String?           @db.Text
+  growthAreas           String?           @db.Text
+  customerFacing        String?           @db.Text
+  handledFeedback       String?           @db.Text
+  wouldRehire           String?           @db.Text
+  anythingElse          String?           @db.Text
+  verdict               ReferenceVerdict?
+  redFlagsSurfaced      String?           @db.Text
+  completedById         String?
+  completedBy           User?             @relation(fields: [completedById], references: [id])
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
 
   @@index([applicantId])
 }
@@ -1031,14 +1050,14 @@ model OnboardingDocument {
 // they sign — the pair together is the e-signature record (typed full name
 // + timestamp), which is what gates that employee out of Training.
 model OnboardingAssignment {
-  id         String   @id @default(cuid())
+  id         String             @id @default(cuid())
   documentId String
   document   OnboardingDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
   userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   signedAt   DateTime?
   signedName String?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime           @default(now())
 
   @@unique([documentId, userId])
 }
@@ -1201,11 +1220,11 @@ model AttendanceEvent {
 // A biweekly (or whatever cadence HR runs) pay period that hours get
 // entered against.
 model PayPeriod {
-  id               String                    @id @default(cuid())
+  id               String                   @id @default(cuid())
   startDate        DateTime
   endDate          DateTime
   label            String
-  createdAt        DateTime                  @default(now())
+  createdAt        DateTime                 @default(now())
   entries          PayrollEntry[]
   unmatchedReports PayrollUnmatchedReport[]
 
@@ -1250,52 +1269,52 @@ enum PayrollEntryStatus {
 // signedName, same e-signature pattern as OnboardingAssignment) or disputes
 // it with a note.
 model PayrollEntry {
-  id                 String             @id @default(cuid())
-  payPeriodId        String
-  payPeriod          PayPeriod          @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
-  employeeId         String
-  employee           User               @relation("EmployeePayrollEntries", fields: [employeeId], references: [id], onDelete: Cascade)
-  regularHours       Float
-  overtimeHours      Float              @default(0)
+  id                      String              @id @default(cuid())
+  payPeriodId             String
+  payPeriod               PayPeriod           @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
+  employeeId              String
+  employee                User                @relation("EmployeePayrollEntries", fields: [employeeId], references: [id], onDelete: Cascade)
+  regularHours            Float
+  overtimeHours           Float               @default(0)
   // Report totals, only set when imported from a payroll report workbook.
-  totalPayout        Float?
-  jobsPayout         Float?
-  adjustmentsPayout  Float?
-  totalHours         Float?
-  avgPayPerHour      Float?
-  estimatedHours     Float?
-  jobLines           PayrollJobLine[]
-  adjustments        PayrollAdjustment[]
-  attachmentDataUrl  String?            @db.Text
-  attachmentFileName String?
-  status             PayrollEntryStatus @default(PENDING)
-  signedAt           DateTime?
-  signedName         String?
+  totalPayout             Float?
+  jobsPayout              Float?
+  adjustmentsPayout       Float?
+  totalHours              Float?
+  avgPayPerHour           Float?
+  estimatedHours          Float?
+  jobLines                PayrollJobLine[]
+  adjustments             PayrollAdjustment[]
+  attachmentDataUrl       String?             @db.Text
+  attachmentFileName      String?
+  status                  PayrollEntryStatus  @default(PENDING)
+  signedAt                DateTime?
+  signedName              String?
   // A PDF snapshot of the entry as it looked at the moment of signing —
   // generated once, on sign, same pattern as SignedDocument.pdfDataUrl.
   // Cleared (along with signedAt/signedName) whenever the entry is reopened
   // for a fresh review, since it would otherwise show stale hours.
-  signedPdfDataUrl   String?            @db.Text
+  signedPdfDataUrl        String?             @db.Text
   // Set when HR records the approval on the employee's behalf because they
   // signed a physical copy instead of using the app — signedAt/signedName
   // still hold the moment/name recorded, this just distinguishes it from
   // the employee's own e-signature so it reads correctly everywhere.
-  signedViaOverride  Boolean            @default(false)
-  overriddenById     String?
-  overriddenBy       User?              @relation("PayrollOverriddenBy", fields: [overriddenById], references: [id], onDelete: SetNull)
-  overrideNote       String?            @db.Text
-  disputeNote        String?            @db.Text
-  disputedAt         DateTime?
-  resolutionNotes    String?            @db.Text
-  resolvedAt         DateTime?
+  signedViaOverride       Boolean             @default(false)
+  overriddenById          String?
+  overriddenBy            User?               @relation("PayrollOverriddenBy", fields: [overriddenById], references: [id], onDelete: SetNull)
+  overrideNote            String?             @db.Text
+  disputeNote             String?             @db.Text
+  disputedAt              DateTime?
+  resolutionNotes         String?             @db.Text
+  resolvedAt              DateTime?
   // Last time a "please review & sign your hours" reminder email went out
   // for this entry, so the scheduler doesn't re-send on every tick — reset
   // to null wherever signedPdfDataUrl is (the entry being reopened means
   // the reminder clock should restart). Null forever once status leaves
   // PENDING.
   signatureReminderSentAt DateTime?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
 
   @@unique([payPeriodId, employeeId])
   @@index([employeeId])
@@ -1353,40 +1372,40 @@ model PayrollAdjustment {
 // so every field here is entered directly rather than derived, to avoid
 // silently disagreeing with her own numbers.
 model MonthlyFinancials {
-  month                  String   @id // "2026-01"
-  monthLabel             String // "Jan"
-  revenueTotal           Float
-  revenueCommercial      Float
-  revenueResidential     Float
-  cleanerTipsMemo        Float? // memo-only — tips are the cleaner's, not company revenue
-  technicianPayroll      Float
-  mileageReimbursements  Float
-  supplies               Float
-  cogsTotal              Float
-  grossProfit            Float
-  grossMarginPct         Float
-  adminPayroll           Float
-  rent                   Float
-  hiringRecruiting       Float
-  fuel                   Float
-  insurance              Float
-  vehicle                Float
-  marketing              Float
-  fees                   Float
-  misc                   Float?
-  creditCard             Float
-  loanPayoff             Float
-  stripeCapitalInterest  Float
-  equipmentFinancing     Float
-  opexTotal              Float
-  netProfit              Float
-  netMarginPct           Float
-  target21pct            Float
-  varianceToTarget       Float
-  ownerDraw              Float
-  endingBankBalance      Float
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  month                 String   @id // "2026-01"
+  monthLabel            String // "Jan"
+  revenueTotal          Float
+  revenueCommercial     Float
+  revenueResidential    Float
+  cleanerTipsMemo       Float? // memo-only — tips are the cleaner's, not company revenue
+  technicianPayroll     Float
+  mileageReimbursements Float
+  supplies              Float
+  cogsTotal             Float
+  grossProfit           Float
+  grossMarginPct        Float
+  adminPayroll          Float
+  rent                  Float
+  hiringRecruiting      Float
+  fuel                  Float
+  insurance             Float
+  vehicle               Float
+  marketing             Float
+  fees                  Float
+  misc                  Float?
+  creditCard            Float
+  loanPayoff            Float
+  stripeCapitalInterest Float
+  equipmentFinancing    Float
+  opexTotal             Float
+  netProfit             Float
+  netMarginPct          Float
+  target21pct           Float
+  varianceToTarget      Float
+  ownerDraw             Float
+  endingBankBalance     Float
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 // Simple key/value JSONB settings the owner tunes over time (draw policy,
@@ -1462,24 +1481,24 @@ enum ChecklistCategory {
 // lib/financials.ts), so a Daily task always reads as "Not Started" again
 // once it was last touched outside today, with no cron involved.
 model ChecklistTask {
-  id          String              @id @default(cuid())
-  frequency   ChecklistFrequency
-  task        String
-  owner       ChecklistOwner
-  status      ChecklistTaskStatus @default(NOT_STARTED)
-  completedAt DateTime?
-  targetDate  DateTime?
-  notes       String?             @db.Text
-  visibility  ChecklistVisibility @default(OWNER_ONLY)
-  category    ChecklistCategory   @default(MANAGEMENT)
+  id              String              @id @default(cuid())
+  frequency       ChecklistFrequency
+  task            String
+  owner           ChecklistOwner
+  status          ChecklistTaskStatus @default(NOT_STARTED)
+  completedAt     DateTime?
+  targetDate      DateTime?
+  notes           String?             @db.Text
+  visibility      ChecklistVisibility @default(OWNER_ONLY)
+  category        ChecklistCategory   @default(MANAGEMENT)
   // Opt-in exception to the general Weekly-tasks-have-no-due-date rule (see
   // getEffectiveTargetDate in lib/checklistDisplay.ts) — for the rare weekly
   // task, like the Monday Team Update reminder, whose whole point IS a
   // Friday deadline. Left false for every other Weekly task.
-  dueFridayOfWeek Boolean         @default(false)
-  order       Int                 @default(0)
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  dueFridayOfWeek Boolean             @default(false)
+  order           Int                 @default(0)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 }
 
 enum ChecklistTaskStatus {
@@ -1525,7 +1544,7 @@ enum LeadStage {
 // JSON blobs, not a real relation — quoteKey is just that key, stored as a
 // plain string so a lead can point at a quote without a real FK).
 model Lead {
-  id               String    @id @default(cuid())
+  id               String     @id @default(cuid())
   firstName        String
   lastName         String
   email            String
@@ -1535,8 +1554,8 @@ model Lead {
   sourceDetail     String?
   serviceInterest  String?
   squareFootage    Int?
-  message          String?   @db.Text
-  stage            LeadStage @default(NEW_INQUIRY)
+  message          String?    @db.Text
+  stage            LeadStage  @default(NEW_INQUIRY)
   estimatedValue   Float?
   quoteKey         String?
   lostReason       String?
@@ -1545,11 +1564,11 @@ model Lead {
   // Snapshot of any custom lead-form-field answers at submission time —
   // [{label, value}], keyed by label rather than a live FK so relabeling or
   // deleting a LeadFormField later never corrupts a past lead's answers.
-  customFields Json?
-  assignedToId String?
-  assignedTo   User?    @relation("LeadAssignedTo", fields: [assignedToId], references: [id])
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  customFields     Json?
+  assignedToId     String?
+  assignedTo       User?      @relation("LeadAssignedTo", fields: [assignedToId], references: [id])
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 
   communications LeadCommunication[]
   notes          LeadNote[]
@@ -1659,28 +1678,28 @@ enum LoanStatus {
 // % holdback of daily sales, minimumPayment is only a contractual floor, so
 // the real payoff is usually sooner than this estimate — never later.
 model Loan {
-  id                       String     @id @default(cuid())
-  lender                   String
-  loanType                 String? // e.g. "merchant_cash_advance", "equipment_installment"
-  status                   LoanStatus @default(OPEN)
-  originationDate          DateTime?
-  closedDate               DateTime?
-  loanAmount               Float?
-  feeAmount                Float?
-  totalToRepay             Float?
-  repaymentRatePct         Float? // % of daily sales withheld — informational only
-  minimumPayment           Float?
-  minimumPaymentFrequency  String? // "monthly" | "every_60_days" | "weekly" | "daily"
-  repaymentStartDate       DateTime?
-  maturityDate             DateTime?
-  priorLoanBalance         Float?
-  netProceeds              Float?
-  currentBalance           Float? // owner-entered, drives the payoff estimate
-  currentBalanceAsOf       DateTime?
-  notes                    String?    @db.Text
-  order                    Int        @default(0)
-  createdAt                DateTime   @default(now())
-  updatedAt                DateTime   @updatedAt
+  id                      String     @id @default(cuid())
+  lender                  String
+  loanType                String? // e.g. "merchant_cash_advance", "equipment_installment"
+  status                  LoanStatus @default(OPEN)
+  originationDate         DateTime?
+  closedDate              DateTime?
+  loanAmount              Float?
+  feeAmount               Float?
+  totalToRepay            Float?
+  repaymentRatePct        Float? // % of daily sales withheld — informational only
+  minimumPayment          Float?
+  minimumPaymentFrequency String? // "monthly" | "every_60_days" | "weekly" | "daily"
+  repaymentStartDate      DateTime?
+  maturityDate            DateTime?
+  priorLoanBalance        Float?
+  netProceeds             Float?
+  currentBalance          Float? // owner-entered, drives the payoff estimate
+  currentBalanceAsOf      DateTime?
+  notes                   String?    @db.Text
+  order                   Int        @default(0)
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
 
   repayments LoanRepayment[]
 }
@@ -1820,7 +1839,7 @@ enum PromotionDecision {
 model PromotionAssessment {
   id                  String              @id @default(cuid())
   employeeId          String
-  employee            User               @relation("PromotionAssessmentEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  employee            User                @relation("PromotionAssessmentEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
   targetRole          PromotionTargetRole
   readinessIndicators Json
   decision            PromotionDecision
@@ -1829,7 +1848,7 @@ model PromotionAssessment {
   payDifferential     Float?
   assessedById        String
   assessedBy          User                @relation("PromotionAssessmentAssessedBy", fields: [assessedById], references: [id])
-  assessedAt           DateTime           @default(now())
+  assessedAt          DateTime            @default(now())
   createdAt           DateTime            @default(now())
 
   linkedPaf PersonnelActionForm?
@@ -1947,4 +1966,230 @@ model PersonnelActionForm {
   updatedAt          DateTime             @updatedAt
 
   @@index([employeeId])
+}
+
+// ── Rookie Journey V2 ──
+// Additive redesign of the trainee-facing training experience. Sits on top
+// of the existing 25-module/172-lesson/267-question Academy without
+// touching any of it — RookieLessonAssignment references existing Lesson rows
+// rather than duplicating them, so completing one through the Rookie
+// Journey writes to the same LessonProgress a trainee going through
+// /modules directly would get. None of the 172 lessons are assigned to a
+// day by this build; an Admin assigns them later via the Rookie Journey
+// config UI once the real curriculum mapping is provided.
+
+// Which content-type "slot" an existing lesson has been assigned to for the
+// Rookie Journey — a Rookie Day (1-10), the Knowledge Library (browsable
+// reference, not part of required daily progress), or left unclassified
+// (the default for all 172 lessons until an Admin assigns them).
+enum RookieAssignmentSlot {
+  ROOKIE_DAY
+  KNOWLEDGE_LIBRARY
+}
+
+// Quick Knowledge Check (2-5 questions, instructional, unlimited retry),
+// Critical Safety/Policy Check (100% required, unlimited retry — matches
+// today's actual quiz behavior), or Field Skill Checkoff (verified by a
+// Trainer, not a quiz at all). Foundational taxonomy only for this build —
+// see the comment on Module.knowledgeCheckType.
+enum KnowledgeCheckType {
+  QUICK
+  CRITICAL
+  FIELD_SKILL
+}
+
+// One of the 10 working-day Rookie Training days. Content (fully
+// admin-configurable — see RookieLessonAssignment/RookieDayFieldSkill) rather than
+// hardcoded, so MCC can adjust the schedule without a code change.
+model RookieDay {
+  id                      String   @id @default(cuid())
+  dayNumber               Int      @unique
+  titleEn                 String
+  titleEs                 String
+  descriptionEn           String   @db.Text
+  descriptionEs           String   @db.Text
+  estimatedAcademyMinutes Int      @default(0)
+  fieldGoalEn             String?  @db.Text
+  fieldGoalEs             String?  @db.Text
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  lessons     RookieLessonAssignment[]
+  fieldSkills RookieDayFieldSkill[]
+
+  @@index([dayNumber])
+}
+
+// Links an existing Lesson to a Rookie Day (or marks it Knowledge Library)
+// without duplicating its content. `order` lets an Admin reorder assigned
+// items within a day independently of the lesson's own order in its module.
+model RookieLessonAssignment {
+  id          String               @id @default(cuid())
+  rookieDayId String?
+  rookieDay   RookieDay?           @relation(fields: [rookieDayId], references: [id], onDelete: Cascade)
+  lessonId    String
+  lesson      Lesson               @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  slot        RookieAssignmentSlot @default(ROOKIE_DAY)
+  order       Int                  @default(0)
+  createdAt   DateTime             @default(now())
+
+  @@unique([lessonId])
+  @@index([rookieDayId])
+}
+
+// The field-skill checklist library used in Trainer checkoffs — seeded once
+// with the initial 21-skill list, editable afterward (an Admin can rename,
+// reorder, or retire one) without breaking historical
+// RookieFieldSkillRating rows, which keep their own copy of the rating.
+model FieldSkill {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  labelEn   String
+  labelEs   String
+  active    Boolean  @default(true)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dayLinks RookieDayFieldSkill[]
+  ratings  RookieFieldSkillRating[]
+}
+
+// Which field skills are "today's field focus" for a given Rookie Day.
+model RookieDayFieldSkill {
+  id           String     @id @default(cuid())
+  rookieDayId  String
+  rookieDay    RookieDay  @relation(fields: [rookieDayId], references: [id], onDelete: Cascade)
+  fieldSkillId String
+  fieldSkill   FieldSkill @relation(fields: [fieldSkillId], references: [id], onDelete: Cascade)
+  order        Int        @default(0)
+
+  @@unique([rookieDayId, fieldSkillId])
+}
+
+// Days 1-3 rate against introduction/practice/demonstration; Days 4-10
+// shift the same skill list to a performance-standard scale — matching the
+// spec's own "you're not expected to have mastered speed yet by Day 3"
+// framing.
+enum FieldSkillRating {
+  INTRODUCED
+  PRACTICING
+  DEMONSTRATED
+  NEEDS_COACHING
+  MEETS_STANDARD
+  CONSISTENT
+}
+
+// One Trainer daily field-checkoff session for one trainee — deliberately
+// separate from FieldEvaluation (the existing in-field day-evaluation
+// system), which this does not touch, extend, or replace.
+model RookieFieldCheckoff {
+  id                 String   @id @default(cuid())
+  traineeId          String
+  trainee            User     @relation("RookieCheckoffTrainee", fields: [traineeId], references: [id], onDelete: Cascade)
+  trainerId          String
+  trainer            User     @relation("RookieCheckoffTrainer", fields: [trainerId], references: [id])
+  rookieDayNumber    Int
+  checkoffDate       DateTime @default(now())
+  wentWellNotes      String?  @db.Text
+  needsCoachingNotes String?  @db.Text
+  tomorrowFocusNotes String?  @db.Text
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  skillRatings RookieFieldSkillRating[]
+
+  @@index([traineeId, rookieDayNumber])
+  @@index([trainerId])
+}
+
+model RookieFieldSkillRating {
+  id           String              @id @default(cuid())
+  checkoffId   String
+  checkoff     RookieFieldCheckoff @relation(fields: [checkoffId], references: [id], onDelete: Cascade)
+  fieldSkillId String
+  fieldSkill   FieldSkill          @relation(fields: [fieldSkillId], references: [id])
+  rating       FieldSkillRating
+  note         String?             @db.Text
+
+  @@unique([checkoffId, fieldSkillId])
+}
+
+// Day-3 readiness check — explicitly NOT a certification. One current
+// decision per trainee (overwritten on redo, same idiom as
+// CertificationStatus), made by a Trainer/Admin/Service Manager.
+enum RookieDay3Decision {
+  READY_FOR_ROOKIE_SCHEDULE
+  READY_WITH_COACHING
+  ADDITIONAL_TRAINER_TIME_REQUIRED
+}
+
+model RookieDay3Readiness {
+  id          String             @id @default(cuid())
+  traineeId   String             @unique
+  trainee     User               @relation("RookieDay3ReadinessTrainee", fields: [traineeId], references: [id], onDelete: Cascade)
+  decision    RookieDay3Decision
+  notes       String?            @db.Text
+  decidedById String
+  decidedBy   User               @relation("RookieDay3ReadinessDecidedBy", fields: [decidedById], references: [id])
+  decidedAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+// Day-10 Rookie Training review. Extending training never changes
+// employment status by itself — it just records why, what needs work, and
+// when to look again.
+enum RookieDay10Decision {
+  ROOKIE_TRAINING_COMPLETE
+  EXTEND_TRAINING
+  MANAGEMENT_REVIEW_REQUIRED
+}
+
+model RookieDay10Review {
+  id                       String              @id @default(cuid())
+  traineeId                String              @unique
+  trainee                  User                @relation("RookieDay10ReviewTrainee", fields: [traineeId], references: [id], onDelete: Cascade)
+  decision                 RookieDay10Decision
+  extensionReason          String?             @db.Text
+  skillsNeedingDevelopment String?             @db.Text
+  newReviewDate            DateTime?
+  decidedById              String
+  decidedBy                User                @relation("RookieDay10ReviewDecidedBy", fields: [decidedById], references: [id])
+  decidedAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+}
+
+// Day-30 MCC Seal of Approval. A structured evaluation across the 10 named
+// categories from the spec, feeding a decision — this is built to integrate
+// with (not replace) the existing Trainer-recommends/Admin-decides
+// CertificationStatus workflow: approving the Seal here doesn't itself flip
+// CertificationStatus, the same two people still act through the existing
+// certification actions, now informed by this evaluation. Not unique per
+// trainee (unlike the Day-3/Day-10 checkpoints) since a Development
+// Extended outcome is meant to be followed by a real re-evaluation later,
+// and both should stay on record — same reasoning as FieldEvaluation's
+// history.
+enum SealDecision {
+  MCC_SEAL_APPROVED
+  DEVELOPMENT_EXTENDED
+  MANAGEMENT_REVIEW_REQUIRED
+}
+
+model SealOfApprovalEvaluation {
+  id             String       @id @default(cuid())
+  traineeId      String
+  trainee        User         @relation("SealEvalTrainee", fields: [traineeId], references: [id], onDelete: Cascade)
+  // [{ key: string, score: 1-5, note?: string }] for the 10 fixed
+  // categories (Cleaning Quality, Efficiency, Safety, Reliability,
+  // Attendance, Teamwork, Hospitality, Communication, Coachability, MAMAS
+  // Values) — see SEAL_OF_APPROVAL_CATEGORIES in lib/rookieJourney.ts.
+  categoryScores Json
+  decision       SealDecision
+  notes          String?      @db.Text
+  evaluatedById  String
+  evaluatedBy    User         @relation("SealEvalEvaluatedBy", fields: [evaluatedById], references: [id])
+  evaluatedAt    DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+
+  @@index([traineeId])
 }

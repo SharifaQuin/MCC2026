@@ -57,6 +57,7 @@ export async function middleware(req: NextRequest) {
     (pathname.startsWith("/admin/content") ||
       pathname.startsWith("/admin/permissions") ||
       pathname.startsWith("/admin/documents") ||
+      pathname.startsWith("/admin/rookie-journey") ||
       pathname.startsWith("/staff/document-templates") ||
       pathname.startsWith("/financials") ||
       pathname.startsWith("/assistant") ||

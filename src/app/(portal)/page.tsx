@@ -11,7 +11,7 @@ import { getLatestMonthlyFinancials, getTeamGoals, getChecklistTasksForRole, get
 import { reachedGrowthStages } from "@/lib/checklistDisplay";
 import { estimateLoanPayoff } from "@/lib/loans";
 import ChecklistSidebar from "@/components/ChecklistSidebar";
-import TraineeHome from "./TraineeHome";
+import RookieJourneyHome from "./RookieJourneyHome";
 import TrainerHome from "./TrainerHome";
 
 function Stat({ label, value, href }: { label: string; value: number | string; href?: string }) {
@@ -44,7 +44,7 @@ export default async function HomePage() {
   if (session.role === "TRAINEE") {
     const pending = await getPendingOnboardingCount(session.sub);
     if (pending > 0) redirect("/documents");
-    return <TraineeHome session={session} />;
+    return <RookieJourneyHome session={session} />;
   }
 
   const grants = await prisma.departmentAccess.findMany({

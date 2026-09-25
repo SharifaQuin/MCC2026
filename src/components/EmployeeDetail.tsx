@@ -32,6 +32,14 @@ import {
 } from "@/lib/trainingAssignment";
 import { buildMilestoneTimeline } from "@/lib/milestones";
 import { serializePromotionAssessmentForRole, type ReadinessIndicatorValue } from "@/lib/promotions";
+import {
+  rookieAnchorDate,
+  getRookieJourneyPosition,
+  getDay3Readiness,
+  getDay10Review,
+  getSealEvaluationHistory,
+} from "@/lib/rookieJourney";
+import RookieJourneyPanel from "@/components/RookieJourneyPanel";
 
 export async function loadEmployeeDetail(userId: string) {
   const user = await prisma.user.findUnique({
@@ -177,6 +185,43 @@ export async function loadEmployeeDetail(userId: string) {
       }))
     : [];
 
+  const rookie =
+    user.role === "TRAINEE"
+      ? await (async () => {
+          const position = getRookieJourneyPosition(rookieAnchorDate(user));
+          const [day3, day10, sealHistory] = await Promise.all([
+            getDay3Readiness(userId),
+            getDay10Review(userId),
+            getSealEvaluationHistory(userId),
+          ]);
+          return {
+            position,
+            day3: day3
+              ? {
+                  decision: day3.decision,
+                  notes: day3.notes,
+                  decidedByName: day3.decidedBy.name,
+                  decidedAt: day3.decidedAt.toISOString(),
+                }
+              : null,
+            day10: day10
+              ? {
+                  decision: day10.decision,
+                  extensionReason: day10.extensionReason,
+                  skillsNeedingDevelopment: day10.skillsNeedingDevelopment,
+                  newReviewDate: day10.newReviewDate ? day10.newReviewDate.toISOString() : null,
+                  decidedByName: day10.decidedBy.name,
+                  decidedAt: day10.decidedAt.toISOString(),
+                }
+              : null,
+            sealHistory: sealHistory.map((s) => ({
+              ...s,
+              evaluatedAt: s.evaluatedAt.toISOString(),
+            })),
+          };
+        })()
+      : null;
+
   const pafRows = await prisma.personnelActionForm.findMany({
     where: { employeeId: userId },
     include: { createdBy: { select: { name: true } }, approvedBy: { select: { name: true } } },
@@ -262,6 +307,7 @@ export async function loadEmployeeDetail(userId: string) {
     signedDocuments,
     documentTemplates,
     complianceDocuments,
+    rookie,
   };
 }
 
@@ -302,6 +348,7 @@ export function EmployeeDetailView({
     signedDocuments,
     documentTemplates,
     complianceDocuments,
+    rookie,
   } = data;
 
   const visiblePromotionAssessments = promotionAssessments.map((a) =>
@@ -361,6 +408,18 @@ export function EmployeeDetailView({
               </Link>
             ))}
           </div>
+        </section>
+      )}
+
+      {user.role === "TRAINEE" && rookie && (
+        <section>
+          <RookieJourneyPanel
+            traineeId={user.id}
+            position={rookie.position}
+            day3={rookie.day3}
+            day10={rookie.day10}
+            sealHistory={rookie.sealHistory}
+          />
         </section>
       )}
 

@@ -5,6 +5,7 @@ import { hashPassword } from "../src/lib/password";
 import { generateNextEmployeeId } from "../src/lib/employeeId";
 import { seedDefaultHiringQuestions } from "../src/lib/recruiting";
 import { assignDefaultOnboardingDocuments } from "../src/lib/onboarding";
+import { FIELD_SKILL_LIBRARY, ROOKIE_DAY_DEFAULTS } from "../src/lib/rookieJourney";
 
 const prisma = new PrismaClient();
 
@@ -1189,6 +1190,58 @@ async function seedCleaningTechnicianPosting() {
   console.log(`Seeded the full Cleaning Technician application (${CLEANING_TECHNICIAN_QUESTIONS.length} questions).`);
 }
 
+// Rookie Journey V2 — seeds the 21-skill field checklist library and the 10
+// Rookie Day config shells (title/description/estimated time/field goal +
+// which field skills are "today's focus"). Deliberately does NOT assign any
+// of the 172 existing lessons to a day — that mapping comes later, from an
+// Admin, via /admin/rookie-journey. Safe to rerun: skips anything that
+// already exists by key/dayNumber, same idiom as seedLoans/seedModules.
+async function seedRookieJourney() {
+  let skillsCreated = 0;
+  const skillIdByKey = new Map<string, string>();
+  for (let i = 0; i < FIELD_SKILL_LIBRARY.length; i++) {
+    const s = FIELD_SKILL_LIBRARY[i];
+    const existing = await prisma.fieldSkill.findUnique({ where: { key: s.key } });
+    if (existing) {
+      skillIdByKey.set(s.key, existing.id);
+      continue;
+    }
+    const created = await prisma.fieldSkill.create({
+      data: { key: s.key, labelEn: s.labelEn, labelEs: s.labelEs, order: i },
+    });
+    skillIdByKey.set(s.key, created.id);
+    skillsCreated++;
+  }
+
+  let daysCreated = 0;
+  for (const d of ROOKIE_DAY_DEFAULTS) {
+    const existing = await prisma.rookieDay.findUnique({ where: { dayNumber: d.dayNumber } });
+    if (existing) continue;
+    const day = await prisma.rookieDay.create({
+      data: {
+        dayNumber: d.dayNumber,
+        titleEn: d.titleEn,
+        titleEs: d.titleEs,
+        descriptionEn: d.descriptionEn,
+        descriptionEs: d.descriptionEs,
+        estimatedAcademyMinutes: d.estimatedAcademyMinutes,
+        fieldGoalEn: d.fieldGoalEn,
+        fieldGoalEs: d.fieldGoalEs,
+      },
+    });
+    await prisma.rookieDayFieldSkill.createMany({
+      data: d.fieldSkillKeys.map((key, i) => ({
+        rookieDayId: day.id,
+        fieldSkillId: skillIdByKey.get(key)!,
+        order: i,
+      })),
+    });
+    daysCreated++;
+  }
+
+  console.log(`Rookie Journey: seeded ${skillsCreated} field skills, ${daysCreated} Rookie Days.`);
+}
+
 async function main() {
   await seedAdmin();
   await seedTestAccounts();
@@ -1199,6 +1252,7 @@ async function main() {
   await seedInterviewLogistics();
   await seedMessageTemplates();
   await seedCleaningTechnicianPosting();
+  await seedRookieJourney();
 }
 
 main()

@@ -70,6 +70,9 @@ export default function Nav({
             )}
             {session.role === "ADMIN" && (
               <>
+                <Link href="/admin/rookie-journey" className="hover:underline">
+                  Rookie Journey
+                </Link>
                 <Link href="/financials" className="hover:underline">
                   {labels.financials}
                 </Link>
