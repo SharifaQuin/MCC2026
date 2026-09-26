@@ -10,6 +10,31 @@ import type { FieldSkillRating, RookieContentKind } from "@prisma/client";
 
 export const ROOKIE_DAY_COUNT = 10;
 
+// ── Training experience toggle (rookie vs. classic) ──
+// Same OwnerSetting key/value pattern as the Recruiting Draft 1/Draft 2
+// toggle (see recruiting.ts's RECRUITING_EXPERIENCE_VERSION_KEY) — an
+// Admin-only, instantly-reversible switch. Defaults to "rookie" whenever
+// unset (a fresh environment, or one that's never had this touched), so
+// every current Trainee sees the Rookie Journey home page and the
+// Rookie-Day-aware lesson navigation below; switching to "classic" is a
+// real one-click rollback to the original TraineeHome + linear
+// module-by-module lesson flow, with nothing deleted either way.
+export type TrainingExperienceVersion = "rookie" | "classic";
+const TRAINING_EXPERIENCE_VERSION_KEY = "training_experience_version";
+
+export async function getTrainingExperienceVersion(): Promise<TrainingExperienceVersion> {
+  const row = await prisma.ownerSetting.findUnique({ where: { key: TRAINING_EXPERIENCE_VERSION_KEY } });
+  return row?.value === "classic" ? "classic" : "rookie";
+}
+
+export async function setTrainingExperienceVersion(version: TrainingExperienceVersion): Promise<void> {
+  await prisma.ownerSetting.upsert({
+    where: { key: TRAINING_EXPERIENCE_VERSION_KEY },
+    create: { key: TRAINING_EXPERIENCE_VERSION_KEY, value: version },
+    update: { value: version },
+  });
+}
+
 // The initial 21-skill field checklist library, seeded once. An Admin can
 // rename/reorder/retire these afterward via the config UI without breaking
 // historical RookieFieldSkillRating rows (which keep their own rating).
@@ -570,6 +595,63 @@ export async function getTodaysRookieTraining(userId: string): Promise<TodaysRoo
 // exact same completion path /modules uses — there is no separate "mark
 // complete" for a lesson reached through the Rookie dashboard.
 export { markLessonComplete };
+
+// A Rookie Day only assigns a hand-picked subset of a module's lessons
+// (e.g. Day 4 assigns Module 9 Lesson 9 but none of Lessons 1-8), so the
+// original whole-module linear flow (bottom of a lesson page: "Continue"
+// -> next lesson in the SAME module -> that module's quiz; a
+// not-yet-completed earlier lesson in the module -> redirected there
+// first) is wrong for a trainee inside their Rookie Day: it would pull
+// them through modules well beyond what today's Rookie Day assigned.
+//
+// Returns null when this lesson isn't part of the trainee's *current*
+// Rookie Day sequence (not a Trainee, past/future the 10-day window,
+// admin has switched the training experience to "classic", or the lesson
+// simply isn't today's) — callers fall back to the original linear
+// module flow unchanged. Returns the href to send the trainee to next
+// when it is: another Rookie-Day lesson's own page, or "/" (the Rookie
+// dashboard) if this was the last item today or the next item is a
+// condensed content card (which only renders on the dashboard, not as
+// its own page).
+export async function getRookieSequenceNextHref(userId: string, lessonId: string): Promise<string | null> {
+  const version = await getTrainingExperienceVersion();
+  if (version !== "rookie") return null;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, hireDate: true, createdAt: true },
+  });
+  if (!user || user.role !== "TRAINEE") return null;
+
+  const position = getRookieJourneyPosition(rookieAnchorDate(user));
+  if (position.phase !== "ROOKIE_DAY") return null;
+
+  const dayConfig = await prisma.rookieDay.findUnique({
+    where: { dayNumber: position.day },
+    include: {
+      lessons: { where: { slot: "ROOKIE_DAY" }, orderBy: { order: "asc" } },
+      contentItems: { orderBy: { order: "asc" } },
+    },
+  });
+  if (!dayConfig) return null;
+
+  const merged: { order: number; lessonId: string | null }[] = [
+    ...dayConfig.lessons.map((l) => ({ order: l.order, lessonId: l.lessonId })),
+    ...dayConfig.contentItems.map((c) => ({ order: c.order, lessonId: null })),
+  ].sort((a, b) => a.order - b.order);
+
+  const idx = merged.findIndex((m) => m.lessonId === lessonId);
+  if (idx === -1) return null;
+
+  const next = merged[idx + 1];
+  if (!next || !next.lessonId) return "/";
+
+  const nextLesson = await prisma.lesson.findUnique({
+    where: { id: next.lessonId },
+    select: { order: true, module: { select: { slug: true } } },
+  });
+  return nextLesson ? `/modules/${nextLesson.module.slug}/lesson/${nextLesson.order}` : "/";
+}
 
 // ── Trainer: field checkoffs ──
 

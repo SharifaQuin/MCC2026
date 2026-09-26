@@ -12,7 +12,9 @@ import { reachedGrowthStages } from "@/lib/checklistDisplay";
 import { estimateLoanPayoff } from "@/lib/loans";
 import ChecklistSidebar from "@/components/ChecklistSidebar";
 import RookieJourneyHome from "./RookieJourneyHome";
+import TraineeHome from "./TraineeHome";
 import TrainerHome from "./TrainerHome";
+import { getTrainingExperienceVersion } from "@/lib/rookieJourney";
 
 function Stat({ label, value, href }: { label: string; value: number | string; href?: string }) {
   const content = (
@@ -44,7 +46,12 @@ export default async function HomePage() {
   if (session.role === "TRAINEE") {
     const pending = await getPendingOnboardingCount(session.sub);
     if (pending > 0) redirect("/documents");
-    return <RookieJourneyHome session={session} />;
+    const trainingVersion = await getTrainingExperienceVersion();
+    return trainingVersion === "classic" ? (
+      <TraineeHome session={session} />
+    ) : (
+      <RookieJourneyHome session={session} />
+    );
   }
 
   const grants = await prisma.departmentAccess.findMany({

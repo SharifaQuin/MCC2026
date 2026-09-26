@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { getLessonDetail, markModuleInProgress } from "@/lib/courses";
+import { getRookieSequenceNextHref } from "@/lib/rookieJourney";
 import { requireOnboardingComplete } from "@/lib/onboarding";
 import { t } from "@/lib/i18n";
 import LessonContinueButton from "./LessonContinueButton";
@@ -22,8 +23,20 @@ export default async function LessonPage({
 
   const detail = await getLessonDetail(params.slug, order, session.sub);
   if (!detail) notFound();
-  if (detail.locked) redirect("/modules");
-  if (detail.priorIncomplete) {
+
+  // A Rookie Day hand-picks individual lessons out of order across many
+  // modules (e.g. Day 4 assigns Module 9 Lesson 9 without requiring
+  // Modules 1-8, or even the rest of Module 9, to be completed first), so
+  // neither the whole-module lock (previous module not yet completed) nor
+  // the "finish earlier lessons in this module first" gate applies to a
+  // lesson reached through today's Rookie Day sequence — see
+  // getRookieSequenceNextHref's own comment for why.
+  const rookieNextHref =
+    session.role === "TRAINEE" ? await getRookieSequenceNextHref(session.sub, detail.lesson.id) : null;
+  const inRookieSequence = rookieNextHref !== null;
+
+  if (detail.locked && !inRookieSequence) redirect("/modules");
+  if (detail.priorIncomplete && !inRookieSequence) {
     redirect(`/modules/${params.slug}/lesson/${detail.firstIncompleteOrder}`);
   }
 
@@ -45,9 +58,11 @@ export default async function LessonPage({
   // that don't have a dub yet.
   const showTranscript = lTranscript && !(lang === "ES" && detail.lesson.videoUrlEs);
 
-  const nextHref = detail.isLast
-    ? `/modules/${params.slug}/quiz`
-    : `/modules/${params.slug}/lesson/${order + 1}`;
+  const nextHref = inRookieSequence
+    ? rookieNextHref
+    : detail.isLast
+      ? `/modules/${params.slug}/quiz`
+      : `/modules/${params.slug}/lesson/${order + 1}`;
   const bypassGate = detail.moduleCompleted || detail.alreadyCompleted;
 
   return (
@@ -128,7 +143,7 @@ export default async function LessonPage({
           nextHref={nextHref}
           minWatchSeconds={lVideoUrl ? detail.lesson.videoDurationSeconds : null}
           bypassGate={bypassGate}
-          label={detail.isLast ? labels.goToQuiz : labels.continue}
+          label={!inRookieSequence && detail.isLast ? labels.goToQuiz : labels.continue}
           watchLabel={labels.watchToUnlock}
           countdownLabel={labels.continueAvailableIn}
         />

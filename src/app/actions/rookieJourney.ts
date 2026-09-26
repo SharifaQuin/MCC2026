@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { recordFieldCheckoff, markRookieContentComplete } from "@/lib/rookieJourney";
+import {
+  recordFieldCheckoff,
+  markRookieContentComplete,
+  setTrainingExperienceVersion,
+  type TrainingExperienceVersion,
+} from "@/lib/rookieJourney";
 import type {
   FieldSkillRating,
   RookieDay3Decision,
@@ -32,6 +37,17 @@ function revalidateEmployeeViews(traineeId: string) {
   revalidatePath(`/admin/employees/${traineeId}`);
   revalidatePath(`/trainer/employees/${traineeId}`);
   revalidatePath(`/trainer/employees/${traineeId}/checkoff`);
+  revalidatePath("/");
+}
+
+// ── Admin: which training experience Trainees see ──
+// A global, instantly-reversible switch — same OwnerSetting pattern as the
+// Recruiting Draft 1/Draft 2 toggle. Deliberately ADMIN-only.
+export async function setTrainingExperienceVersionAction(formData: FormData) {
+  await requireAdmin();
+  const version = String(formData.get("version") ?? "rookie") as TrainingExperienceVersion;
+  await setTrainingExperienceVersion(version === "classic" ? "classic" : "rookie");
+  revalidatePath("/admin/rookie-journey");
   revalidatePath("/");
 }
 
