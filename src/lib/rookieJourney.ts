@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { markLessonComplete } from "@/lib/courses";
-import type { FieldSkillRating } from "@prisma/client";
+import type { FieldSkillRating, RookieContentKind } from "@prisma/client";
 
 // ── Rookie Journey V2 — additive layer on top of the existing Academy ──
 // Nothing here duplicates or rewrites the 25 modules/172 lessons/267 quiz
@@ -35,6 +35,7 @@ export const FIELD_SKILL_LIBRARY: { key: string; labelEn: string; labelEs: strin
   { key: "client_etiquette", labelEn: "Client Etiquette", labelEs: "Etiqueta con el Cliente" },
   { key: "tcs_usage", labelEn: "TCS Usage", labelEs: "Uso de TCS" },
   { key: "office_escalation", labelEn: "Office Escalation", labelEs: "Escalación a la Oficina" },
+  { key: "care_of_client_property", labelEn: "Care of Client Property", labelEs: "Cuidado de la Propiedad del Cliente" },
 ];
 
 // Default content for the 10 Rookie Days, per the approved framework. An
@@ -53,42 +54,76 @@ export const ROOKIE_DAY_DEFAULTS: {
 }[] = [
   {
     dayNumber: 1,
-    titleEn: "Fundamentals + First Clean",
-    titleEs: "Fundamentos + Primera Limpieza",
+    titleEn: "Learn the Mama's Way",
+    titleEs: "Aprende el Estilo Mama's",
     descriptionEn:
-      "Welcome to Mama's, the MAMAS values, hospitality, a day in the life, basic team roles, TCS essentials, the Golden Rules, essential safety, and essential supplies/tools — then an afternoon of hands-on field training covering dusting, floors, and bathroom basics.",
+      "Welcome to Mama's, our history and mission, the MAMAS values, what clients expect, hospitality, team roles, TCS essentials, before-you-head-out prep, the 15 Golden Rules, essential safety and chemical safety, tools/supplies, and the uniform standard — everything you need to clean in the field this afternoon. Then: hands-on practice with your trainer covering Dusting, Floors, and a Bathroom, the Mama's Way.",
     descriptionEs:
-      "Bienvenida a Mama's, los valores MAMAS, hospitalidad, un día en la vida, roles básicos de equipo, lo esencial de TCS, las Reglas de Oro, seguridad esencial y herramientas/suministros esenciales — luego una tarde de capacitación práctica en campo cubriendo lo básico de sacudir el polvo, pisos y baño.",
-    estimatedAcademyMinutes: 180,
-    fieldGoalEn: "Hands-on afternoon: dusting, floors, and bathroom, with a trainer alongside.",
-    fieldGoalEs: "Tarde práctica: sacudir el polvo, pisos y baño, con un capacitador presente.",
-    fieldSkillKeys: ["dusting", "floors_vacuuming", "bathroom", "tool_setup", "chemical_safety"],
+      "Bienvenida a Mama's, nuestra historia y misión, los valores MAMAS, lo que esperan los clientes, hospitalidad, roles de equipo, lo esencial de TCS, la preparación antes de salir, las 15 Reglas de Oro, seguridad esencial y con químicos, herramientas/suministros y el estándar de uniforme — todo lo que necesitas para limpiar en campo esta tarde. Luego: práctica con tu capacitador cubriendo Sacudir el Polvo, Pisos y un Baño, al Estilo Mama's.",
+    estimatedAcademyMinutes: 150,
+    fieldGoalEn:
+      "This afternoon, clean in the field for the first time — dusting, floors, and a bathroom, the Mama's Way — with your trainer alongside.",
+    fieldGoalEs:
+      "Esta tarde, limpia en campo por primera vez — sacudir el polvo, pisos y un baño, al Estilo Mama's — con tu capacitador presente.",
+    fieldSkillKeys: [
+      "dusting",
+      "floors_vacuuming",
+      "mopping",
+      "bathroom",
+      "tool_setup",
+      "chemical_safety",
+      "top_to_bottom",
+      "left_to_right",
+      "uses_both_hands",
+      "returns_items",
+      "final_quality_check",
+    ],
   },
   {
     dayNumber: 2,
-    titleEn: "Kitchen + Complete Room Flow",
-    titleEs: "Cocina + Flujo Completo de Habitación",
+    titleEn: "Build the Full Cleaning System",
+    titleEs: "Construye el Sistema Completo de Limpieza",
     descriptionEn:
-      "Kitchen, bedrooms, living areas, the complete MCC room flow, and proper reset/final inspection — reinforcing dusting, floors, and bathroom. Most of the day is field time.",
+      "The dirty-dishes procedure, standard team setup, wet/dry team workflow, hospitality and client communication, respecting the client's home, care of client property, and supplies organization. Then: hands-on practice with your trainer covering the Kitchen and Bedrooms & Living Areas, the Mama's Way, building up to the full Complete Room Flow.",
     descriptionEs:
-      "Cocina, recámaras, salas, el flujo completo de habitación de MCC, y el reinicio/inspección final adecuados — reforzando sacudir el polvo, pisos y baño. La mayor parte del día es en campo.",
+      "El procedimiento de platos sucios, la configuración estándar de equipo, el flujo de trabajo húmedo/seco en equipo, hospitalidad y comunicación con el cliente, respeto por el hogar del cliente, cuidado de la propiedad del cliente, y organización de suministros. Luego: práctica con tu capacitador cubriendo la Cocina y Recámaras y Salas, al Estilo Mama's, construyendo hacia el Flujo Completo de Habitación.",
     estimatedAcademyMinutes: 75,
-    fieldGoalEn: "Complete a full room flow in the kitchen, a bedroom, and a living area with a final inspection.",
-    fieldGoalEs: "Completa un flujo de habitación completo en la cocina, una recámara y una sala, con inspección final.",
-    fieldSkillKeys: ["kitchen", "bedroom", "living_area", "complete_room_flow", "final_quality_check"],
+    fieldGoalEn:
+      "Complete a full room flow — a kitchen, a bedroom, and a living area — using Stop, Look, Plan, Top-to-Bottom, Left-to-Right, Detail, Floors, Reset, Inspect, Exit.",
+    fieldGoalEs:
+      "Completa un flujo de habitación completo — cocina, recámara y sala — usando Detente, Observa, Planea, de Arriba Hacia Abajo, de Izquierda a Derecha, Detalle, Pisos, Reinicio, Inspección, Salida.",
+    fieldSkillKeys: [
+      "kitchen",
+      "bedroom",
+      "living_area",
+      "complete_room_flow",
+      "team_flow",
+      "returns_items",
+      "care_of_client_property",
+      "final_quality_check",
+    ],
   },
   {
     dayNumber: 3,
-    titleEn: "Full Home Flow",
-    titleEs: "Flujo Completo del Hogar",
+    titleEn: "Put the Whole Home Together",
+    titleEs: "Une la Casa Completa",
     descriptionEn:
-      "The complete-home workflow, team flow, speed with purpose, Dirt Codes/time expectations, quality control, field communication, and escalation basics. By the end of today you should understand how to independently move through an entire standard MCC home — you're not expected to have mastered speed yet.",
+      "Connecting everything from Days 1-2 into one Complete Home Flow: team flow, speed with purpose, what a Dirt Code is and its time expectations, quality control, field communication, and when to escalate to the office. By the end of today you should understand how to move through an entire standard MCC home — you're not expected to have mastered speed yet. Today ends with your Day-3 Readiness Check.",
     descriptionEs:
-      "El flujo de trabajo del hogar completo, flujo en equipo, velocidad con propósito, Dirt Codes/expectativas de tiempo, control de calidad, comunicación de campo y lo básico de escalación. Al final de hoy debes entender cómo moverte de forma independiente por una casa estándar completa de MCC — todavía no se espera que domines la velocidad.",
-    estimatedAcademyMinutes: 60,
-    fieldGoalEn: "Move through an entire home's flow independently, with support available.",
-    fieldGoalEs: "Recorre el flujo de una casa completa de forma independiente, con apoyo disponible.",
-    fieldSkillKeys: ["complete_home_flow", "team_flow", "speed_with_purpose", "tcs_usage", "office_escalation"],
+      "Conectando todo lo de los Días 1-2 en un solo Flujo Completo del Hogar: flujo en equipo, velocidad con propósito, qué es un Dirt Code y sus expectativas de tiempo, control de calidad, comunicación de campo, y cuándo escalar a la oficina. Al final de hoy debes entender cómo moverte por una casa estándar completa de MCC — todavía no se espera que domines la velocidad. Hoy termina con tu Revisión de Preparación del Día 3.",
+    estimatedAcademyMinutes: 55,
+    fieldGoalEn: "Move through an entire home's flow independently using the Complete Home Flow, with support available.",
+    fieldGoalEs: "Recorre el flujo de una casa completa de forma independiente usando el Flujo Completo del Hogar, con apoyo disponible.",
+    fieldSkillKeys: [
+      "complete_home_flow",
+      "team_flow",
+      "speed_with_purpose",
+      "top_to_bottom",
+      "left_to_right",
+      "tcs_usage",
+      "office_escalation",
+      "final_quality_check",
+    ],
   },
   {
     dayNumber: 4,
@@ -149,8 +184,10 @@ export const ROOKIE_DAY_DEFAULTS: {
     dayNumber: 9,
     titleEn: "Independence",
     titleEs: "Independencia",
-    descriptionEn: "Completing assigned areas with minimal trainer intervention.",
-    descriptionEs: "Completar las áreas asignadas con mínima intervención del capacitador.",
+    descriptionEn:
+      "Completing assigned areas with minimal trainer intervention — plus a set of quick \"What Would You Do?\" scenario cards covering real situations (can't get into a home, a pet issue, a client asking for extra service, notes that don't match, breakage, running behind, an unsafe condition) so you know how to react before it happens for real.",
+    descriptionEs:
+      "Completar las áreas asignadas con mínima intervención del capacitador — además de tarjetas rápidas de \"¿Qué Harías Tú?\" que cubren situaciones reales (no poder entrar a una casa, un problema con una mascota, un cliente que pide un servicio extra, notas que no coinciden, daños, ir retrasado, una condición insegura) para que sepas cómo reaccionar antes de que pase de verdad.",
     estimatedAcademyMinutes: 30,
     fieldGoalEn: "Complete your assigned areas with minimal check-ins from your trainer.",
     fieldGoalEs: "Completa tus áreas asignadas con mínimas intervenciones de tu capacitador.",
@@ -158,10 +195,12 @@ export const ROOKIE_DAY_DEFAULTS: {
   },
   {
     dayNumber: 10,
-    titleEn: "Consistency + Rookie Evaluation",
-    titleEs: "Consistencia + Evaluación Rookie",
-    descriptionEn: "Repeatable, MCC-standard performance — today wraps up with the Rookie Training Review.",
-    descriptionEs: "Desempeño repetible con el estándar de MCC — hoy termina con la Revisión de Entrenamiento Rookie.",
+    titleEn: "Consistency + Rookie Review",
+    titleEs: "Consistencia + Revisión Rookie",
+    descriptionEn:
+      "Repeatable, MCC-standard performance — a short visual recap of everything you've covered since Day 1, then today wraps up with your Rookie Day-10 Review. (Your Day-30 Seal of Approval comes later, after more field time.)",
+    descriptionEs:
+      "Desempeño repetible con el estándar de MCC — un breve repaso visual de todo lo que has cubierto desde el Día 1, y hoy termina con tu Revisión Rookie del Día 10. (Tu Sello de Aprobación del Día 30 llega después, con más tiempo en campo.)",
     estimatedAcademyMinutes: 30,
     fieldGoalEn: "Show the same MCC-standard quality and pace across every home today.",
     fieldGoalEs: "Muestra la misma calidad y ritmo del estándar de MCC en cada casa de hoy.",
@@ -260,6 +299,14 @@ export async function getAllRookieDaysForAdmin() {
         orderBy: { order: "asc" },
         include: { lesson: { include: { module: { select: { titleEn: true, order: true } } } } },
       },
+      contentItems: {
+        orderBy: { order: "asc" },
+        include: {
+          sourceLessons: {
+            include: { lesson: { select: { titleEn: true, order: true, module: { select: { titleEn: true, order: true } } } } },
+          },
+        },
+      },
       fieldSkills: {
         orderBy: { order: "asc" },
         include: { fieldSkill: true },
@@ -301,6 +348,82 @@ export async function getFieldSkillLibrary() {
   return prisma.fieldSkill.findMany({ where: { active: true }, orderBy: { order: "asc" } });
 }
 
+// ── Rookie Curriculum V2 (Phase 2): condensed content items ──
+// RookieContentItem is a wholly separate content type from Lesson (see
+// schema comments) — it never duplicates or replaces the 172 original
+// lessons. Its `order` shares the same per-Rookie-Day integer namespace as
+// RookieLessonAssignment.order, so the two are merged into a single
+// sequence here rather than in a shared table.
+
+export interface RookieDaySequenceEntry {
+  order: number;
+  kind: "LESSON" | RookieContentKind;
+  // Present when kind === "LESSON": the assignment id (for admin reorder).
+  assignmentId?: string;
+  // The id to use for completion lookups: lessonId for a LESSON entry,
+  // RookieContentItem id otherwise.
+  id: string;
+  titleEn: string;
+  titleEs: string | null;
+  moduleSlug?: string;
+  lessonOrder?: number;
+  bodyEn?: string;
+  bodyEs?: string;
+  promptEn?: string | null;
+  promptEs?: string | null;
+  revealEn?: string | null;
+  revealEs?: string | null;
+  hasFutureVideoSlot?: boolean;
+  estimatedMinutes?: number | null;
+  completed: boolean;
+}
+
+// Admin-facing: every lesson assignment + content item for a Rookie Day,
+// merged into one ordered list, with source-lesson traceability attached
+// to content items. Read-only.
+export async function getRookieDayContentSequence(rookieDayId: string) {
+  const [lessons, contentItems] = await Promise.all([
+    prisma.rookieLessonAssignment.findMany({
+      where: { rookieDayId, slot: "ROOKIE_DAY" },
+      orderBy: { order: "asc" },
+      include: { lesson: { include: { module: { select: { titleEn: true, order: true } } } } },
+    }),
+    prisma.rookieContentItem.findMany({
+      where: { rookieDayId },
+      orderBy: { order: "asc" },
+      include: { sourceLessons: { include: { lesson: { select: { titleEn: true, order: true, module: { select: { titleEn: true, order: true } } } } } } },
+    }),
+  ]);
+
+  type MergedRow =
+    | { order: number; type: "LESSON"; data: (typeof lessons)[number] }
+    | { order: number; type: "CONTENT"; data: (typeof contentItems)[number] };
+
+  const merged: MergedRow[] = [
+    ...lessons.map((l) => ({ order: l.order, type: "LESSON" as const, data: l })),
+    ...contentItems.map((c) => ({ order: c.order, type: "CONTENT" as const, data: c })),
+  ].sort((a, b) => a.order - b.order);
+
+  return merged;
+}
+
+export async function getRookieContentItem(id: string) {
+  return prisma.rookieContentItem.findUnique({
+    where: { id },
+    include: { sourceLessons: { include: { lesson: { select: { titleEn: true, order: true, module: { select: { titleEn: true, order: true } } } } } } },
+  });
+}
+
+// Trainee-facing: writes RookieContentProgress, the completion table for
+// this new content type only — it never touches LessonProgress.
+export async function markRookieContentComplete(userId: string, contentItemId: string) {
+  return prisma.rookieContentProgress.upsert({
+    where: { userId_contentItemId: { userId, contentItemId } },
+    create: { userId, contentItemId },
+    update: {},
+  });
+}
+
 // ── Trainee-facing: Today's Training ──
 
 export interface TodaysRookieTraining {
@@ -323,6 +446,11 @@ export interface TodaysRookieTraining {
       lessonOrder: number;
       completed: boolean;
     }[];
+    // The full merged sequence — existing lessons AND the new condensed
+    // practical lessons/scenarios/recap cards, in one Day-1..10 order. This
+    // is what the trainee dashboard renders; `lessons` above is kept for
+    // any other caller still relying on the lesson-only list.
+    sequence: RookieDaySequenceEntry[];
     fieldSkills: { id: string; labelEn: string; labelEs: string }[];
     allLessonsComplete: boolean;
   } | null;
@@ -349,19 +477,27 @@ export async function getTodaysRookieTraining(userId: string): Promise<TodaysRoo
         orderBy: { order: "asc" },
         include: { lesson: { include: { module: { select: { slug: true } } } } },
       },
+      contentItems: { orderBy: { order: "asc" } },
       fieldSkills: { orderBy: { order: "asc" }, include: { fieldSkill: true } },
     },
   });
   if (!dayConfig) return { position, rail, day: null };
 
   const lessonIds = dayConfig.lessons.map((l) => l.lessonId);
-  const completedRows = lessonIds.length
-    ? await prisma.lessonProgress.findMany({
-        where: { userId, lessonId: { in: lessonIds } },
-        select: { lessonId: true },
-      })
-    : [];
-  const completedIds = new Set(completedRows.map((r) => r.lessonId));
+  const contentIds = dayConfig.contentItems.map((c) => c.id);
+  const [completedLessonRows, completedContentRows] = await Promise.all([
+    lessonIds.length
+      ? prisma.lessonProgress.findMany({ where: { userId, lessonId: { in: lessonIds } }, select: { lessonId: true } })
+      : Promise.resolve([]),
+    contentIds.length
+      ? prisma.rookieContentProgress.findMany({
+          where: { userId, contentItemId: { in: contentIds } },
+          select: { contentItemId: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const completedLessonIds = new Set(completedLessonRows.map((r) => r.lessonId));
+  const completedContentIds = new Set(completedContentRows.map((r) => r.contentItemId));
 
   const lessons = dayConfig.lessons.map((l) => ({
     id: l.lesson.id,
@@ -369,8 +505,38 @@ export async function getTodaysRookieTraining(userId: string): Promise<TodaysRoo
     titleEs: l.lesson.titleEs,
     moduleSlug: l.lesson.module.slug,
     lessonOrder: l.lesson.order,
-    completed: completedIds.has(l.lesson.id),
+    completed: completedLessonIds.has(l.lesson.id),
   }));
+
+  const sequence: RookieDaySequenceEntry[] = [
+    ...dayConfig.lessons.map((l) => ({
+      order: l.order,
+      kind: "LESSON" as const,
+      assignmentId: l.id,
+      id: l.lesson.id,
+      titleEn: l.lesson.titleEn,
+      titleEs: l.lesson.titleEs,
+      moduleSlug: l.lesson.module.slug,
+      lessonOrder: l.lesson.order,
+      completed: completedLessonIds.has(l.lesson.id),
+    })),
+    ...dayConfig.contentItems.map((c) => ({
+      order: c.order,
+      kind: c.kind,
+      id: c.id,
+      titleEn: c.titleEn,
+      titleEs: c.titleEs,
+      bodyEn: c.bodyEn,
+      bodyEs: c.bodyEs,
+      promptEn: c.promptEn,
+      promptEs: c.promptEs,
+      revealEn: c.revealEn,
+      revealEs: c.revealEs,
+      hasFutureVideoSlot: c.hasFutureVideoSlot,
+      estimatedMinutes: c.estimatedMinutes,
+      completed: completedContentIds.has(c.id),
+    })),
+  ].sort((a, b) => a.order - b.order);
 
   return {
     position,
@@ -385,12 +551,13 @@ export async function getTodaysRookieTraining(userId: string): Promise<TodaysRoo
       fieldGoalEn: dayConfig.fieldGoalEn,
       fieldGoalEs: dayConfig.fieldGoalEs,
       lessons,
+      sequence,
       fieldSkills: dayConfig.fieldSkills.map((s) => ({
         id: s.fieldSkill.id,
         labelEn: s.fieldSkill.labelEn,
         labelEs: s.fieldSkill.labelEs,
       })),
-      allLessonsComplete: lessons.length > 0 && lessons.every((l) => l.completed),
+      allLessonsComplete: sequence.length > 0 && sequence.every((s) => s.completed),
     },
   };
 }

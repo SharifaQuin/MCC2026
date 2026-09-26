@@ -3,8 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { recordFieldCheckoff } from "@/lib/rookieJourney";
-import type { FieldSkillRating, RookieDay3Decision, RookieDay10Decision, SealDecision } from "@prisma/client";
+import { recordFieldCheckoff, markRookieContentComplete } from "@/lib/rookieJourney";
+import type {
+  FieldSkillRating,
+  RookieDay3Decision,
+  RookieDay10Decision,
+  SealDecision,
+  RookieContentKind,
+} from "@prisma/client";
 
 // Same gate as the existing certification/field-eval actions — this
 // feature reuses those role boundaries rather than inventing new ones.
@@ -123,6 +129,143 @@ export async function setRookieDayFieldSkillsAction(dayNumber: number, fieldSkil
       data: fieldSkillIds.map((fieldSkillId, i) => ({ rookieDayId: day.id, fieldSkillId, order: i })),
     }),
   ]);
+  revalidatePath("/admin/rookie-journey");
+  revalidatePath("/");
+}
+
+// ── Rookie Curriculum V2 (Phase 2): condensed content items ──
+
+export async function markRookieContentCompleteAction(contentItemId: string) {
+  const session = await getSession();
+  if (!session) throw new Error("Not authorized");
+  await markRookieContentComplete(session.sub, contentItemId);
+  revalidatePath("/");
+}
+
+export interface RookieContentItemFormInput {
+  kind: RookieContentKind;
+  titleEn: string;
+  titleEs: string;
+  bodyEn: string;
+  bodyEs: string;
+  promptEn?: string;
+  promptEs?: string;
+  revealEn?: string;
+  revealEs?: string;
+  hasFutureVideoSlot: boolean;
+  estimatedMinutes?: number;
+  sourceLessonIds: string[];
+}
+
+export async function createRookieContentItemAction(dayNumber: number, input: RookieContentItemFormInput) {
+  await requireAdmin();
+  const day = await prisma.rookieDay.findUnique({ where: { dayNumber }, select: { id: true } });
+  if (!day) return;
+
+  const [maxLesson, maxContent] = await Promise.all([
+    prisma.rookieLessonAssignment.aggregate({ where: { rookieDayId: day.id }, _max: { order: true } }),
+    prisma.rookieContentItem.aggregate({ where: { rookieDayId: day.id }, _max: { order: true } }),
+  ]);
+  const nextOrder = Math.max(maxLesson._max.order ?? -1, maxContent._max.order ?? -1) + 1;
+
+  const created = await prisma.rookieContentItem.create({
+    data: {
+      rookieDayId: day.id,
+      kind: input.kind,
+      order: nextOrder,
+      titleEn: input.titleEn,
+      titleEs: input.titleEs,
+      bodyEn: input.bodyEn,
+      bodyEs: input.bodyEs,
+      promptEn: input.promptEn || null,
+      promptEs: input.promptEs || null,
+      revealEn: input.revealEn || null,
+      revealEs: input.revealEs || null,
+      hasFutureVideoSlot: input.hasFutureVideoSlot,
+      estimatedMinutes: input.estimatedMinutes ?? null,
+    },
+  });
+  if (input.sourceLessonIds.length) {
+    await prisma.rookieContentSourceLesson.createMany({
+      data: input.sourceLessonIds.map((lessonId) => ({ contentItemId: created.id, lessonId })),
+    });
+  }
+  revalidatePath("/admin/rookie-journey");
+  revalidatePath("/");
+}
+
+export async function updateRookieContentItemAction(contentItemId: string, input: RookieContentItemFormInput) {
+  await requireAdmin();
+  await prisma.$transaction([
+    prisma.rookieContentItem.update({
+      where: { id: contentItemId },
+      data: {
+        kind: input.kind,
+        titleEn: input.titleEn,
+        titleEs: input.titleEs,
+        bodyEn: input.bodyEn,
+        bodyEs: input.bodyEs,
+        promptEn: input.promptEn || null,
+        promptEs: input.promptEs || null,
+        revealEn: input.revealEn || null,
+        revealEs: input.revealEs || null,
+        hasFutureVideoSlot: input.hasFutureVideoSlot,
+        estimatedMinutes: input.estimatedMinutes ?? null,
+      },
+    }),
+    prisma.rookieContentSourceLesson.deleteMany({ where: { contentItemId } }),
+    ...(input.sourceLessonIds.length
+      ? [
+          prisma.rookieContentSourceLesson.createMany({
+            data: input.sourceLessonIds.map((lessonId) => ({ contentItemId, lessonId })),
+          }),
+        ]
+      : []),
+  ]);
+  revalidatePath("/admin/rookie-journey");
+  revalidatePath("/");
+}
+
+export async function deleteRookieContentItemAction(contentItemId: string) {
+  await requireAdmin();
+  await prisma.rookieContentItem.delete({ where: { id: contentItemId } });
+  revalidatePath("/admin/rookie-journey");
+  revalidatePath("/");
+}
+
+// Moves an item up/down within a Rookie Day's merged sequence — the item
+// may be a RookieLessonAssignment or a RookieContentItem; both share the
+// same per-day `order` namespace, so this reorders across both types.
+export async function moveDaySequenceItemAction(
+  dayNumber: number,
+  item: { type: "LESSON" | "CONTENT"; id: string },
+  direction: "up" | "down"
+) {
+  await requireAdmin();
+  const day = await prisma.rookieDay.findUnique({ where: { dayNumber }, select: { id: true } });
+  if (!day) return;
+
+  const [lessons, contentItems] = await Promise.all([
+    prisma.rookieLessonAssignment.findMany({ where: { rookieDayId: day.id, slot: "ROOKIE_DAY" } }),
+    prisma.rookieContentItem.findMany({ where: { rookieDayId: day.id } }),
+  ]);
+  const merged = [
+    ...lessons.map((l) => ({ type: "LESSON" as const, id: l.id, order: l.order })),
+    ...contentItems.map((c) => ({ type: "CONTENT" as const, id: c.id, order: c.order })),
+  ].sort((a, b) => a.order - b.order);
+
+  const idx = merged.findIndex((m) => m.type === item.type && m.id === item.id);
+  const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+  if (idx === -1 || swapIdx < 0 || swapIdx >= merged.length) return;
+
+  const a = merged[idx];
+  const b = merged[swapIdx];
+  const updateOne = (m: (typeof merged)[number], order: number) =>
+    m.type === "LESSON"
+      ? prisma.rookieLessonAssignment.update({ where: { id: m.id }, data: { order } })
+      : prisma.rookieContentItem.update({ where: { id: m.id }, data: { order } });
+
+  await prisma.$transaction([updateOne(a, b.order), updateOne(b, a.order)]);
   revalidatePath("/admin/rookie-journey");
   revalidatePath("/");
 }

@@ -242,6 +242,8 @@ model User {
   sealEvaluationsReceived SealOfApprovalEvaluation[] @relation("SealEvalTrainee")
   sealEvaluationsGiven    SealOfApprovalEvaluation[] @relation("SealEvalEvaluatedBy")
 
+  rookieContentProgress RookieContentProgress[]
+
   @@index([role])
 }
 
@@ -323,8 +325,9 @@ model Lesson {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  progress         LessonProgress[]
-  rookieAssignment RookieLessonAssignment[]
+  progress                 LessonProgress[]
+  rookieAssignment         RookieLessonAssignment[]
+  rookieContentSourceLinks RookieContentSourceLesson[]
 
   @@index([moduleId, order])
 }
@@ -2014,8 +2017,9 @@ model RookieDay {
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
-  lessons     RookieLessonAssignment[]
-  fieldSkills RookieDayFieldSkill[]
+  lessons      RookieLessonAssignment[]
+  fieldSkills  RookieDayFieldSkill[]
+  contentItems RookieContentItem[]
 
   @@index([dayNumber])
 }
@@ -2192,4 +2196,76 @@ model SealOfApprovalEvaluation {
   createdAt      DateTime     @default(now())
 
   @@index([traineeId])
+}
+
+// ── Rookie Curriculum V2 (Phase 2 — condensed/new content) ──
+// RookieContentItem holds NEW, Rookie-Journey-only content (a condensed
+// practical lesson, a scenario card, or a recap card) that doesn't exist as
+// an original Lesson — this is exactly the "create a new Rookie-specific
+// condensed lesson/content object" path called for when several source
+// lessons are being condensed, so the originals are never overwritten.
+// RookieContentSourceLesson is a pure traceability link back to whichever
+// existing Lesson(s) a card was condensed from (for rollback/reference);
+// it never modifies the source Lesson. RookieContentProgress is completion
+// tracking for this new content type, entirely separate from the existing
+// LessonProgress table, which continues to track only real Lesson rows.
+enum RookieContentKind {
+  PRACTICAL_LESSON
+  SCENARIO
+  RECAP
+}
+
+model RookieContentItem {
+  id                 String            @id @default(cuid())
+  rookieDayId        String
+  rookieDay          RookieDay         @relation(fields: [rookieDayId], references: [id], onDelete: Cascade)
+  kind               RookieContentKind
+  // Shares the same per-day integer order space as RookieLessonAssignment —
+  // the two tables are merged into one sequence at read time (see
+  // getRookieDayContentSequence in lib/rookieJourney.ts) so an Admin can
+  // interleave condensed cards with references to existing lessons.
+  order              Int               @default(0)
+  titleEn            String
+  titleEs            String
+  bodyEn             String            @db.Text
+  bodyEs             String            @db.Text
+  // SCENARIO only: the "what would you do" prompt and the correct-action
+  // reveal shown after the trainee responds. Null for PRACTICAL_LESSON/RECAP.
+  promptEn           String?           @db.Text
+  promptEs           String?           @db.Text
+  revealEn           String?           @db.Text
+  revealEs           String?           @db.Text
+  // True only for the 6 practical lessons named for a future real MCC
+  // demonstration video — never auto-generated, never required to complete.
+  hasFutureVideoSlot Boolean           @default(false)
+  estimatedMinutes   Int?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  sourceLessons RookieContentSourceLesson[]
+  progress      RookieContentProgress[]
+
+  @@index([rookieDayId, order])
+}
+
+model RookieContentSourceLesson {
+  id            String            @id @default(cuid())
+  contentItemId String
+  contentItem   RookieContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  lessonId      String
+  lesson        Lesson            @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([contentItemId, lessonId])
+  @@index([lessonId])
+}
+
+model RookieContentProgress {
+  id            String            @id @default(cuid())
+  userId        String
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contentItemId String
+  contentItem   RookieContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  completedAt   DateTime          @default(now())
+
+  @@unique([userId, contentItemId])
 }

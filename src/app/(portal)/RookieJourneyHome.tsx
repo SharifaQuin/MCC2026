@@ -6,6 +6,7 @@ import { getOnboardingDocumentsForUser } from "@/lib/onboarding";
 import { getSignedDocumentsForUser } from "@/lib/documentTemplates";
 import { getEmployeePayrollEntries } from "@/lib/payroll";
 import { prisma } from "@/lib/prisma";
+import RookieContentCard from "@/components/RookieContentCard";
 
 function RailDot({ stop }: { stop: RookieRailStop }) {
   const isMilestone = Number(stop.label) > 10;
@@ -133,35 +134,57 @@ export default async function RookieJourneyHome({ session }: { session: SessionP
           <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
             {labels.todaysTraining}
           </h3>
-          {day.lessons.length === 0 ? (
+          {day.sequence.length === 0 ? (
             <p className="mb-4 text-sm text-neutral-400">
               {isEs ? "Nada asignado para hoy todavía." : "Nothing assigned for today yet."}
             </p>
           ) : (
             <ul className="mb-4 space-y-2">
-              {day.lessons.map((l) => (
-                <li key={l.id}>
-                  <Link
-                    href={`/modules/${l.moduleSlug}/lesson/${l.lessonOrder}`}
-                    className="flex items-center justify-between rounded-md border border-neutral-200 p-3 hover:border-brand-300"
-                  >
-                    <span className="text-sm font-medium text-neutral-900">
-                      {isEs && l.titleEs ? l.titleEs : l.titleEn}
-                    </span>
-                    {l.completed ? (
-                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                        {labels.lessonCompleteBadge}
+              {day.sequence.map((entry) =>
+                entry.kind === "LESSON" ? (
+                  <li key={`lesson-${entry.id}`}>
+                    <Link
+                      href={`/modules/${entry.moduleSlug}/lesson/${entry.lessonOrder}`}
+                      className="flex items-center justify-between rounded-md border border-neutral-200 p-3 hover:border-brand-300"
+                    >
+                      <span className="text-sm font-medium text-neutral-900">
+                        {isEs && entry.titleEs ? entry.titleEs : entry.titleEn}
                       </span>
-                    ) : (
-                      <span className="text-xs text-brand-700">{labels.continue} →</span>
-                    )}
-                  </Link>
-                </li>
-              ))}
+                      {entry.completed ? (
+                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                          {labels.lessonCompleteBadge}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-brand-700">{labels.continue} →</span>
+                      )}
+                    </Link>
+                  </li>
+                ) : (
+                  <RookieContentCard
+                    key={`content-${entry.id}`}
+                    language={session.language}
+                    item={{
+                      id: entry.id,
+                      kind: entry.kind,
+                      titleEn: entry.titleEn,
+                      titleEs: entry.titleEs,
+                      bodyEn: entry.bodyEn,
+                      bodyEs: entry.bodyEs,
+                      promptEn: entry.promptEn,
+                      promptEs: entry.promptEs,
+                      revealEn: entry.revealEn,
+                      revealEs: entry.revealEs,
+                      hasFutureVideoSlot: entry.hasFutureVideoSlot,
+                      estimatedMinutes: entry.estimatedMinutes,
+                      completed: entry.completed,
+                    }}
+                  />
+                )
+              )}
             </ul>
           )}
 
-          {day.allLessonsComplete && day.lessons.length > 0 && (
+          {day.allLessonsComplete && day.sequence.length > 0 && (
             <p className="mb-4 text-sm font-medium text-green-700">{labels.todaysTrainingAllDone}</p>
           )}
 

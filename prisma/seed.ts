@@ -6,6 +6,7 @@ import { generateNextEmployeeId } from "../src/lib/employeeId";
 import { seedDefaultHiringQuestions } from "../src/lib/recruiting";
 import { assignDefaultOnboardingDocuments } from "../src/lib/onboarding";
 import { FIELD_SKILL_LIBRARY, ROOKIE_DAY_DEFAULTS } from "../src/lib/rookieJourney";
+import { LESSON_DAY_ASSIGNMENTS, ROOKIE_CONTENT_SEED } from "../src/lib/rookieCurriculumContent";
 
 const prisma = new PrismaClient();
 
@@ -1239,7 +1240,176 @@ async function seedRookieJourney() {
     daysCreated++;
   }
 
-  console.log(`Rookie Journey: seeded ${skillsCreated} field skills, ${daysCreated} Rookie Days.`);
+  // Phase 2 content correction: Days 1/2/3/9/10 originally shipped with
+  // Phase-1 placeholder titles/descriptions/field-skill sets. Refresh them
+  // to the approved Phase-2 curriculum content — but ONLY if the row still
+  // exactly matches its known Phase-1 baseline below, so this never
+  // clobbers a change an Admin has since made via /admin/rookie-journey.
+  const PHASE1_BASELINE: Record<number, { titleEn: string; descriptionEn: string; fieldSkillKeys: string[] }> = {
+    1: {
+      titleEn: "Fundamentals + First Clean",
+      descriptionEn:
+        "Welcome to Mama's, the MAMAS values, hospitality, a day in the life, basic team roles, TCS essentials, the Golden Rules, essential safety, and essential supplies/tools — then an afternoon of hands-on field training covering dusting, floors, and bathroom basics.",
+      fieldSkillKeys: ["dusting", "floors_vacuuming", "bathroom", "tool_setup", "chemical_safety"],
+    },
+    2: {
+      titleEn: "Kitchen + Complete Room Flow",
+      descriptionEn:
+        "Kitchen, bedrooms, living areas, the complete MCC room flow, and proper reset/final inspection — reinforcing dusting, floors, and bathroom. Most of the day is field time.",
+      fieldSkillKeys: ["kitchen", "bedroom", "living_area", "complete_room_flow", "final_quality_check"],
+    },
+    3: {
+      titleEn: "Full Home Flow",
+      descriptionEn:
+        "The complete-home workflow, team flow, speed with purpose, Dirt Codes/time expectations, quality control, field communication, and escalation basics. By the end of today you should understand how to independently move through an entire standard MCC home — you're not expected to have mastered speed yet.",
+      fieldSkillKeys: ["complete_home_flow", "team_flow", "speed_with_purpose", "tcs_usage", "office_escalation"],
+    },
+    9: {
+      titleEn: "Independence",
+      descriptionEn: "Completing assigned areas with minimal trainer intervention.",
+      fieldSkillKeys: ["complete_home_flow", "returns_items"],
+    },
+    10: {
+      titleEn: "Consistency + Rookie Evaluation",
+      descriptionEn: "Repeatable, MCC-standard performance — today wraps up with the Rookie Training Review.",
+      fieldSkillKeys: ["complete_home_flow", "final_quality_check", "speed_with_purpose"],
+    },
+  };
+
+  let daysRefreshed = 0;
+  for (const [dayNumberStr, baseline] of Object.entries(PHASE1_BASELINE)) {
+    const dayNumber = Number(dayNumberStr);
+    const target = ROOKIE_DAY_DEFAULTS.find((d) => d.dayNumber === dayNumber);
+    if (!target) continue;
+    const existing = await prisma.rookieDay.findUnique({
+      where: { dayNumber },
+      include: { fieldSkills: { include: { fieldSkill: true } } },
+    });
+    if (!existing) continue;
+    const stillBaselineContent = existing.titleEn === baseline.titleEn && existing.descriptionEn === baseline.descriptionEn;
+    if (!stillBaselineContent) {
+      console.log(`Rookie Journey: Day ${dayNumber} content was already customized, leaving it as-is.`);
+      continue;
+    }
+
+    await prisma.rookieDay.update({
+      where: { id: existing.id },
+      data: {
+        titleEn: target.titleEn,
+        titleEs: target.titleEs,
+        descriptionEn: target.descriptionEn,
+        descriptionEs: target.descriptionEs,
+        estimatedAcademyMinutes: target.estimatedAcademyMinutes,
+        fieldGoalEn: target.fieldGoalEn,
+        fieldGoalEs: target.fieldGoalEs,
+      },
+    });
+
+    const currentSkillKeys = existing.fieldSkills.map((s) => s.fieldSkill.key).sort().join(",");
+    const stillBaselineSkills = currentSkillKeys === [...baseline.fieldSkillKeys].sort().join(",");
+    if (stillBaselineSkills) {
+      await prisma.$transaction([
+        prisma.rookieDayFieldSkill.deleteMany({ where: { rookieDayId: existing.id } }),
+        prisma.rookieDayFieldSkill.createMany({
+          data: target.fieldSkillKeys.map((key, i) => ({
+            rookieDayId: existing.id,
+            fieldSkillId: skillIdByKey.get(key)!,
+            order: i,
+          })),
+        }),
+      ]);
+    }
+    daysRefreshed++;
+  }
+
+  console.log(
+    `Rookie Journey: seeded ${skillsCreated} field skills, ${daysCreated} Rookie Days, refreshed ${daysRefreshed} Days to Phase-2 content.`
+  );
+}
+
+// Rookie Curriculum V2 (Phase 2) — resolves LESSON_DAY_ASSIGNMENTS against
+// the real Module/Lesson rows and creates RookieLessonAssignment rows, and
+// seeds the 15 new condensed practical-lesson/scenario/recap
+// RookieContentItem cards (+ their RookieContentSourceLesson traceability
+// links). Never touches an existing Lesson row. Safe to rerun: an
+// assignment is only created if that lessonId has none yet (an Admin's
+// later reassignment is never overwritten); a content item is only
+// created if no item with that title exists yet on that day.
+async function seedRookieCurriculumContent() {
+  const days = await prisma.rookieDay.findMany({ select: { id: true, dayNumber: true } });
+  const dayIdByNumber = new Map(days.map((d) => [d.dayNumber, d.id]));
+
+  const modules = await prisma.module.findMany({ select: { id: true, order: true } });
+  const moduleOrderByModuleId = new Map(modules.map((m) => [m.id, m.order]));
+  const lessons = await prisma.lesson.findMany({ select: { id: true, order: true, moduleId: true } });
+  const lessonIdByKey = new Map<string, string>();
+  for (const l of lessons) {
+    const moduleOrder = moduleOrderByModuleId.get(l.moduleId);
+    if (moduleOrder == null) continue;
+    lessonIdByKey.set(`${moduleOrder}-${l.order}`, l.id);
+  }
+
+  let assignmentsCreated = 0;
+  let assignmentsSkipped = 0;
+  for (const a of LESSON_DAY_ASSIGNMENTS) {
+    const lessonId = lessonIdByKey.get(`${a.moduleOrder}-${a.lessonOrder}`);
+    if (!lessonId) {
+      console.warn(`Rookie Curriculum: no lesson found for module ${a.moduleOrder} lesson ${a.lessonOrder}, skipping.`);
+      continue;
+    }
+    const existing = await prisma.rookieLessonAssignment.findUnique({ where: { lessonId } });
+    if (existing) {
+      assignmentsSkipped++;
+      continue;
+    }
+
+    const rookieDayId = "dayNumber" in a.target ? dayIdByNumber.get(a.target.dayNumber) ?? null : null;
+    const slot = "dayNumber" in a.target ? "ROOKIE_DAY" : "KNOWLEDGE_LIBRARY";
+    const order = rookieDayId ? await prisma.rookieLessonAssignment.count({ where: { rookieDayId } }) : 0;
+    await prisma.rookieLessonAssignment.create({ data: { lessonId, rookieDayId, slot, order } });
+    assignmentsCreated++;
+  }
+
+  let contentCreated = 0;
+  let contentSkipped = 0;
+  for (const c of ROOKIE_CONTENT_SEED) {
+    const rookieDayId = dayIdByNumber.get(c.dayNumber);
+    if (!rookieDayId) continue;
+    const existing = await prisma.rookieContentItem.findFirst({ where: { rookieDayId, titleEn: c.titleEn } });
+    if (existing) {
+      contentSkipped++;
+      continue;
+    }
+
+    const created = await prisma.rookieContentItem.create({
+      data: {
+        rookieDayId,
+        kind: c.kind,
+        order: c.order,
+        titleEn: c.titleEn,
+        titleEs: c.titleEs,
+        bodyEn: c.bodyEn,
+        bodyEs: c.bodyEs,
+        promptEn: c.promptEn ?? null,
+        promptEs: c.promptEs ?? null,
+        revealEn: c.revealEn ?? null,
+        revealEs: c.revealEs ?? null,
+        hasFutureVideoSlot: c.hasFutureVideoSlot ?? false,
+        estimatedMinutes: c.estimatedMinutes ?? null,
+      },
+    });
+    const sourceLessonIds = c.sourceLessonKeys.map((key) => lessonIdByKey.get(key)).filter((id): id is string => !!id);
+    if (sourceLessonIds.length) {
+      await prisma.rookieContentSourceLesson.createMany({
+        data: sourceLessonIds.map((lessonId) => ({ contentItemId: created.id, lessonId })),
+      });
+    }
+    contentCreated++;
+  }
+
+  console.log(
+    `Rookie Curriculum: ${assignmentsCreated} lesson assignments created (${assignmentsSkipped} already assigned), ${contentCreated} content items created (${contentSkipped} already existed).`
+  );
 }
 
 async function main() {
@@ -1253,6 +1423,7 @@ async function main() {
   await seedMessageTemplates();
   await seedCleaningTechnicianPosting();
   await seedRookieJourney();
+  await seedRookieCurriculumContent();
 }
 
 main()
