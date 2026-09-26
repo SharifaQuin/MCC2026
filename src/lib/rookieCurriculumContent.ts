@@ -10,7 +10,7 @@
 // on each item are pure traceability (module#-lesson#) resolved to real
 // Lesson ids at seed time. No original Lesson is ever modified or deleted.
 
-export type RookieContentKindSeed = "PRACTICAL_LESSON" | "SCENARIO" | "RECAP";
+export type RookieContentKindSeed = "PRACTICAL_LESSON" | "SCENARIO" | "RECAP" | "ORIENTATION";
 
 export interface RookieContentSeed {
   key: string;
@@ -41,28 +41,21 @@ export const LESSON_DAY_ASSIGNMENTS: {
   lessonOrder: number;
   target: { dayNumber: number } | { slot: "KNOWLEDGE_LIBRARY" };
 }[] = [
-  // Day 1 — Learn the Mama's Way (required concepts, condensed via reference not rewrite)
-  { moduleOrder: 1, lessonOrder: 1, target: { dayNumber: 1 } }, // Welcome & Our History
-  { moduleOrder: 1, lessonOrder: 2, target: { dayNumber: 1 } }, // Our Mission
-  { moduleOrder: 1, lessonOrder: 3, target: { dayNumber: 1 } }, // MAMAS
-  { moduleOrder: 1, lessonOrder: 5, target: { dayNumber: 1 } }, // What Clients Expect
-  { moduleOrder: 1, lessonOrder: 6, target: { dayNumber: 1 } }, // Hospitality Company
-  { moduleOrder: 1, lessonOrder: 8, target: { dayNumber: 1 } }, // Rookie Schedule
-  { moduleOrder: 2, lessonOrder: 1, target: { dayNumber: 1 } }, // Roles & Team Terms
-  { moduleOrder: 3, lessonOrder: 1, target: { dayNumber: 1 } }, // TCS essentials
-  { moduleOrder: 4, lessonOrder: 1, target: { dayNumber: 1 } }, // Before You Head Out
-  { moduleOrder: 5, lessonOrder: 1, target: { dayNumber: 1 } }, // Golden Rules 1-5
-  { moduleOrder: 5, lessonOrder: 2, target: { dayNumber: 1 } }, // Golden Rules 6-10 (also referenced Day 6)
-  { moduleOrder: 5, lessonOrder: 3, target: { dayNumber: 1 } }, // Golden Rules 11-15
-  { moduleOrder: 8, lessonOrder: 1, target: { dayNumber: 1 } }, // Taking Care of Your Body
-  { moduleOrder: 8, lessonOrder: 2, target: { dayNumber: 1 } }, // Safety Always Comes First
-  { moduleOrder: 15, lessonOrder: 1, target: { dayNumber: 1 } }, // product reference
-  { moduleOrder: 15, lessonOrder: 2, target: { dayNumber: 1 } }, // Tools of the Trade
-  { moduleOrder: 15, lessonOrder: 3, target: { dayNumber: 1 } }, // pack for standard cleaning
-  { moduleOrder: 15, lessonOrder: 8, target: { dayNumber: 1 } }, // Safety Regulations (12 Rules)
-  { moduleOrder: 15, lessonOrder: 11, target: { dayNumber: 1 } }, // Prohibited Chemical Combos
-  { moduleOrder: 24, lessonOrder: 1, target: { dayNumber: 1 } }, // Uniform Standard Policy (authoritative)
-  { moduleOrder: 23, lessonOrder: 1, target: { dayNumber: 1 } }, // Standard Maintenance Cleaning Checklist
+  // Day 1 — Learn the Mama's Way. Per the Sep-2026 pre-merge UX adjustment,
+  // these 21 lessons are no longer individually assigned to Day 1 — their
+  // content is consolidated into 4 new ORIENTATION cards (see
+  // ROOKIE_CONTENT_SEED below) so the trainee sees ~7 items on Day 1
+  // instead of 24. The lessons themselves are untouched and left
+  // Unassigned (still fully reachable at /modules); each ORIENTATION card
+  // links back to its source lessons via sourceLessonKeys for
+  // traceability. Kept here, commented, as a record of the original
+  // Phase-2 mapping this replaces:
+  // M1L1 Welcome & Our History, M1L2 Our Mission, M1L3 MAMAS,
+  // M1L5 What Clients Expect, M1L6 Hospitality Company, M1L8 Rookie Schedule,
+  // M2L1 Roles & Team Terms, M3L1 TCS essentials, M4L1 Before You Head Out,
+  // M5L1-3 Golden Rules 1-15, M8L1-2 Body/Safety, M15L1/2/3/8/11
+  // (products/tools/pack/safety regs/chemical combos),
+  // M24L1 Uniform Standard Policy, M23L1 Standard Maintenance Checklist.
 
   // Day 2 — Build the Full Cleaning System
   { moduleOrder: 18, lessonOrder: 2, target: { dayNumber: 2 } }, // Dirty Dishes procedure
@@ -168,6 +161,256 @@ export const LESSON_DAY_ASSIGNMENTS: {
 
 export const ROOKIE_CONTENT_SEED: RookieContentSeed[] = [
   // ───────────────────────────── DAY 1 ─────────────────────────────
+  // 4 orientation blocks (Sep-2026 consolidation), then the 3 existing
+  // hands-on practical cards — 7 items total instead of 24.
+  {
+    key: "day1-welcome",
+    dayNumber: 1,
+    kind: "ORIENTATION",
+    order: 10,
+    titleEn: "Welcome to Mama's",
+    titleEs: "Bienvenida a Mama's",
+    estimatedMinutes: 18,
+    sourceLessonKeys: ["1-1", "1-2", "1-3", "1-5", "1-6", "1-8"],
+    bodyEn: `**Who we are:** Mama's Cleaning Crew was founded in 2023 by Sharifa Quinland and has grown into a family-owned team of 45+ staff. We offer residential house cleaning (weekly, bi-weekly, monthly, or occasional), commercial janitorial services, and empty house / move-in-move-out cleaning — plus gift certificates and free housecleaning for women with cancer, firefighters, and police officers. (Carpet cleaning is no longer offered.)
+
+**Our mission:** "A clean space is the foundation of a peaceful life." We don't just clean — we care, we rejuvenate, and we create spaces where memories are made and cherished.
+- Give First
+- Improve Lives
+- Make a Difference Every Day
+
+**Our values — MAMAS**
+- Meticulous — every detail with precision
+- Authentic — trust through honesty and integrity
+- Mindful — eco-friendly practices
+- Allegiant — loyal to clients
+- Sincere — reliable and respectful
+
+**We're a hospitality company.** This isn't just a cleaning company — people forget what you said or did, but never how you made them feel. Our phrase for this: **"My Pleasure."**
+
+**What clients expect from us:** Quality of Service, Hospitality, Consistency, Communication, and a Great Cleaning Service.
+
+**What we expect from you:** Consistency, Accountability, Teamwork (a judgment-free zone), Efficiency, and Honesty.
+
+**Your first weeks:** for your first 1-2 weeks after training, you'll start with a lighter schedule while you build confidence and speed. After that "rookie" stage, your schedule fills up based on your skill level — the more efficient and reliable you become, the more your schedule reflects it.`,
+    bodyEs: `**Quiénes somos:** Mama's Cleaning Crew fue fundada en 2023 por Sharifa Quinland y ha crecido hasta ser un equipo familiar de más de 45 personas. Ofrecemos limpieza residencial (semanal, quincenal, mensual u ocasional), servicios de limpieza comercial, y limpieza de casas vacías / mudanza — además de certificados de regalo y limpieza gratuita para mujeres con cáncer, bomberos y policías. (Ya no ofrecemos limpieza de alfombras.)
+
+**Nuestra misión:** "Un espacio limpio es la base de una vida en paz." No solo limpiamos — cuidamos, renovamos y creamos espacios donde se hacen y se atesoran recuerdos.
+- Dar Primero
+- Mejorar Vidas
+- Hacer la Diferencia Cada Día
+
+**Nuestros valores — MAMAS**
+- Meticulosa — cada detalle con precisión
+- Auténtica — confianza a través de la honestidad e integridad
+- Consciente (Mindful) — prácticas ecológicas
+- Leal (Allegiant) — leal a los clientes
+- Sincera — confiable y respetuosa
+
+**Somos una empresa de hospitalidad.** Esto no es solo una empresa de limpieza — la gente olvida lo que dijiste o hiciste, pero nunca cómo los hiciste sentir. Nuestra frase para esto: **"Es un Placer" (My Pleasure).**
+
+**Lo que los clientes esperan de nosotros:** Calidad de Servicio, Hospitalidad, Consistencia, Comunicación y un Excelente Servicio de Limpieza.
+
+**Lo que esperamos de ti:** Consistencia, Responsabilidad, Trabajo en Equipo (una zona libre de juicios), Eficiencia y Honestidad.
+
+**Tus primeras semanas:** durante tus primeras 1-2 semanas después del entrenamiento, comenzarás con un horario más ligero mientras desarrollas confianza y velocidad. Después de esa etapa "rookie", tu horario se llena según tu nivel de habilidad — entre más eficiente y confiable seas, más lo reflejará tu horario.`,
+  },
+  {
+    key: "day1-how-your-day-works",
+    dayNumber: 1,
+    kind: "ORIENTATION",
+    order: 20,
+    titleEn: "How Your Day Works",
+    titleEs: "Cómo Funciona Tu Día",
+    estimatedMinutes: 18,
+    sourceLessonKeys: ["2-1", "3-1", "4-1"],
+    bodyEn: `**Team roles you'll hear**
+- **Team Lead (for the day):** whoever arrives at a home first when there's no official Lead Technician on the team — they handle the pre-cleaning walkthrough.
+- **Lead Technician:** a Cleaning Technician who has completed all necessary training and evaluation to be promoted to the next position above Cleaning Technician.
+- **Office:** the central hub where you pick up supplies/refreshments and speak with a manager.
+
+**TCS (The Cleaning Software):** the app you'll use every day — see your 3-day schedule, clock in/out and take lunch, view client home details, and submit job updates/notifications. Your Service Manager provides your login credentials; install the version for your phone (Apple/Android) in English or Spanish and save it to your favorites.
+
+**Before you head out — the Office:** your day starts at the office. Organize your cleaning bag/caddy in the supply room and pick up any supplies you need. Review all of your cleanings for the day in TCS and read through the notes on each home — this is how you spot anything extra you need to bring and get a sense of what your day will look like. Once you've got everything, load your supplies into the car with your partner.
+
+**This connects to today's field time:** knowing TCS and the office routine is what makes the rest of today possible.`,
+    bodyEs: `**Roles de equipo que escucharás**
+- **Team Lead (líder del día):** quien llega primero a una casa cuando no hay un Técnico Líder oficial en el equipo — se encarga del recorrido antes de limpiar.
+- **Técnico Líder (Lead Technician):** un Técnico de Limpieza que ha completado todo el entrenamiento y evaluación necesarios para ser promovido a la posición superior a Técnico de Limpieza.
+- **Oficina (Office):** el centro donde recoges suministros/refrigerios y hablas con un gerente.
+
+**TCS (The Cleaning Software):** la aplicación que usarás todos los días — ve tu horario de 3 días, marca tu entrada/salida y tu almuerzo, revisa los detalles de la casa del cliente, y envía actualizaciones/notificaciones del trabajo. Tu Gerente de Servicio te da tus credenciales de acceso; instala la versión para tu teléfono (Apple/Android) en inglés o español y guárdala en tus favoritos.
+
+**Antes de salir — la oficina:** tu día comienza en la oficina. Organiza tu bolsa/caja de limpieza en el cuarto de suministros y recoge lo que necesites. Revisa todas tus limpiezas del día en TCS y lee las notas de cada casa — así identificas cualquier cosa extra que necesites llevar y te haces una idea de cómo será tu día. Una vez que tengas todo, carga tus suministros en el carro con tu compañero(a).
+
+**Esto se conecta con el tiempo de campo de hoy:** conocer TCS y la rutina de la oficina es lo que hace posible el resto del día.`,
+  },
+  {
+    key: "day1-cleaning-method",
+    dayNumber: 1,
+    kind: "ORIENTATION",
+    order: 30,
+    titleEn: "The Mama's Cleaning Method",
+    titleEs: "El Método de Limpieza de Mama's",
+    estimatedMinutes: 25,
+    sourceLessonKeys: ["5-1", "5-2", "5-3", "23-1"],
+    bodyEn: `**The 15 Golden Rules of Cleaning**
+
+Rules 1-5 — Safety, Direction, Detail, Focus, Checking
+- Always work safely.
+- Always work Top-to-Bottom and Left-to-Right.
+- Clean with attention to detail.
+- Concentrate when cleaning.
+- Check your work before moving on.
+
+Rules 6-10 — Speed, Quality, Coverage, Technique
+- Move with speed and purpose — you cannot be a slow cleaner.
+- Don't sacrifice high-quality cleaning for speed.
+- Dust, clean, and touch everything in the home you can reach.
+- Always use your sponge to clean countertops, then finish with a rag.
+- Use both hands — it's faster and safer for almost every cleaning task.
+
+Rules 11-15 — Respect for the Home, Professionalism, Planning
+- Put things back exactly as you found them when dusting and cleaning.
+- Put items back in an orderly fashion, with labels facing out.
+- Be careful what you say in the customer's home — it can get you fired.
+- Keep your voice low when the customer is home.
+- Always make a plan for when and how things will be completed before you start.
+
+**What a standard cleaning covers** (the Standard Maintenance Cleaning Checklist): ceiling fans & light fixtures, cobwebs, blinds/window sills/lock ledges, moldings & woodwork, baseboards, lamps & lampshades, pictures & knick-knacks, furniture, outside of appliances (+ inside microwave), stovetop & drip pans, countertops, all sinks, mirrors, toilets, tub/shower & tiles, bathroom counters & fixtures, wastebaskets, beds (sheets changed if requested), and stairs/floors vacuumed and/or mopped.
+
+**This connects to your Day 1 field checkoff:** Top-to-Bottom, Left-to-Right, Uses Both Hands, Returns Items Correctly, Final Quality Check.`,
+    bodyEs: `**Las 15 Reglas de Oro de la Limpieza**
+
+Reglas 1-5 — Seguridad, Dirección, Detalle, Enfoque, Revisión
+- Trabaja siempre de forma segura.
+- Trabaja siempre de Arriba Hacia Abajo y de Izquierda a Derecha.
+- Limpia con atención al detalle.
+- Concéntrate mientras limpias.
+- Revisa tu trabajo antes de seguir.
+
+Reglas 6-10 — Velocidad, Calidad, Cobertura, Técnica
+- Muévete con velocidad y propósito — no puedes ser un limpiador lento.
+- No sacrifiques la calidad por la velocidad.
+- Sacude, limpia y toca todo lo que esté a tu alcance en la casa.
+- Usa siempre tu esponja para limpiar las encimeras, y termina con un trapo.
+- Usa ambas manos — es más rápido y más seguro para casi toda tarea de limpieza.
+
+Reglas 11-15 — Respeto por el Hogar, Profesionalismo, Planeación
+- Regresa las cosas exactamente a donde las encontraste al sacudir y limpiar.
+- Regresa los artículos de forma ordenada, con las etiquetas hacia afuera.
+- Ten cuidado con lo que dices en la casa del cliente — te puede costar el trabajo.
+- Mantén la voz baja cuando el cliente esté en casa.
+- Siempre haz un plan de cuándo y cómo se completará el trabajo antes de empezar.
+
+**Lo que cubre una limpieza estándar** (la Lista de Limpieza de Mantenimiento Estándar): ventiladores de techo y lámparas, telarañas, persianas/alféizares/cerraduras, molduras y carpintería, zócalos, lámparas y sus pantallas, cuadros y adornos, muebles, exterior de electrodomésticos (+ interior del microondas), estufa y bandejas de goteo, encimeras, todos los fregaderos, espejos, inodoros, tina/regadera y azulejos, encimeras y accesorios del baño, botes de basura, camas (sábanas cambiadas si se solicita), y escaleras/pisos aspirados y/o trapeados.
+
+**Esto se conecta con tu evaluación de campo del Día 1:** de Arriba Hacia Abajo, de Izquierda a Derecha, Usa Ambas Manos, Regresa los Artículos Correctamente, Revisión Final de Calidad.`,
+  },
+  {
+    key: "day1-tools-safety",
+    dayNumber: 1,
+    kind: "ORIENTATION",
+    order: 40,
+    titleEn: "Tools + Safety",
+    titleEs: "Herramientas + Seguridad",
+    estimatedMinutes: 28,
+    sourceLessonKeys: ["15-1", "15-2", "15-3", "15-8", "15-11", "8-1", "8-2", "24-1"],
+    bodyEn: `**What to use on what**
+- Red Spray (multipurpose) — all-purpose, safe on marble and countertops
+- Blue Spray (bathroom) — showers ONLY, contains vinegar
+- Green Spray (glass) — glass, mirrors, reflective surfaces
+- Yellow Spray (degreaser) — oven, range hood, grates, grease
+- Stainless Steel Cleaner — appliances & fixtures
+- Method Wood Cleaner — wood surfaces & floors
+- BKF Liquid — sinks, tubs/shower pans & toilets
+- Dawn Dish Soap — dishes & grease
+- Toilet Bowl Cleaner (dark blue bottle) — toilet bowls ONLY, separate from Blue bathroom spray
+- Purple Floor Cleaner — all floors EXCEPT natural hardwood
+- Clear PH Neutral Cleaner — hardwood floors specifically
+- Zep Wall Cleaner — spot-treat walls and trim
+- Sprayaway Glass Cleaner — glass and poly fiber doors
+- Pumice Stone (must be used WET) — toilet bowl rings, inside ovens, grates
+- Magic Eraser — trim, doors, walls, floors, shower tubs
+
+Always double-check you're using the right product for the surface — using the wrong one can damage the client's home.
+
+**Tools of the trade:** upright vacuum, O-Cedar mop & bucket, microfiber rags, scrubbing tools/grout brushes, extendable duster, window squeegee, and your tool bag — know how to use and maintain each one.
+
+**What to pack for a standard cleaning:** Red Spray, Yellow Spray, Blue Spray, Green Cleaner, extra gloves, extra Magic Eraser, blue paper towels, extended duster, Sprayaway, Purple Floor Cleaner, Barkeeper's Friend, grout brushes, sponges, trash bags, shoe booties, Green Swifter Extender, Method Wood Cleaner, cobweb extender, squeegee, Dawn dish soap, and Toilet Bowl Cleaner.
+
+**Safety Regulations (12 Rules)**
+- Never carry a vacuum on stairs one-handed
+- Max 2 steps on a ladder
+- No climbing in tall showers
+- Close chemical lids; use towels to prevent slips/spills
+- Never cross wet floors barefoot
+- Use a hand vacuum for stairs
+- Never combine ammonia and bleach-based chemicals
+- Leave if a pet is aggressive or anyone in the home feels unsafe — call the office to reschedule
+- Never compact trash by hand
+- Never read work orders while driving
+- Never operate electrical equipment on a wet floor
+
+(Signature required via CareerPlug.)
+
+**Prohibited chemical combinations:** never mix cleaning products unless specifically directed by the manufacturer. Never combine: bleach and ammonia, bleach and vinegar, hydrogen peroxide and vinegar, or different drain cleaners. If an accidental reaction happens: stop work immediately, leave the area if fumes are present, notify occupants, contact management immediately, and call 911 if anyone has breathing difficulty or other symptoms.
+
+**Taking care of your body:** bend at your knees, not your back. Switch which hand/arm you use for repetitive tasks when you can. Wear supportive, non-slip shoes and break them in before a full workday. Stay hydrated. Take your scheduled breaks. If something aches and doesn't go away, tell your Service Manager early.
+
+**Your safety always comes first:** if something ever feels unsafe or doesn't feel right, you are always allowed to leave and call the office — you'll never get in trouble for prioritizing your own safety. Trust your gut. When in doubt: step outside, call the office, and let a manager help you figure out the next step.
+
+**Uniform essentials:** 2 tops provided at hire, worn at all times during service with the MCC logo visible (lost tops replaced at $95 each; you can request an extra top after 90 days). Black pants — no holes/stains, not baggy. Black closed-toe shoes (non-slip recommended). 1 apron provided at hire, worn every day (lost aprons replaced at $65). Optional undershirt: gray or black only. Keep it clean and neatly pressed — you're responsible for washing your own uniform.
+
+**This connects to your Day 1 field checkoff:** Tool Setup, Chemical Safety.`,
+    bodyEs: `**Qué producto usar en qué**
+- Spray Rojo (multiusos) — todo uso, seguro en mármol y encimeras
+- Spray Azul (baño) — SOLO regaderas, contiene vinagre
+- Spray Verde (vidrios) — vidrios, espejos, superficies reflejantes
+- Spray Amarillo (desengrasante) — horno, campana extractora, rejillas, grasa
+- Limpiador de Acero Inoxidable — electrodomésticos y accesorios
+- Limpiador Method para Madera — superficies y pisos de madera
+- BKF Líquido — fregaderos, tinas/regaderas e inodoros
+- Jabón Dawn para Trastes — platos y grasa
+- Limpiador de Inodoro (botella azul oscuro) — SOLO inodoros, aparte del spray Azul de baño
+- Limpiador de Pisos Morado — todos los pisos EXCEPTO madera natural
+- Limpiador PH Neutro Transparente — específicamente para pisos de madera
+- Limpiador de Paredes Zep — trata manchas en paredes y molduras
+- Limpiador de Vidrios Sprayaway — vidrios y puertas de fibra de poliéster
+- Piedra Pómez (debe usarse MOJADA) — anillos del inodoro, dentro de hornos, rejillas
+- Magic Eraser — molduras, puertas, paredes, pisos, tinas de regadera
+
+Siempre verifica que estás usando el producto correcto para la superficie — usar el incorrecto puede dañar la casa del cliente.
+
+**Herramientas del oficio:** aspiradora vertical, trapeador O-Cedar y cubeta, trapos de microfibra, herramientas de fregado/cepillos para lechada, plumero extensible, jalador de ventanas, y tu bolsa de herramientas — conoce cómo usar y mantener cada una.
+
+**Qué empacar para una limpieza estándar:** Spray Rojo, Spray Amarillo, Spray Azul, Limpiador Verde, guantes extra, Magic Eraser extra, toallas de papel azules, plumero extensible, Sprayaway, Limpiador de Pisos Morado, Barkeeper's Friend, cepillos para lechada, esponjas, bolsas de basura, cubrezapatos, extensor Green Swifter, Limpiador Method para Madera, extensor para telarañas, jalador, jabón Dawn y Limpiador de Inodoro.
+
+**Reglamento de Seguridad (12 Reglas)**
+- Nunca cargues una aspiradora en las escaleras con una sola mano
+- Máximo 2 escalones en una escalera de mano
+- No te subas dentro de regaderas altas
+- Cierra las tapas de los químicos; usa toallas para evitar resbalones/derrames
+- Nunca cruces pisos mojados descalzo(a)
+- Usa una aspiradora de mano para las escaleras
+- Nunca combines amoníaco con productos a base de cloro
+- Retírate si una mascota está agresiva o si alguien en la casa se siente inseguro — llama a la oficina para reprogramar
+- Nunca compactes la basura con la mano
+- Nunca leas las órdenes de trabajo mientras manejas
+- Nunca operes equipo eléctrico sobre un piso mojado
+
+(Se requiere firma a través de CareerPlug.)
+
+**Combinaciones de químicos prohibidas:** nunca mezcles productos de limpieza a menos que el fabricante lo indique específicamente. Nunca combines: cloro y amoníaco, cloro y vinagre, peróxido de hidrógeno y vinagre, o diferentes destapacaños. Si ocurre una reacción accidental: detén el trabajo de inmediato, sal del área si hay humos, avisa a los ocupantes, contacta a la gerencia de inmediato, y llama al 911 si alguien tiene dificultad para respirar u otros síntomas.
+
+**Cuida tu cuerpo:** dobla las rodillas, no la espalda, al levantar cosas. Cambia de mano/brazo en tareas repetitivas cuando puedas. Usa zapatos de soporte antiderrapantes y ya usados antes de un día completo de trabajo. Mantente hidratado(a). Toma tus descansos programados. Si algo te duele y no se quita, avísale a tu Gerente de Servicio pronto.
+
+**Tu seguridad siempre es primero:** si algo se siente inseguro o simplemente no se siente bien, siempre tienes permiso de salir y llamar a la oficina — nunca te meterás en problemas por priorizar tu seguridad. Confía en tu instinto. Si tienes dudas: sal de la casa, llama a la oficina, y deja que un gerente te ayude a decidir el siguiente paso.
+
+**Lo esencial del uniforme:** 2 playeras dadas al contratarte, deben usarse siempre durante el servicio con el logo de MCC visible (las perdidas se reponen a $95 cada una; puedes pedir una playera extra después de 90 días). Pantalón negro — sin huecos/manchas, no holgado. Zapatos negros cerrados (se recomienda antiderrapante). 1 delantal dado al contratarte, se usa todos los días (los perdidos se reponen a $65). Camiseta interior opcional: solo gris o negra. Mantenlo limpio y bien planchado — eres responsable de lavar tu propio uniforme.
+
+**Esto se conecta con tu evaluación de campo del Día 1:** Preparación de Herramientas, Seguridad con Químicos.`,
+  },
   {
     key: "day1-dusting",
     dayNumber: 1,

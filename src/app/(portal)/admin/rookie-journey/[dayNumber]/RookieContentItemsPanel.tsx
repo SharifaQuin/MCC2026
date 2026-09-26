@@ -9,7 +9,7 @@ import {
   type RookieContentItemFormInput,
 } from "@/app/actions/rookieJourney";
 
-type Kind = "PRACTICAL_LESSON" | "SCENARIO" | "RECAP";
+type Kind = "PRACTICAL_LESSON" | "SCENARIO" | "RECAP" | "ORIENTATION";
 
 export interface ContentItemRow {
   id: string;
@@ -89,6 +89,7 @@ function ContentForm({
             onChange={(e) => field("kind", e.target.value as Kind)}
             className="mt-1 w-full rounded-md border border-neutral-300 p-2 text-sm"
           >
+            <option value="ORIENTATION">Orientation</option>
             <option value="PRACTICAL_LESSON">Practical Lesson</option>
             <option value="SCENARIO">Scenario</option>
             <option value="RECAP">Recap</option>

@@ -131,7 +131,7 @@ export const ROOKIE_DAY_DEFAULTS: {
     titleEs: "Precisión",
     descriptionEn: "Follow the MCC cleaning sequence correctly without constant reminders.",
     descriptionEs: "Sigue la secuencia de limpieza de MCC correctamente sin recordatorios constantes.",
-    estimatedAcademyMinutes: 30,
+    estimatedAcademyMinutes: 20,
     fieldGoalEn: "Work the full sequence top-to-bottom, left-to-right, with fewer reminders needed.",
     fieldGoalEs: "Trabaja la secuencia completa de arriba hacia abajo y de izquierda a derecha, con menos recordatorios necesarios.",
     fieldSkillKeys: ["top_to_bottom", "left_to_right"],
@@ -142,7 +142,7 @@ export const ROOKIE_DAY_DEFAULTS: {
     titleEs: "Calidad",
     descriptionEn: "Details, final inspections, and reducing missed items.",
     descriptionEs: "Detalles, inspecciones finales y reducir los artículos pasados por alto.",
-    estimatedAcademyMinutes: 30,
+    estimatedAcademyMinutes: 20,
     fieldGoalEn: "Catch missed details before calling a room done.",
     fieldGoalEs: "Detecta los detalles pasados por alto antes de dar una habitación por terminada.",
     fieldSkillKeys: ["final_quality_check", "returns_items"],
@@ -153,7 +153,7 @@ export const ROOKIE_DAY_DEFAULTS: {
     titleEs: "Eficiencia",
     descriptionEn: "Using both hands, preparation, movement, and reducing backtracking.",
     descriptionEs: "Usar ambas manos, preparación, movimiento y reducir los retrocesos.",
-    estimatedAcademyMinutes: 30,
+    estimatedAcademyMinutes: 15,
     fieldGoalEn: "Set up tools ahead of time and move through the home without backtracking.",
     fieldGoalEs: "Prepara las herramientas con anticipación y recorre la casa sin retroceder.",
     fieldSkillKeys: ["uses_both_hands", "tool_setup"],
@@ -164,7 +164,7 @@ export const ROOKIE_DAY_DEFAULTS: {
     titleEs: "Ritmo",
     descriptionEn: "Working toward MCC time expectations without sacrificing quality.",
     descriptionEs: "Trabajar hacia las expectativas de tiempo de MCC sin sacrificar la calidad.",
-    estimatedAcademyMinutes: 30,
+    estimatedAcademyMinutes: 20,
     fieldGoalEn: "Move with purpose toward the Dirt Code time expectation for each room.",
     fieldGoalEs: "Muévete con propósito hacia la expectativa de tiempo del Dirt Code de cada habitación.",
     fieldSkillKeys: ["speed_with_purpose"],
@@ -175,7 +175,7 @@ export const ROOKIE_DAY_DEFAULTS: {
     titleEs: "Flujo en Equipo",
     descriptionEn: "Working effectively with a partner/Lead Technician.",
     descriptionEs: "Trabajar de forma efectiva con un compañero/Técnico Líder.",
-    estimatedAcademyMinutes: 30,
+    estimatedAcademyMinutes: 15,
     fieldGoalEn: "Split work with your partner cleanly and communicate throughout the job.",
     fieldGoalEs: "Divide el trabajo con tu compañero de forma clara y comunícate durante todo el trabajo.",
     fieldSkillKeys: ["team_flow", "client_etiquette"],
@@ -188,7 +188,7 @@ export const ROOKIE_DAY_DEFAULTS: {
       "Completing assigned areas with minimal trainer intervention — plus a set of quick \"What Would You Do?\" scenario cards covering real situations (can't get into a home, a pet issue, a client asking for extra service, notes that don't match, breakage, running behind, an unsafe condition) so you know how to react before it happens for real.",
     descriptionEs:
       "Completar las áreas asignadas con mínima intervención del capacitador — además de tarjetas rápidas de \"¿Qué Harías Tú?\" que cubren situaciones reales (no poder entrar a una casa, un problema con una mascota, un cliente que pide un servicio extra, notas que no coinciden, daños, ir retrasado, una condición insegura) para que sepas cómo reaccionar antes de que pase de verdad.",
-    estimatedAcademyMinutes: 30,
+    estimatedAcademyMinutes: 15,
     fieldGoalEn: "Complete your assigned areas with minimal check-ins from your trainer.",
     fieldGoalEs: "Completa tus áreas asignadas con mínimas intervenciones de tu capacitador.",
     fieldSkillKeys: ["complete_home_flow", "returns_items"],
@@ -201,7 +201,7 @@ export const ROOKIE_DAY_DEFAULTS: {
       "Repeatable, MCC-standard performance — a short visual recap of everything you've covered since Day 1, then today wraps up with your Rookie Day-10 Review. (Your Day-30 Seal of Approval comes later, after more field time.)",
     descriptionEs:
       "Desempeño repetible con el estándar de MCC — un breve repaso visual de todo lo que has cubierto desde el Día 1, y hoy termina con tu Revisión Rookie del Día 10. (Tu Sello de Aprobación del Día 30 llega después, con más tiempo en campo.)",
-    estimatedAcademyMinutes: 30,
+    estimatedAcademyMinutes: 10,
     fieldGoalEn: "Show the same MCC-standard quality and pace across every home today.",
     fieldGoalEs: "Muestra la misma calidad y ritmo del estándar de MCC en cada casa de hoy.",
     fieldSkillKeys: ["complete_home_flow", "final_quality_check", "speed_with_purpose"],
@@ -326,6 +326,7 @@ export async function getLessonAssignmentOptions() {
     include: {
       module: { select: { titleEn: true, order: true } },
       rookieAssignment: { select: { id: true, slot: true, rookieDay: { select: { dayNumber: true } } } },
+      supersededBy: { select: { titleEn: true, module: { select: { titleEn: true, order: true } } } },
     },
   });
   return lessons.map((l) => ({
@@ -340,6 +341,9 @@ export async function getLessonAssignmentOptions() {
           slot: l.rookieAssignment[0].slot,
           dayNumber: l.rookieAssignment[0].rookieDay?.dayNumber ?? null,
         }
+      : null,
+    supersededBy: l.supersededBy
+      ? { titleEn: l.supersededBy.titleEn, moduleTitleEn: l.supersededBy.module.titleEn }
       : null,
   }));
 }

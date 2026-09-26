@@ -84,6 +84,7 @@ export const dictionary = {
     rookieScenarioBadge: "Scenario",
     rookieRecapBadge: "Recap",
     rookiePracticalBadge: "Practical Lesson",
+    rookieOrientationBadge: "Orientation",
   },
   ES: {
     appName: "Portal de Capacitación de MCC",
@@ -170,6 +171,7 @@ export const dictionary = {
     rookieScenarioBadge: "Escenario",
     rookieRecapBadge: "Repaso",
     rookiePracticalBadge: "Lección Práctica",
+    rookieOrientationBadge: "Orientación",
   },
 } as const;
 

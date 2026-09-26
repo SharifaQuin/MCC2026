@@ -10,6 +10,7 @@ interface LessonOption {
   moduleOrder: number;
   order: number;
   assignment: { id: string; slot: "ROOKIE_DAY" | "KNOWLEDGE_LIBRARY"; dayNumber: number | null } | null;
+  supersededBy: { titleEn: string; moduleTitleEn: string } | null;
 }
 
 const DAY_OPTIONS = Array.from({ length: 10 }, (_, i) => i + 1);
@@ -29,6 +30,12 @@ function AssignRow({ lesson }: { lesson: LessonOption }) {
       <td className="px-4 py-2">
         <p className="text-sm font-medium text-neutral-900">{lesson.titleEn}</p>
         <p className="text-xs text-neutral-500">{lesson.moduleTitleEn}</p>
+        {lesson.supersededBy && (
+          <p className="mt-1 text-xs font-medium text-amber-700">
+            ⚠ Superseded — see {lesson.supersededBy.moduleTitleEn}: {lesson.supersededBy.titleEn}. Do not assign as
+            current training.
+          </p>
+        )}
       </td>
       <td className="px-4 py-2">
         <select

@@ -7,7 +7,7 @@ import { t } from "@/lib/i18n";
 
 export interface RookieContentCardData {
   id: string;
-  kind: "PRACTICAL_LESSON" | "SCENARIO" | "RECAP";
+  kind: "PRACTICAL_LESSON" | "SCENARIO" | "RECAP" | "ORIENTATION";
   titleEn: string;
   titleEs: string | null;
   bodyEn?: string;
@@ -29,7 +29,13 @@ export default function RookieContentCard({ item, language }: { item: RookieCont
   const [isPending, startTransition] = useTransition();
 
   const badgeLabel =
-    item.kind === "SCENARIO" ? labels.rookieScenarioBadge : item.kind === "RECAP" ? labels.rookieRecapBadge : labels.rookiePracticalBadge;
+    item.kind === "SCENARIO"
+      ? labels.rookieScenarioBadge
+      : item.kind === "RECAP"
+        ? labels.rookieRecapBadge
+        : item.kind === "ORIENTATION"
+          ? labels.rookieOrientationBadge
+          : labels.rookiePracticalBadge;
 
   function handleComplete() {
     setCompleted(true);

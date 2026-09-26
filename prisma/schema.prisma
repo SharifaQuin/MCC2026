@@ -322,6 +322,13 @@ model Lesson {
   // unpublishing the whole module. Defaults to true so existing/new
   // lessons stay visible unless explicitly hidden.
   published            Boolean  @default(true)
+  // Set when this lesson's content has been superseded by a more current/
+  // authoritative lesson elsewhere (e.g. an older policy lesson replaced by
+  // a newer one) — flagged for admins so it isn't accidentally assigned as
+  // current training, without deleting or rewriting the original content.
+  supersededByLessonId String?
+  supersededBy         Lesson?  @relation("LessonSupersession", fields: [supersededByLessonId], references: [id])
+  supersedes           Lesson[] @relation("LessonSupersession")
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -2213,6 +2220,7 @@ enum RookieContentKind {
   PRACTICAL_LESSON
   SCENARIO
   RECAP
+  ORIENTATION
 }
 
 model RookieContentItem {

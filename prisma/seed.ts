@@ -1412,6 +1412,75 @@ async function seedRookieCurriculumContent() {
   );
 }
 
+// Sep-2026 pre-merge UX adjustment: (1) Day 1 no longer shows 21 individual
+// lessons — their content is now in the 4 ORIENTATION cards seeded above,
+// so any leftover Day-1 lesson assignment for those 21 lessons is removed
+// (the Lesson rows themselves are never touched — they become Unassigned,
+// still reachable at /modules). (2) Days 4-10's Academy time targets are
+// reduced. (3) Module 15 Lesson 6 is flagged as superseded by Module 24
+// Lesson 1 so it isn't accidentally assigned as current training. All
+// steps are idempotent/guarded so a later Admin customization is never
+// silently overwritten.
+async function seedRookieCurriculumDay1Adjustment() {
+  const DAY1_CONSOLIDATED_LESSON_KEYS = [
+    "1-1", "1-2", "1-3", "1-5", "1-6", "1-8",
+    "2-1", "3-1", "4-1",
+    "5-1", "5-2", "5-3",
+    "8-1", "8-2",
+    "15-1", "15-2", "15-3", "15-8", "15-11",
+    "24-1", "23-1",
+  ];
+
+  const modules = await prisma.module.findMany({ select: { id: true, order: true } });
+  const moduleIdByOrder = new Map(modules.map((m) => [m.order, m.id]));
+  const day1 = await prisma.rookieDay.findUnique({ where: { dayNumber: 1 }, select: { id: true } });
+
+  let day1Unassigned = 0;
+  if (day1) {
+    for (const key of DAY1_CONSOLIDATED_LESSON_KEYS) {
+      const [mo, lo] = key.split("-").map(Number);
+      const moduleId = moduleIdByOrder.get(mo);
+      if (!moduleId) continue;
+      const lesson = await prisma.lesson.findFirst({ where: { moduleId, order: lo }, select: { id: true } });
+      if (!lesson) continue;
+      const assignment = await prisma.rookieLessonAssignment.findUnique({ where: { lessonId: lesson.id } });
+      if (assignment && assignment.rookieDayId === day1.id && assignment.slot === "ROOKIE_DAY") {
+        await prisma.rookieLessonAssignment.delete({ where: { lessonId: lesson.id } });
+        day1Unassigned++;
+      }
+    }
+  }
+
+  // Days 4-10 Academy time reduction — guarded: only touches a day still
+  // at its Phase-2 launch value of 30 minutes.
+  const NEW_TIME_BY_DAY: Record<number, number> = { 4: 20, 5: 20, 6: 15, 7: 20, 8: 15, 9: 15, 10: 10 };
+  let daysTimeUpdated = 0;
+  for (const [dayNumberStr, newMinutes] of Object.entries(NEW_TIME_BY_DAY)) {
+    const dayNumber = Number(dayNumberStr);
+    const existing = await prisma.rookieDay.findUnique({ where: { dayNumber }, select: { id: true, estimatedAcademyMinutes: true } });
+    if (!existing || existing.estimatedAcademyMinutes !== 30) continue;
+    await prisma.rookieDay.update({ where: { id: existing.id }, data: { estimatedAcademyMinutes: newMinutes } });
+    daysTimeUpdated++;
+  }
+
+  // Uniform duplication: flag M15L6 as superseded by M24L1, once.
+  let supersessionSet = false;
+  const m15Id = moduleIdByOrder.get(15);
+  const m24Id = moduleIdByOrder.get(24);
+  if (m15Id && m24Id) {
+    const m15l6 = await prisma.lesson.findFirst({ where: { moduleId: m15Id, order: 6 } });
+    const m24l1 = await prisma.lesson.findFirst({ where: { moduleId: m24Id, order: 1 } });
+    if (m15l6 && m24l1 && !m15l6.supersededByLessonId) {
+      await prisma.lesson.update({ where: { id: m15l6.id }, data: { supersededByLessonId: m24l1.id } });
+      supersessionSet = true;
+    }
+  }
+
+  console.log(
+    `Rookie Curriculum Day-1 adjustment: unassigned ${day1Unassigned} consolidated Day-1 lessons, updated Academy time on ${daysTimeUpdated} day(s), uniform supersession flag ${supersessionSet ? "set" : "already set/skipped"}.`
+  );
+}
+
 async function main() {
   await seedAdmin();
   await seedTestAccounts();
@@ -1424,6 +1493,7 @@ async function main() {
   await seedCleaningTechnicianPosting();
   await seedRookieJourney();
   await seedRookieCurriculumContent();
+  await seedRookieCurriculumDay1Adjustment();
 }
 
 main()
