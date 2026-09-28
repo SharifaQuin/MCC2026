@@ -493,6 +493,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
   </div>
   <div class="assume-body" id="assume-body">
     <div class="assume-grid">
+      <div class="assume-item" style="border-left-color:var(--orange);background:rgba(200,110,40,.10);"><b>Cost engine updated (Sep 2026 client audit):</b> ✓ Real data — TCS jobs &amp; payroll Jul 1–Sep 28, 2026. Drive time is now paid at the full $25/hr tech wage (was $16.90), using each city's real drive time per tech and real mileage per visit from TCS drive logs (was a flat 1 hr/tech and a flat per-hour mileage rate). Overhead is now $20.52 per paid tech-hour, cleaning + drive (was $4,452.60/mo ÷ team-hours): rent, admin, insurance beyond workers' comp, fuel, vehicle, recruiting, software, supplies, card-paid supplies/marketing and training hours ÷ 438 client hours/mo. The walk-away floor and margin check below now use these costs. Client prices themselves are unchanged — that stays the owner's decision.</div>
       <div class="assume-item" style="border-left-color:var(--gold-mid);background:rgba(58,107,69,.12);"><b>Sqft pace (Standard):</b> ✓ Real data (July 2026) — 29 logged recurring light-condition jobs, team of 2 (1 outlier excluded — very light scope). Formula: 1.14 hrs base + 0.63 hrs per 1,000 sqft.</div>
       <div class="assume-item" style="border-left-color:var(--gold-mid);background:rgba(58,107,69,.12);"><b>Client rate:</b> ✓ Decided (July 2026) — $150/hr team ($75/tech), chosen after comparing margin at $130.90/hr vs $150/hr against real overhead. Applies to Standard &amp; A la carte.</div>
       <div class="assume-item" style="border-left-color:var(--gold-mid);background:rgba(58,107,69,.12);"><b>Frequency discount (Standard):</b> ✓ Decided (July 2026) — Weekly -15%, Bi-Weekly -10%, Tri-Weekly -5%, Monthly &amp; One-Time at base rate. Business decision — real CRM job-time data was checked but too inconsistent to derive an exact number.</div>
@@ -520,6 +521,12 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
     <div class="svc-grid" id="svc-grid"></div>
 
     <div class="field-group">
+      <div class="field-label">Client address</div>
+      <input type="text" id="job-address" placeholder="Paste the address, e.g. 27 Earlymorn, Irvine, CA 92614" oninput="onJobAddress(this.value)" autocomplete="off">
+      <div class="note-box" id="addr-note">Paste the full address — the city and its real drive cost are picked automatically.</div>
+    </div>
+
+    <div class="field-group">
       <div class="field-label">City</div>
       <select id="city-select" onchange="recalc()">
         <optgroup label="🔥 Hot Zones — most clients here">
@@ -541,6 +548,13 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
           <option value="San Juan Capistrano">San Juan Capistrano</option>
           <option value="Laguna Hills">Laguna Hills</option>
           <option value="Tustin">Tustin</option>
+          <option value="Laguna Woods">Laguna Woods</option>
+          <option value="Ladera Ranch">Ladera Ranch</option>
+          <option value="Rancho Mission Viejo">Rancho Mission Viejo</option>
+          <option value="Newport Coast">Newport Coast</option>
+          <option value="Santa Ana">Santa Ana</option>
+          <option value="Anaheim">Anaheim</option>
+          <option value="Long Beach">Long Beach</option>
           <option value="Other">Other / not listed</option>
         </optgroup>
       </select>
@@ -634,7 +648,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
       </div>
       <div class="save-quote-row">
         <input type="text" id="save-client-id" placeholder="Quote ID (e.g. smith-0728)">
-        <input type="text" id="save-client-address" placeholder="Service address (optional)">
+        <input type="text" id="save-client-address" placeholder="Service address (optional)" oninput="this.dataset.userEdited='1'">
       </div>
       <div class="save-quote-row">
         <input type="email" id="save-client-email" placeholder="Client email (needed to send the quote)">
@@ -695,7 +709,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 </div>
 
 <div style="max-width:1300px;margin:0 auto;padding:0 32px;">
-  <div class="disclaimer">This is a working internal tool. All core pricing inputs — sqft pacing, rates, frequency/volume discounts, add-ons, overhead, mileage, and hot-zone pricing — now reflect real data or owner-confirmed decisions (July 2026). Competitor pricing research is the one open item not yet incorporated. Review the assumptions banner above for the full history of what changed.</div>
+  <div class="disclaimer">This is a working internal tool. All core pricing inputs — sqft pacing, rates, frequency/volume discounts, add-ons, overhead, mileage, and hot-zone pricing — now reflect real data or owner-confirmed decisions (July 2026), with drive time, mileage and overhead updated from the Sep 2026 client audit. Competitor pricing research is the one open item not yet incorporated. Review the assumptions banner above for the full history of what changed.</div>
 </div>
 
 
@@ -1368,8 +1382,13 @@ const MONTHLY_OVERHEAD_PER_HR = {
   8:{rate:9.06,  label:'Sep', real:false},  9:{rate:10.04, label:'Oct', real:false},
   10:{rate:18.47,label:'Nov', real:true},   11:{rate:17.40,label:'Dec', real:true}
 };
+// UPDATED (Sep 2026 client audit) — replaces the monthly table above for all cost math.
+// $7,758.38/mo overhead (Jun–Aug avg) + ~40 hrs/mo paid training/meeting time,
+// ÷ 438 client-attributable paid tech-hours/mo (cleaning + drive, TCS payroll Jul–Sep 2026).
+// Applied per PAID TECH-HOUR (each tech's cleaning hours + drive hours). Workers' comp is NOT in here (it's WC_RATE).
+const AUDIT_OVERHEAD_PER_TECH_HR = 20.52;
 function currentOverheadPerHr(){
-  return MONTHLY_OVERHEAD_PER_HR[new Date().getMonth()];
+  return {rate:AUDIT_OVERHEAD_PER_TECH_HR, label:'Sep 2026 audit', real:true};
 }
 const RATE_PER_TECH = 75.00; // Updated July 2026: confirmed client rate (was $65.45 aspirational-vs-current test; now decided at $150/hr team)
 const TEAM_RATE = RATE_PER_TECH * 2;
@@ -1404,8 +1423,58 @@ const CITY_DATA = {
   'San Juan Capistrano': {income:129457, hot:false, premium:0},
   'Laguna Hills': {income:128851, hot:false, premium:0},
   'Tustin': {income:101499, hot:false, premium:0},
+  'Laguna Woods': {income:null, hot:false, premium:0},
+  'Ladera Ranch': {income:null, hot:false, premium:0},
+  'Rancho Mission Viejo': {income:null, hot:false, premium:0},
+  'Newport Coast': {income:null, hot:false, premium:0},
+  'Santa Ana': {income:null, hot:false, premium:0},
+  'Anaheim': {income:null, hot:false, premium:0},
+  'Long Beach': {income:null, hot:false, premium:0},
   'Other': {income:null, hot:false, premium:0},
 };
+
+// REAL DATA (Sep 2026 client audit) — TCS drive logs, Jul 1–Sep 28, 2026.
+// drive = avg drive hours PER TECH per visit (includes share of the drive back to the office)
+// mile  = avg mileage reimbursement $ per visit (one vehicle, $0.72/mi)
+// day   = weekday the team is most often already in that city
+const CITY_DRIVE = {"Aliso Viejo":{"drive":0.44,"mile":10.91,"visits":7,"day":"Thursday"},"Anaheim":{"drive":0.57,"mile":15.02,"visits":1,"day":"Thursday"},"Corona Del Mar":{"drive":0.39,"mile":7.02,"visits":26,"day":"Friday"},"Costa Mesa":{"drive":0.36,"mile":6.09,"visits":17,"day":"Wednesday"},"Dana Point":{"drive":0.33,"mile":9.09,"visits":7,"day":"Tuesday"},"Huntington Beach":{"drive":0.46,"mile":8.36,"visits":18,"day":"Monday"},"Irvine":{"drive":0.42,"mile":7.08,"visits":53,"day":"Wednesday"},"Ladera Ranch":{"drive":0.3,"mile":6.14,"visits":5,"day":"Monday"},"Laguna Beach":{"drive":0.75,"mile":10.02,"visits":22,"day":"Friday"},"Laguna Hills":{"drive":0.53,"mile":12.21,"visits":3,"day":"Thursday"},"Laguna Niguel":{"drive":0.61,"mile":14.07,"visits":22,"day":"Tuesday"},"Laguna Woods":{"drive":0.5,"mile":7.69,"visits":8,"day":"Friday"},"Lake Forest":{"drive":0.6,"mile":10.82,"visits":12,"day":"Wednesday"},"Long Beach":{"drive":0.57,"mile":9.26,"visits":2,"day":"Monday"},"Mission Viejo":{"drive":0.44,"mile":9.66,"visits":30,"day":"Thursday"},"Newport Beach":{"drive":0.79,"mile":10.64,"visits":1,"day":"Thursday"},"Rancho Santa Margarita":{"drive":0.46,"mile":8.97,"visits":14,"day":"Thursday"},"San Clemente":{"drive":0.7,"mile":22.35,"visits":10,"day":"Monday"},"San Juan Capistrano":{"drive":0.51,"mile":7.97,"visits":4,"day":"Monday"},"Tustin":{"drive":0.2,"mile":3.37,"visits":13,"day":"Thursday"}};
+const CITY_DRIVE_BORROW = {"Newport Coast":"Corona Del Mar","Santa Ana":"Tustin","Rancho Mission Viejo":"San Juan Capistrano"};
+const CITY_DRIVE_FALLBACK = {drive:0.6, mile:14.00, visits:0, day:''}; // 'Other' — deliberately above the 0.47 hr / $9.09 company average
+
+function getCityDrive(){
+  const city = document.getElementById('city-select') ? document.getElementById('city-select').value : 'Other';
+  if(CITY_DRIVE[city]) return {...CITY_DRIVE[city], city, borrowed:null};
+  if(CITY_DRIVE_BORROW[city]) return {...CITY_DRIVE[CITY_DRIVE_BORROW[city]], city, borrowed:CITY_DRIVE_BORROW[city]};
+  return {...CITY_DRIVE_FALLBACK, city, borrowed:null, fallback:true};
+}
+
+const ZIP_TO_CITY = {"90805":"Long Beach","92602":"Irvine","92603":"Irvine","92604":"Irvine","92606":"Irvine","92612":"Irvine","92614":"Irvine","92617":"Irvine","92618":"Irvine","92620":"Irvine","92610":"Lake Forest","92630":"Lake Forest","92625":"Corona Del Mar","92626":"Costa Mesa","92627":"Costa Mesa","92629":"Dana Point","92624":"Dana Point","92637":"Laguna Woods","92646":"Huntington Beach","92647":"Huntington Beach","92648":"Huntington Beach","92649":"Huntington Beach","92651":"Laguna Beach","92653":"Laguna Hills","92656":"Aliso Viejo","92657":"Newport Coast","92660":"Newport Beach","92661":"Newport Beach","92662":"Newport Beach","92663":"Newport Beach","92672":"San Clemente","92673":"San Clemente","92674":"San Clemente","92675":"San Juan Capistrano","92677":"Laguna Niguel","92679":"Rancho Santa Margarita","92688":"Rancho Santa Margarita","92691":"Mission Viejo","92692":"Mission Viejo","92694":"Ladera Ranch","92701":"Santa Ana","92703":"Santa Ana","92704":"Santa Ana","92705":"Santa Ana","92706":"Santa Ana","92707":"Santa Ana","92780":"Tustin","92782":"Tustin","92801":"Anaheim","92802":"Anaheim","92804":"Anaheim","92805":"Anaheim","92806":"Anaheim","92807":"Anaheim","92808":"Anaheim"};
+
+function onJobAddress(v){
+  const note = document.getElementById('addr-note');
+  const sel = document.getElementById('city-select');
+  const addr = (v||'').trim();
+  if(!addr){ note.textContent = 'Paste the full address — the city and its real drive cost are picked automatically.'; return; }
+  let city = null;
+  const zip = (addr.match(/\b(9\d{4})\b/)||[])[1];
+  if(zip && ZIP_TO_CITY[zip]) city = ZIP_TO_CITY[zip];
+  if(!city){
+    const low = addr.toLowerCase();
+    const opts = Array.from(sel.options).map(o=>o.value).filter(x=>x && x!=='Other').sort((a,b)=>b.length-a.length);
+    city = opts.find(o => low.includes(o.toLowerCase())) || null;
+  }
+  if(city && Array.from(sel.options).some(o=>o.value===city)){
+    sel.value = city;
+    note.textContent = `City set to ${city}${zip?` (ZIP ${zip})`:''}.`;
+  } else {
+    sel.value = 'Other';
+    note.textContent = "Couldn't match a city or ZIP we serve — pick the nearest city below. 'Other' uses a conservative drive cost.";
+  }
+  const saveAddr = document.getElementById('save-client-address');
+  if(saveAddr && !saveAddr.dataset.userEdited) saveAddr.value = addr;
+  recalc();
+}
+
 function getCityPremium(){
   const c = CITY_DATA[document.getElementById('city-select') ? document.getElementById('city-select').value : 'Other'];
   return c ? c.premium : 0;
@@ -1828,17 +1897,23 @@ const DRIVE_HOURS_PER_TECH = 1.0;   // confirmed Aug 2026: 1 hr drive time per t
 const CA_MIN_WAGE = 16.90;          // confirmed July 2026, CA statewide minimum wage
 
 function fixedCostFor(hours, teamSize){
+  // UPDATED (Sep 2026 client audit): drive paid at full tech wage using the city's real drive time per tech;
+  // mileage = real per-visit average for the city (Housekeeping keeps its logged office round trip);
+  // overhead charged per paid tech-hour (cleaning + drive).
   const isSolo = teamSize===1;
-  const cleaningWage = teamSize*25*hours;
-  const driveWage = teamSize*DRIVE_HOURS_PER_TECH*CA_MIN_WAGE; // per-tech drive wage, all team sizes
+  const cd = getCityDrive();
+  const cleaningWage = teamSize*TECH_WAGE*hours;
+  const driveHrsTotal = teamSize*cd.drive;
+  const driveWage = driveHrsTotal*TECH_WAGE;
   const wage = cleaningWage + driveWage;
   const wc = wage*WC_RATE;
   const tax = wage*TAX_RATE;
-  const mileage = isSolo ? (HK_ROUNDTRIP_MILES*MILEAGE_RATE) : (MILEAGE_PER_TEAM_HOUR*hours); // unchanged — one vehicle's mileage per job
+  const mileage = (isSolo && state.service==='housekeeping') ? (HK_ROUNDTRIP_MILES*MILEAGE_RATE) : cd.mile;
   const hardCost = wage+wc+tax+mileage;
   const oh = currentOverheadPerHr();
-  const overhead = oh.rate*hours;
-  return {cleaningWage,driveWage,wage,wc,tax,mileage,hardCost,overhead,overheadMonth:oh};
+  const paidTechHours = teamSize*hours + driveHrsTotal;
+  const overhead = oh.rate*paidTechHours;
+  return {cleaningWage,driveWage,wage,wc,tax,mileage,hardCost,overhead,overheadMonth:oh,cityDrive:cd,driveHrsTotal,paidTechHours};
 }
 function costBreakdown(price, hours, teamSize){
   const f = fixedCostFor(hours, teamSize);
@@ -1908,6 +1983,8 @@ function buildCRMText(){
   lines.push('');
   lines.push(`QUOTED PRICE RANGE: ${rangeLine}`);
   lines.push(`SUGGESTED PRICE: $${suggested}`);
+  const crmCd = getCityDrive();
+  if(crmCd.day) lines.push(`Best route day: ${crmCd.day} (${crmCd.borrowed||crmCd.city})`);
   lines.push('');
   lines.push(`Notes: ${state.notes ? state.notes : '(none)'}`);
   return lines.join('\n');
@@ -2136,6 +2213,11 @@ function recalc(){
     } else {
       cityNote.textContent = 'Tagged for reference only — no income data / no price adjustment.';
     }
+    const cdn = getCityDrive();
+    const driveTxt = cdn.fallback
+      ? ` Drive: no route history — using a conservative ${cdn.drive.toFixed(2)} hrs/tech + $${cdn.mile.toFixed(2)} mileage.`
+      : ` Drive (TCS Jul–Sep${cdn.borrowed?', using '+cdn.borrowed:''}): ${cdn.drive.toFixed(2)} hrs/tech + $${cdn.mile.toFixed(2)} mileage per visit.${cdn.day?' Best route day: '+cdn.day+'.':''}`;
+    cityNote.textContent += driveTxt;
   }
   if(state.service==='standard' && FREQUENCY_DISCOUNTS[state.frequency] > 0){
     const freqLabel = {onetime:'One-Time',monthly:'Monthly',triweekly:'Tri-Weekly',biweekly:'Bi-Weekly',weekly:'Weekly'}[state.frequency];
@@ -2153,27 +2235,34 @@ function recalc(){
   const marginCls = b.margin < 0 ? 'margin-bad' : (b.marginPct < 20 ? '' : 'margin-good');
   document.getElementById('ledger-body').innerHTML = `
     <tr><td>Cleaning wage (${r.teamSize} tech${r.teamSize>1?'s':''} × ${r.hours.toFixed(2)} hrs)</td><td>$${b.cleaningWage.toFixed(2)}</td></tr>
-    <tr><td>Drive time wage (${r.teamSize} tech${r.teamSize>1?'s':''} × 1 hr @ CA min wage $16.90)</td><td>$${b.driveWage.toFixed(2)}</td></tr>
+    <tr><td>Drive time wage (${r.teamSize} tech${r.teamSize>1?'s':''} × ${b.cityDrive.drive.toFixed(2)} hrs @ $${TECH_WAGE}/hr — ${b.cityDrive.borrowed?b.cityDrive.borrowed+' drive data':(b.cityDrive.fallback?'conservative estimate':'TCS avg, '+b.cityDrive.city)})</td><td>$${b.driveWage.toFixed(2)}</td></tr>
     <tr><td>Workers comp (15%)</td><td>$${b.wc.toFixed(2)}</td></tr>
     <tr><td>Payroll tax (10.5%)</td><td>$${b.tax.toFixed(2)}</td></tr>
-    <tr><td>Mileage${r.teamSize===1?' (round trip, office ↔ client)':' (per team-hour, one vehicle)'}</td><td>$${b.mileage.toFixed(2)}</td></tr>
+    <tr><td>Mileage${(r.teamSize===1 && state.service==='housekeeping')?' (round trip, office ↔ client)':' (one vehicle — TCS avg per visit for this city)'}</td><td>$${b.mileage.toFixed(2)}</td></tr>
     <tr class="total"><td>Hard cost subtotal</td><td>$${b.hardCost.toFixed(2)}</td></tr>
-    <tr><td>Overhead (${b.overheadMonth.label}, $${b.overheadMonth.rate.toFixed(2)}/hr${b.overheadMonth.real?'':' — estimated'})</td><td>$${b.overhead.toFixed(2)}</td></tr>
+    <tr><td>Overhead (${b.paidTechHours.toFixed(2)} paid tech-hrs × $${b.overheadMonth.rate.toFixed(2)} — ${b.overheadMonth.label})</td><td>$${b.overhead.toFixed(2)}</td></tr>
     <tr><td>Card processing (Stripe, 2.9% + $0.30)</td><td>$${b.admin.toFixed(2)}</td></tr>
     <tr class="total"><td>Total cost</td><td>$${b.totalCost.toFixed(2)}</td></tr>
     <tr class="margin ${marginCls}"><td>Margin</td><td>$${b.margin.toFixed(2)} (${b.marginPct.toFixed(1)}%)</td></tr>
   `;
 
   const warnBox = document.getElementById('margin-warn');
+  const floorForWarn = minAcceptablePrice(r.hours, r.teamSize, 21);
+  const lowForWarn = (r.lowPrice!=null) ? r.lowPrice : r.price;
+  const cdw = b.cityDrive;
+  const dayTip = cdw.day ? ` Offer ${cdw.day} first — the team is already in ${cdw.borrowed||cdw.city} that day.` : '';
   if(b.margin < 0){
     warnBox.className = 'margin-warn-box show-bad';
-    warnBox.textContent = `This quote falls below the placeholder cost floor by $${Math.abs(b.margin).toFixed(2)}. Even with real overhead numbers still pending, this configuration is unlikely to become profitable.`;
-  } else if(b.marginPct < 15){
+    warnBox.textContent = `Loses $${Math.abs(b.margin).toFixed(2)} at this price. To pay $${TECH_WAGE}/hr and keep 21%, quote at least $${floorForWarn.toFixed(0)} — or trim the scope.${dayTip}`;
+  } else if(b.marginPct < 21){
     warnBox.className = 'margin-warn-box show-bad';
-    warnBox.textContent = `Thin margin (${b.marginPct.toFixed(1)}%) against placeholder costs — worth a second look once real overhead figures are in.`;
+    warnBox.textContent = `Below the 21% target (${b.marginPct.toFixed(1)}%). Quote at least $${floorForWarn.toFixed(0)} to keep 21% after paying the team $${TECH_WAGE}/hr for cleaning and drive time.${dayTip}`;
+  } else if(lowForWarn < floorForWarn){
+    warnBox.className = 'margin-warn-box show-bad';
+    warnBox.textContent = `The suggested price clears 21% (${b.marginPct.toFixed(1)}%), but the low end of the range ($${lowForWarn.toFixed(0)}) is under the $${floorForWarn.toFixed(0)} floor. Don't close below $${floorForWarn.toFixed(0)}.${dayTip}`;
   } else {
     warnBox.className = 'margin-warn-box show-good';
-    warnBox.textContent = `Margin looks healthy against placeholder costs (${b.marginPct.toFixed(1)}%) — will shift once real overhead, admin-fee composition, and add-on data are in.`;
+    warnBox.textContent = `Clears the 21% target (${b.marginPct.toFixed(1)}%) with the team paid $${TECH_WAGE}/hr for cleaning and drive time.${dayTip}`;
   }
 
   document.getElementById('hours-note').textContent = r.note;
