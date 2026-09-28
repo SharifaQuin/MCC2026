@@ -38,6 +38,8 @@ import {
   getDay3Readiness,
   getDay10Review,
   getSealEvaluationHistory,
+  getEffectiveRookiePosition,
+  buildRookieRail,
 } from "@/lib/rookieJourney";
 import RookieJourneyPanel from "@/components/RookieJourneyPanel";
 
@@ -189,13 +191,18 @@ export async function loadEmployeeDetail(userId: string) {
     user.role === "TRAINEE"
       ? await (async () => {
           const position = getRookieJourneyPosition(rookieAnchorDate(user));
-          const [day3, day10, sealHistory] = await Promise.all([
+          const [day3, day10, sealHistory, effectivePosition] = await Promise.all([
             getDay3Readiness(userId),
             getDay10Review(userId),
             getSealEvaluationHistory(userId),
+            getEffectiveRookiePosition(userId),
           ]);
+          const dayHistory = buildRookieRail(effectivePosition)
+            .filter((stop) => Number(stop.label) <= 10)
+            .map((stop) => ({ dayNumber: Number(stop.label), status: stop.status }));
           return {
             position,
+            dayHistory,
             day3: day3
               ? {
                   decision: day3.decision,
@@ -419,6 +426,7 @@ export function EmployeeDetailView({
             day3={rookie.day3}
             day10={rookie.day10}
             sealHistory={rookie.sealHistory}
+            dayHistory={rookie.dayHistory}
           />
         </section>
       )}

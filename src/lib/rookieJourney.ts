@@ -525,7 +525,10 @@ export async function getRookieDayContentSequence(rookieDayId: string) {
 export async function getRookieContentItem(id: string) {
   return prisma.rookieContentItem.findUnique({
     where: { id },
-    include: { sourceLessons: { include: { lesson: { select: { titleEn: true, order: true, module: { select: { titleEn: true, order: true } } } } } } },
+    include: {
+      sourceLessons: { include: { lesson: { select: { titleEn: true, order: true, module: { select: { titleEn: true, order: true } } } } } },
+      rookieDay: { select: { dayNumber: true } },
+    },
   });
 }
 
@@ -571,16 +574,12 @@ export interface TodaysRookieTraining {
   } | null;
 }
 
-export async function getTodaysRookieTraining(userId: string): Promise<TodaysRookieTraining> {
-  const position = await getEffectiveRookiePosition(userId);
-  const rail = buildRookieRail(position);
-
-  if (position.phase !== "ROOKIE_DAY") {
-    return { position, rail, day: null };
-  }
-
-  const dayConfig = await prisma.rookieDay.findUnique({
-    where: { dayNumber: position.day },
+// Shared by getTodaysRookieTraining, getRookieDayReview, and the
+// access/next-href functions below, so a Rookie Day's content is fetched
+// and merged into one sequence exactly the same way regardless of caller.
+async function fetchRookieDayConfig(dayNumber: number) {
+  return prisma.rookieDay.findUnique({
+    where: { dayNumber },
     include: {
       lessons: {
         where: { slot: "ROOKIE_DAY" },
@@ -608,8 +607,11 @@ export async function getTodaysRookieTraining(userId: string): Promise<TodaysRoo
       fieldSkills: { orderBy: { order: "asc" }, include: { fieldSkill: true } },
     },
   });
-  if (!dayConfig) return { position, rail, day: null };
+}
 
+type RookieDayConfig = NonNullable<Awaited<ReturnType<typeof fetchRookieDayConfig>>>;
+
+async function getRookieDayCompletionSets(userId: string, dayConfig: RookieDayConfig) {
   const lessonIds = dayConfig.lessons.map((l) => l.lessonId);
   const contentIds = dayConfig.contentItems.map((c) => c.id);
   const [completedLessonRows, completedContentRows] = await Promise.all([
@@ -623,19 +625,18 @@ export async function getTodaysRookieTraining(userId: string): Promise<TodaysRoo
         })
       : Promise.resolve([]),
   ]);
-  const completedLessonIds = new Set(completedLessonRows.map((r) => r.lessonId));
-  const completedContentIds = new Set(completedContentRows.map((r) => r.contentItemId));
+  return {
+    completedLessonIds: new Set(completedLessonRows.map((r) => r.lessonId)),
+    completedContentIds: new Set(completedContentRows.map((r) => r.contentItemId)),
+  };
+}
 
-  const lessons = dayConfig.lessons.map((l) => ({
-    id: l.lesson.id,
-    titleEn: l.lesson.titleEn,
-    titleEs: l.lesson.titleEs,
-    moduleSlug: l.lesson.module.slug,
-    lessonOrder: l.lesson.order,
-    completed: completedLessonIds.has(l.lesson.id),
-  }));
-
-  const sequence: RookieDaySequenceEntry[] = [
+function buildRookieDaySequence(
+  dayConfig: RookieDayConfig,
+  completedLessonIds: Set<string>,
+  completedContentIds: Set<string>
+): RookieDaySequenceEntry[] {
+  return [
     ...dayConfig.lessons.map((l) => ({
       order: l.order,
       kind: "LESSON" as const,
@@ -683,6 +684,31 @@ export async function getTodaysRookieTraining(userId: string): Promise<TodaysRoo
       };
     }),
   ].sort((a, b) => a.order - b.order);
+}
+
+export async function getTodaysRookieTraining(userId: string): Promise<TodaysRookieTraining> {
+  const position = await getEffectiveRookiePosition(userId);
+  const rail = buildRookieRail(position);
+
+  if (position.phase !== "ROOKIE_DAY") {
+    return { position, rail, day: null };
+  }
+
+  const dayConfig = await fetchRookieDayConfig(position.day);
+  if (!dayConfig) return { position, rail, day: null };
+
+  const { completedLessonIds, completedContentIds } = await getRookieDayCompletionSets(userId, dayConfig);
+
+  const lessons = dayConfig.lessons.map((l) => ({
+    id: l.lesson.id,
+    titleEn: l.lesson.titleEn,
+    titleEs: l.lesson.titleEs,
+    moduleSlug: l.lesson.module.slug,
+    lessonOrder: l.lesson.order,
+    completed: completedLessonIds.has(l.lesson.id),
+  }));
+
+  const sequence = buildRookieDaySequence(dayConfig, completedLessonIds, completedContentIds);
 
   return {
     position,
@@ -708,66 +734,165 @@ export async function getTodaysRookieTraining(userId: string): Promise<TodaysRoo
   };
 }
 
+// The trainee's (or, when passed a specific userId, a trainer/admin
+// inspecting a trainee's) largest Rookie Day reached so far — used both to
+// gate direct lesson/content access and to gate the read-only "revisit a
+// past day" view below. Every day 1..N is available for review once N is
+// reached, whether or not it's still today's current day.
+async function getEffectiveRookieDayNumber(userId: string): Promise<number> {
+  const position = await getEffectiveRookiePosition(userId);
+  return position.phase === "ROOKIE_DAY" ? position.day : ROOKIE_DAY_COUNT;
+}
+
 // Re-exported so callers don't need to know the Rookie Journey reuses the
 // exact same completion path /modules uses — there is no separate "mark
 // complete" for a lesson reached through the Rookie dashboard.
 export { markLessonComplete };
 
+// ── Trainee-facing: revisit a completed (or the current) Rookie Day ──
+
+export interface RookieDayReview {
+  dayNumber: number;
+  titleEn: string;
+  titleEs: string;
+  descriptionEn: string;
+  descriptionEs: string;
+  estimatedAcademyMinutes: number;
+  fieldGoalEn: string | null;
+  fieldGoalEs: string | null;
+  sequence: RookieDaySequenceEntry[];
+  fieldSkills: { id: string; labelEn: string; labelEs: string }[];
+  isCurrentDay: boolean;
+}
+
+// Returns null when dayNumber is out of range or hasn't been reached yet
+// (no peeking ahead at days not yet unlocked by pace/completion) — the
+// caller should notFound() in that case.
+export async function getRookieDayReview(userId: string, dayNumber: number): Promise<RookieDayReview | null> {
+  if (!Number.isInteger(dayNumber) || dayNumber < 1 || dayNumber > ROOKIE_DAY_COUNT) return null;
+  const effectiveDay = await getEffectiveRookieDayNumber(userId);
+  if (dayNumber > effectiveDay) return null;
+
+  const dayConfig = await fetchRookieDayConfig(dayNumber);
+  if (!dayConfig) return null;
+
+  const { completedLessonIds, completedContentIds } = await getRookieDayCompletionSets(userId, dayConfig);
+  const sequence = buildRookieDaySequence(dayConfig, completedLessonIds, completedContentIds);
+
+  return {
+    dayNumber: dayConfig.dayNumber,
+    titleEn: dayConfig.titleEn,
+    titleEs: dayConfig.titleEs,
+    descriptionEn: dayConfig.descriptionEn,
+    descriptionEs: dayConfig.descriptionEs,
+    estimatedAcademyMinutes: dayConfig.estimatedAcademyMinutes,
+    fieldGoalEn: dayConfig.fieldGoalEn,
+    fieldGoalEs: dayConfig.fieldGoalEs,
+    sequence,
+    fieldSkills: dayConfig.fieldSkills.map((s) => ({
+      id: s.fieldSkill.id,
+      labelEn: s.fieldSkill.labelEn,
+      labelEs: s.fieldSkill.labelEs,
+    })),
+    isCurrentDay: dayNumber === effectiveDay,
+  };
+}
+
+// ── Trainee-facing: direct-navigation access + "Continue" chaining ──
+//
 // A Rookie Day only assigns a hand-picked subset of a module's lessons
 // (e.g. Day 4 assigns Module 9 Lesson 9 but none of Lessons 1-8), so the
 // original whole-module linear flow (bottom of a lesson page: "Continue"
 // -> next lesson in the SAME module -> that module's quiz; a
 // not-yet-completed earlier lesson in the module -> redirected there
-// first) is wrong for a trainee inside their Rookie Day: it would pull
-// them through modules well beyond what today's Rookie Day assigned.
-//
-// Returns null when this lesson isn't part of the trainee's *current*
-// Rookie Day sequence (not a Trainee, past/future the 10-day window,
-// admin has switched the training experience to "classic", or the lesson
-// simply isn't today's) — callers fall back to the original linear
-// module flow unchanged. Returns the href to send the trainee to next
-// when it is: another Rookie-Day lesson's own page, or "/" (the Rookie
-// dashboard) if this was the last item today or the next item is a
-// condensed content card (which only renders on the dashboard, not as
-// its own page).
-export async function getRookieSequenceNextHref(userId: string, lessonId: string): Promise<string | null> {
-  const version = await getTrainingExperienceVersion();
-  if (version !== "rookie") return null;
+// first) is wrong for a Rookie-mode trainee: it would pull them through
+// modules well beyond what any Rookie Day assigned. A Rookie-mode trainee
+// also isn't allowed to browse the classic Academy at all (see /modules'
+// own gate) — the only lessons they can ever open directly are ones
+// assigned to a Rookie Day they've already reached (today's or a past
+// one); anything else (a lesson never assigned to any Rookie Day, or one
+// on a day not reached yet) is off-limits.
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
+interface RookieSequenceAccess {
+  allowed: boolean;
+  // The href for "Continue" from this exact lesson/content item, within
+  // its own day's sequence — "/" when it was that day's last item.
+  nextHref: string | null;
+}
+
+async function findRookieDayNumberForLesson(lessonId: string): Promise<number | null> {
+  const assignment = await prisma.rookieLessonAssignment.findUnique({
+    where: { lessonId },
+    include: { rookieDay: { select: { dayNumber: true } } },
   });
-  if (!user || user.role !== "TRAINEE") return null;
+  return assignment?.slot === "ROOKIE_DAY" ? assignment.rookieDay?.dayNumber ?? null : null;
+}
 
-  const position = await getEffectiveRookiePosition(userId);
-  if (position.phase !== "ROOKIE_DAY") return null;
+async function findRookieDayNumberForContentItem(contentItemId: string): Promise<number | null> {
+  const item = await prisma.rookieContentItem.findUnique({
+    where: { id: contentItemId },
+    include: { rookieDay: { select: { dayNumber: true } } },
+  });
+  return item?.rookieDay.dayNumber ?? null;
+}
 
+async function computeNextHrefWithinDay(
+  dayNumber: number,
+  current: { lessonId: string } | { contentItemId: string }
+): Promise<string> {
   const dayConfig = await prisma.rookieDay.findUnique({
-    where: { dayNumber: position.day },
+    where: { dayNumber },
     include: {
       lessons: { where: { slot: "ROOKIE_DAY" }, orderBy: { order: "asc" } },
       contentItems: { orderBy: { order: "asc" } },
     },
   });
-  if (!dayConfig) return null;
+  if (!dayConfig) return "/";
 
-  const merged: { order: number; lessonId: string | null }[] = [
-    ...dayConfig.lessons.map((l) => ({ order: l.order, lessonId: l.lessonId })),
-    ...dayConfig.contentItems.map((c) => ({ order: c.order, lessonId: null })),
+  const merged: { order: number; lessonId: string | null; contentItemId: string | null }[] = [
+    ...dayConfig.lessons.map((l) => ({ order: l.order, lessonId: l.lessonId, contentItemId: null })),
+    ...dayConfig.contentItems.map((c) => ({ order: c.order, lessonId: null, contentItemId: c.id })),
   ].sort((a, b) => a.order - b.order);
 
-  const idx = merged.findIndex((m) => m.lessonId === lessonId);
-  if (idx === -1) return null;
+  const idx = merged.findIndex((m) =>
+    "lessonId" in current ? m.lessonId === current.lessonId : m.contentItemId === current.contentItemId
+  );
+  if (idx === -1) return "/";
 
   const next = merged[idx + 1];
-  if (!next || !next.lessonId) return "/";
+  if (!next) return "/";
+  if (next.contentItemId) return `/rookie/content/${next.contentItemId}`;
 
   const nextLesson = await prisma.lesson.findUnique({
-    where: { id: next.lessonId },
+    where: { id: next.lessonId! },
     select: { order: true, module: { select: { slug: true } } },
   });
   return nextLesson ? `/modules/${nextLesson.module.slug}/lesson/${nextLesson.order}` : "/";
+}
+
+async function checkRookieRole(userId: string): Promise<boolean> {
+  const version = await getTrainingExperienceVersion();
+  if (version !== "rookie") return false;
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+  return user?.role === "TRAINEE";
+}
+
+export async function getRookieLessonAccess(userId: string, lessonId: string): Promise<RookieSequenceAccess> {
+  if (!(await checkRookieRole(userId))) return { allowed: false, nextHref: null };
+  const dayNumber = await findRookieDayNumberForLesson(lessonId);
+  if (dayNumber === null) return { allowed: false, nextHref: null };
+  const effectiveDay = await getEffectiveRookieDayNumber(userId);
+  if (dayNumber > effectiveDay) return { allowed: false, nextHref: null };
+  return { allowed: true, nextHref: await computeNextHrefWithinDay(dayNumber, { lessonId }) };
+}
+
+export async function getRookieContentAccess(userId: string, contentItemId: string): Promise<RookieSequenceAccess> {
+  if (!(await checkRookieRole(userId))) return { allowed: false, nextHref: null };
+  const dayNumber = await findRookieDayNumberForContentItem(contentItemId);
+  if (dayNumber === null) return { allowed: false, nextHref: null };
+  const effectiveDay = await getEffectiveRookieDayNumber(userId);
+  if (dayNumber > effectiveDay) return { allowed: false, nextHref: null };
+  return { allowed: true, nextHref: await computeNextHrefWithinDay(dayNumber, { contentItemId }) };
 }
 
 // ── Trainer: field checkoffs ──

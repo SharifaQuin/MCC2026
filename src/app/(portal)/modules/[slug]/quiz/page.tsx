@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { getModuleQuiz } from "@/lib/courses";
+import { getTrainingExperienceVersion } from "@/lib/rookieJourney";
 import { requireOnboardingComplete } from "@/lib/onboarding";
 import { shuffle } from "@/lib/shuffle";
 import { t } from "@/lib/i18n";
@@ -11,6 +12,8 @@ export default async function ModuleQuizPage({ params }: { params: { slug: strin
   const session = await getSession();
   if (!session) redirect("/login");
   await requireOnboardingComplete(session);
+  // The Rookie Day sequence never includes a quiz step.
+  if (session.role === "TRAINEE" && (await getTrainingExperienceVersion()) === "rookie") redirect("/");
   const labels = t(session.language);
 
   const quiz = await getModuleQuiz(params.slug, session.sub);

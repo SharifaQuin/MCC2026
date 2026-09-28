@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import {
@@ -156,6 +157,17 @@ export async function markRookieContentCompleteAction(contentItemId: string) {
   if (!session) throw new Error("Not authorized");
   await markRookieContentComplete(session.sub, contentItemId);
   revalidatePath("/");
+}
+
+// The standalone-page equivalent of completeLessonAction (modules/[slug]/lesson/[order]/actions.ts)
+// — marks the card reviewed, then sends the trainee straight to the next
+// item in their Rookie Day sequence.
+export async function completeRookieContentAndContinueAction(contentItemId: string, nextHref: string) {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  await markRookieContentComplete(session.sub, contentItemId);
+  revalidatePath("/");
+  redirect(nextHref);
 }
 
 export interface RookieContentItemFormInput {

@@ -5,6 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { t } from "@/lib/i18n";
 import { loadFieldEvaluationSummaryForTrainee } from "@/lib/fieldEvalData";
 import { requireOnboardingComplete } from "@/lib/onboarding";
+import {
+  getTrainingExperienceVersion,
+  getEffectiveRookiePosition,
+  buildRookieRail,
+} from "@/lib/rookieJourney";
 import BackToTraining from "@/components/BackToTraining";
 
 export default async function ProgressPage() {
@@ -18,16 +23,30 @@ export default async function ProgressPage() {
     select: { certificationStatus: true },
   });
 
-  const modules = await prisma.module.findMany({
-    where: { published: true },
-    orderBy: { order: "asc" },
-    include: {
-      progress: { where: { userId: session.sub } },
-      quizAttempts: { where: { userId: session.sub }, orderBy: { createdAt: "desc" } },
-    },
-  });
-
   const fieldEvals = await loadFieldEvaluationSummaryForTrainee(session.sub);
+
+  // A Rookie-mode trainee never sees the classic Academy's module list here
+  // either — showing "both versions" is exactly what was asked to avoid, so
+  // this becomes a Rookie Day history instead of a module-completion list.
+  const isRookieModeTrainee =
+    session.role === "TRAINEE" && (await getTrainingExperienceVersion()) === "rookie";
+
+  const rookieDayStops = isRookieModeTrainee
+    ? buildRookieRail(await getEffectiveRookiePosition(session.sub)).filter(
+        (stop) => Number(stop.label) <= 10
+      )
+    : null;
+
+  const modules = isRookieModeTrainee
+    ? []
+    : await prisma.module.findMany({
+        where: { published: true },
+        orderBy: { order: "asc" },
+        include: {
+          progress: { where: { userId: session.sub } },
+          quizAttempts: { where: { userId: session.sub }, orderBy: { createdAt: "desc" } },
+        },
+      });
 
   const total = modules.length;
   const completed = modules.filter((m) => m.progress[0]?.status === "COMPLETED").length;
@@ -36,9 +55,11 @@ export default async function ProgressPage() {
     <div>
       {session.role !== "TRAINEE" && <BackToTraining />}
       <h1 className="mb-2 text-2xl font-semibold">{labels.progress}</h1>
-      <p className="mb-6 text-sm text-neutral-500">
-        {completed} / {total} modules completed
-      </p>
+      {!isRookieModeTrainee && (
+        <p className="mb-6 text-sm text-neutral-500">
+          {completed} / {total} modules completed
+        </p>
+      )}
 
       {me?.certificationStatus === "CERTIFIED" && (
         <div className="mb-6 flex items-center justify-between rounded-lg border border-green-200 bg-green-50 p-4">
@@ -52,46 +73,79 @@ export default async function ProgressPage() {
         </div>
       )}
 
-      <div className="space-y-3">
-        {modules.map((m) => {
-          const title = session.language === "ES" && m.titleEs ? m.titleEs : m.titleEn;
-          const status = m.progress[0]?.status ?? "NOT_STARTED";
-          const bestAttempt = m.quizAttempts.reduce<number | null>(
-            (best, a) => (best === null || a.scorePct > best ? a.scorePct : best),
-            null
-          );
-
-          return (
+      {isRookieModeTrainee ? (
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            {labels.rookieDayHistoryTitle}
+          </h2>
+          {rookieDayStops!.map((stop) => (
             <div
-              key={m.id}
+              key={stop.key}
               className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white p-4"
             >
-              <div>
-                <p className="font-medium">{title}</p>
-                <p className="text-xs text-neutral-500">
-                  {m.quizAttempts.length} attempt{m.quizAttempts.length === 1 ? "" : "s"}
-                  {bestAttempt !== null ? ` · best score ${bestAttempt}%` : ""}
-                </p>
-              </div>
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-medium ${
-                  status === "COMPLETED"
-                    ? "bg-green-100 text-green-700"
-                    : status === "IN_PROGRESS"
-                      ? "bg-amber-100 text-amber-700"
-                      : "bg-neutral-100 text-neutral-600"
-                }`}
-              >
-                {status === "COMPLETED"
-                  ? labels.completed
-                  : status === "IN_PROGRESS"
-                    ? labels.inProgress
-                    : labels.notStarted}
-              </span>
+              <p className="font-medium">
+                {labels.dayWord} {stop.label}
+                {stop.status === "current" && (
+                  <span className="ml-2 text-xs text-brand-700">
+                    ({session.language === "ES" ? "hoy" : "today"})
+                  </span>
+                )}
+              </p>
+              {stop.status === "upcoming" ? (
+                <span className="text-xs text-neutral-400">{labels.rookieNotYetReached}</span>
+              ) : (
+                <Link
+                  href={`/rookie/day/${stop.label}`}
+                  className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-brand-700 hover:bg-neutral-200"
+                >
+                  {labels.rookieReviewDay} →
+                </Link>
+              )}
             </div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {modules.map((m) => {
+            const title = session.language === "ES" && m.titleEs ? m.titleEs : m.titleEn;
+            const status = m.progress[0]?.status ?? "NOT_STARTED";
+            const bestAttempt = m.quizAttempts.reduce<number | null>(
+              (best, a) => (best === null || a.scorePct > best ? a.scorePct : best),
+              null
+            );
+
+            return (
+              <div
+                key={m.id}
+                className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white p-4"
+              >
+                <div>
+                  <p className="font-medium">{title}</p>
+                  <p className="text-xs text-neutral-500">
+                    {m.quizAttempts.length} attempt{m.quizAttempts.length === 1 ? "" : "s"}
+                    {bestAttempt !== null ? ` · best score ${bestAttempt}%` : ""}
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${
+                    status === "COMPLETED"
+                      ? "bg-green-100 text-green-700"
+                      : status === "IN_PROGRESS"
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-neutral-100 text-neutral-600"
+                  }`}
+                >
+                  {status === "COMPLETED"
+                    ? labels.completed
+                    : status === "IN_PROGRESS"
+                      ? labels.inProgress
+                      : labels.notStarted}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <h2 className="mb-3 mt-10 text-xl font-semibold">{labels.fieldEvaluations}</h2>
       {fieldEvals.length === 0 ? (

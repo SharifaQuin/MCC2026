@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { getLessonDetail, markModuleInProgress } from "@/lib/courses";
-import { getRookieSequenceNextHref } from "@/lib/rookieJourney";
+import { getRookieLessonAccess, getTrainingExperienceVersion } from "@/lib/rookieJourney";
 import { requireOnboardingComplete } from "@/lib/onboarding";
 import { t } from "@/lib/i18n";
 import LessonContinueButton from "./LessonContinueButton";
@@ -24,20 +24,25 @@ export default async function LessonPage({
   const detail = await getLessonDetail(params.slug, order, session.sub);
   if (!detail) notFound();
 
-  // A Rookie Day hand-picks individual lessons out of order across many
-  // modules (e.g. Day 4 assigns Module 9 Lesson 9 without requiring
-  // Modules 1-8, or even the rest of Module 9, to be completed first), so
-  // neither the whole-module lock (previous module not yet completed) nor
-  // the "finish earlier lessons in this module first" gate applies to a
-  // lesson reached through today's Rookie Day sequence — see
-  // getRookieSequenceNextHref's own comment for why.
-  const rookieNextHref =
-    session.role === "TRAINEE" ? await getRookieSequenceNextHref(session.sub, detail.lesson.id) : null;
-  const inRookieSequence = rookieNextHref !== null;
+  // A Rookie-mode trainee never browses the classic Academy directly (see
+  // /modules' own gate) — the only lessons they can open are ones assigned
+  // to a Rookie Day they've already reached, and neither the whole-module
+  // lock nor the "finish earlier lessons in this module first" gate
+  // applies to those (a Rookie Day hand-picks lessons out of order across
+  // modules, e.g. Day 4 assigns Module 9 Lesson 9 without the rest of
+  // Module 9) — see getRookieLessonAccess's own comment for why.
+  const isRookieModeTrainee =
+    session.role === "TRAINEE" && (await getTrainingExperienceVersion()) === "rookie";
+  const rookieAccess = isRookieModeTrainee ? await getRookieLessonAccess(session.sub, detail.lesson.id) : null;
+  const inRookieSequence = !!rookieAccess?.allowed;
 
-  if (detail.locked && !inRookieSequence) redirect("/modules");
-  if (detail.priorIncomplete && !inRookieSequence) {
-    redirect(`/modules/${params.slug}/lesson/${detail.firstIncompleteOrder}`);
+  if (isRookieModeTrainee) {
+    if (!inRookieSequence) redirect("/");
+  } else {
+    if (detail.locked) redirect("/modules");
+    if (detail.priorIncomplete) {
+      redirect(`/modules/${params.slug}/lesson/${detail.firstIncompleteOrder}`);
+    }
   }
 
   await markModuleInProgress(session.sub, detail.module.id);
@@ -59,7 +64,7 @@ export default async function LessonPage({
   const showTranscript = lTranscript && !(lang === "ES" && detail.lesson.videoUrlEs);
 
   const nextHref = inRookieSequence
-    ? rookieNextHref
+    ? rookieAccess!.nextHref!
     : detail.isLast
       ? `/modules/${params.slug}/quiz`
       : `/modules/${params.slug}/lesson/${order + 1}`;
@@ -69,10 +74,10 @@ export default async function LessonPage({
     <div className="space-y-6">
       <div>
         <Link
-          href={`/modules/${params.slug}`}
+          href={inRookieSequence ? "/" : `/modules/${params.slug}`}
           className="mb-3 inline-block text-sm text-brand-700 hover:underline"
         >
-          {labels.backToModule}
+          {inRookieSequence ? labels.rookieBackToJourney : labels.backToModule}
         </Link>
         <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
           {labels.lessonWord} {order} {labels.ofWord} {detail.totalLessons}
@@ -129,7 +134,7 @@ export default async function LessonPage({
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        {order > 1 && (
+        {order > 1 && !inRookieSequence && (
           <Link
             href={`/modules/${params.slug}/lesson/${order - 1}`}
             className="rounded-md border border-neutral-300 px-5 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"

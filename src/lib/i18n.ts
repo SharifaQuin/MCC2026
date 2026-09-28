@@ -85,6 +85,13 @@ export const dictionary = {
     rookieRecapBadge: "Recap",
     rookiePracticalBadge: "Practical Lesson",
     rookieOrientationBadge: "Orientation",
+    rookieStartDay: "Start Today's Training",
+    rookieContinueDay: "Continue Today's Training",
+    rookieReviewDay: "Review",
+    rookieBackToJourney: "← Back to My Rookie Journey",
+    rookieReviewBadge: "Review — already completed",
+    rookieDayHistoryTitle: "Rookie Day History",
+    rookieNotYetReached: "Not reached yet",
   },
   ES: {
     appName: "Portal de Capacitación de MCC",
@@ -172,6 +179,13 @@ export const dictionary = {
     rookieRecapBadge: "Repaso",
     rookiePracticalBadge: "Lección Práctica",
     rookieOrientationBadge: "Orientación",
+    rookieStartDay: "Comenzar la Capacitación de Hoy",
+    rookieContinueDay: "Continuar la Capacitación de Hoy",
+    rookieReviewDay: "Repasar",
+    rookieBackToJourney: "← Volver a Mi Camino Rookie",
+    rookieReviewBadge: "Repaso — ya completado",
+    rookieDayHistoryTitle: "Historial de Días Rookie",
+    rookieNotYetReached: "Aún no alcanzado",
   },
 } as const;
 

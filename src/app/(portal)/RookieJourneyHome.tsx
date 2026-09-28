@@ -6,10 +6,10 @@ import { getOnboardingDocumentsForUser } from "@/lib/onboarding";
 import { getSignedDocumentsForUser } from "@/lib/documentTemplates";
 import { getEmployeePayrollEntries } from "@/lib/payroll";
 import { prisma } from "@/lib/prisma";
-import RookieContentCard from "@/components/RookieContentCard";
 
 function RailDot({ stop }: { stop: RookieRailStop }) {
   const isMilestone = Number(stop.label) > 10;
+  const isReviewableDay = !isMilestone && stop.status === "done";
   const base = "flex h-9 min-w-9 items-center justify-center rounded-full px-1 text-xs font-semibold";
   const style =
     stop.status === "current"
@@ -17,9 +17,10 @@ function RailDot({ stop }: { stop: RookieRailStop }) {
       : stop.status === "done"
         ? "bg-green-100 text-green-800"
         : "bg-neutral-100 text-neutral-400";
+  const dot = <div className={`${base} ${style}`}>{isMilestone ? `★${stop.label}` : stop.label}</div>;
   return (
     <div className="flex flex-col items-center gap-1">
-      <div className={`${base} ${style}`}>{isMilestone ? `★${stop.label}` : stop.label}</div>
+      {isReviewableDay ? <Link href={`/rookie/day/${stop.label}`}>{dot}</Link> : dot}
     </div>
   );
 }
@@ -45,6 +46,15 @@ export default async function RookieJourneyHome({ session }: { session: SessionP
   const pendingPayroll = payrollEntries.find((p) => p.status === "PENDING");
 
   const { position, rail, day } = training;
+
+  const firstIncomplete = day?.sequence.find((e) => !e.completed) ?? null;
+  const anyCompleted = day?.sequence.some((e) => e.completed) ?? false;
+  const primaryHref = firstIncomplete
+    ? firstIncomplete.kind === "LESSON"
+      ? `/modules/${firstIncomplete.moduleSlug}/lesson/${firstIncomplete.lessonOrder}`
+      : `/rookie/content/${firstIncomplete.id}`
+    : null;
+  const primaryLabel = anyCompleted ? labels.rookieContinueDay : labels.rookieStartDay;
 
   const milestoneLine =
     position.phase === "AWAITING_30"
@@ -139,54 +149,47 @@ export default async function RookieJourneyHome({ session }: { session: SessionP
               {isEs ? "Nada asignado para hoy todavía." : "Nothing assigned for today yet."}
             </p>
           ) : (
-            <ul className="mb-4 space-y-2">
-              {day.sequence.map((entry) =>
-                entry.kind === "LESSON" ? (
-                  <li key={`lesson-${entry.id}`}>
+            <ul className="mb-4 space-y-1.5">
+              {day.sequence.map((entry) => {
+                const entryTitle = isEs && entry.titleEs ? entry.titleEs : entry.titleEn;
+                const href =
+                  entry.kind === "LESSON"
+                    ? `/modules/${entry.moduleSlug}/lesson/${entry.lessonOrder}`
+                    : `/rookie/content/${entry.id}`;
+                return (
+                  <li key={`${entry.kind}-${entry.id}`}>
                     <Link
-                      href={`/modules/${entry.moduleSlug}/lesson/${entry.lessonOrder}`}
-                      className="flex items-center justify-between rounded-md border border-neutral-200 p-3 hover:border-brand-300"
+                      href={href}
+                      className="flex items-center gap-3 rounded-md border border-neutral-200 px-3 py-2 hover:border-brand-300"
                     >
-                      <span className="text-sm font-medium text-neutral-900">
-                        {isEs && entry.titleEs ? entry.titleEs : entry.titleEn}
+                      <span
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs ${
+                          entry.completed
+                            ? "bg-green-100 text-green-700"
+                            : "border border-neutral-300 text-neutral-400"
+                        }`}
+                      >
+                        {entry.completed ? "✓" : ""}
                       </span>
-                      {entry.completed ? (
-                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                          {labels.lessonCompleteBadge}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-brand-700">{labels.continue} →</span>
-                      )}
+                      <span className="text-sm font-medium text-neutral-900">{entryTitle}</span>
                     </Link>
                   </li>
-                ) : (
-                  <RookieContentCard
-                    key={`content-${entry.id}`}
-                    language={session.language}
-                    item={{
-                      id: entry.id,
-                      kind: entry.kind,
-                      titleEn: entry.titleEn,
-                      titleEs: entry.titleEs,
-                      bodyEn: entry.bodyEn,
-                      bodyEs: entry.bodyEs,
-                      promptEn: entry.promptEn,
-                      promptEs: entry.promptEs,
-                      revealEn: entry.revealEn,
-                      revealEs: entry.revealEs,
-                      hasFutureVideoSlot: entry.hasFutureVideoSlot,
-                      videos: entry.videos,
-                      estimatedMinutes: entry.estimatedMinutes,
-                      completed: entry.completed,
-                    }}
-                  />
-                )
-              )}
+                );
+              })}
             </ul>
           )}
 
-          {day.allLessonsComplete && day.sequence.length > 0 && (
+          {day.allLessonsComplete && day.sequence.length > 0 ? (
             <p className="mb-4 text-sm font-medium text-green-700">{labels.todaysTrainingAllDone}</p>
+          ) : (
+            primaryHref && (
+              <Link
+                href={primaryHref}
+                className="mb-4 inline-block rounded-md bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700"
+              >
+                {primaryLabel}
+              </Link>
+            )
           )}
 
           <p className="mb-3 text-xs text-neutral-500">
@@ -219,17 +222,6 @@ export default async function RookieJourneyHome({ session }: { session: SessionP
           )}
         </section>
       )}
-
-      <Link
-        href="/modules"
-        className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white p-5 hover:border-brand-300"
-      >
-        <div>
-          <p className="font-medium text-neutral-900">{labels.knowledgeLibrary}</p>
-          <p className="mt-0.5 text-sm text-neutral-500">{labels.knowledgeLibrarySubtitle}</p>
-        </div>
-        <span className="text-brand-700">→</span>
-      </Link>
 
       <p className="mt-4 text-sm text-neutral-500">
         <Link href="/progress" className="text-brand-700 hover:underline">

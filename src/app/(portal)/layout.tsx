@@ -3,6 +3,7 @@ import { getSession, clearSessionCookie } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { resolveUserDepartments } from "@/lib/departments";
 import { getImpersonationState, ROLE_LABELS } from "@/lib/impersonation";
+import { getTrainingExperienceVersion } from "@/lib/rookieJourney";
 import Nav from "@/components/Nav";
 import GoalProgressBar from "@/components/GoalProgressBar";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
@@ -26,6 +27,8 @@ export default async function PortalLayout({ children }: { children: React.React
   }
 
   const departments = resolveUserDepartments(session.role, user.departmentAccess);
+  const hideModulesNavLink =
+    session.role === "TRAINEE" && (await getTrainingExperienceVersion()) === "rookie";
 
   return (
     <div className="min-h-screen">
@@ -37,7 +40,7 @@ export default async function PortalLayout({ children }: { children: React.React
             ownerName={impersonation.ownerName ?? "Owner"}
           />
         )}
-        <Nav session={session} departments={departments} />
+        <Nav session={session} departments={departments} hideModulesLink={hideModulesNavLink} />
         <GoalProgressBar session={session} departments={departments} />
       </div>
       <main className="mx-auto max-w-7xl px-4 py-8">{children}</main>

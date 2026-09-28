@@ -8,9 +8,11 @@ import { DEPARTMENT_INFO, type AccessibleDepartment } from "@/lib/departments";
 export default function Nav({
   session,
   departments,
+  hideModulesLink,
 }: {
   session: SessionPayload;
   departments: AccessibleDepartment[];
+  hideModulesLink?: boolean;
 }) {
   const labels = t(session.language);
 
@@ -44,9 +46,11 @@ export default function Nav({
                 <Link href="/documents" className="hover:underline">
                   {labels.documents}
                 </Link>
-                <Link href="/modules" className="hover:underline">
-                  {labels.modules}
-                </Link>
+                {!hideModulesLink && (
+                  <Link href="/modules" className="hover:underline">
+                    {labels.modules}
+                  </Link>
+                )}
                 <Link href="/progress" className="hover:underline">
                   {labels.progress}
                 </Link>

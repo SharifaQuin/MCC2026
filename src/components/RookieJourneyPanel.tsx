@@ -320,18 +320,50 @@ function SealForm({ traineeId, history }: { traineeId: string; history: SealEval
   );
 }
 
+interface DayHistoryStop {
+  dayNumber: number;
+  status: "done" | "current" | "upcoming";
+}
+
+function DayHistorySection({ traineeId, dayHistory }: { traineeId: string; dayHistory: DayHistoryStop[] }) {
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+      {dayHistory.map((stop) => (
+        <div key={stop.dayNumber} className="flex items-center justify-between rounded-md border border-neutral-200 p-2 text-xs">
+          <span className={stop.status === "upcoming" ? "text-neutral-400" : "font-medium text-neutral-700"}>
+            Day {stop.dayNumber}
+            {stop.status === "current" && " (today)"}
+          </span>
+          {stop.status === "upcoming" ? (
+            <span className="text-neutral-300">—</span>
+          ) : (
+            <Link
+              href={`/rookie/day/${stop.dayNumber}?traineeId=${traineeId}`}
+              className="text-brand-700 hover:underline"
+            >
+              View
+            </Link>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function RookieJourneyPanel({
   traineeId,
   position,
   day3,
   day10,
   sealHistory,
+  dayHistory,
 }: {
   traineeId: string;
   position: RookieJourneyPosition;
   day3: Day3Info | null;
   day10: Day10Info | null;
   sealHistory: SealEvalRow[];
+  dayHistory: DayHistoryStop[];
 }) {
   return (
     <div className="space-y-3">
@@ -345,6 +377,10 @@ export default function RookieJourneyPanel({
         </Link>
       </div>
       <p className="text-sm text-neutral-600">{positionLabel(position)}</p>
+
+      <Collapsible title="Rookie Day History" defaultOpen>
+        <DayHistorySection traineeId={traineeId} dayHistory={dayHistory} />
+      </Collapsible>
 
       <Collapsible title="Day-3 Readiness Check" defaultOpen={position.phase === "ROOKIE_DAY" && position.day <= 4}>
         <Day3Form traineeId={traineeId} existing={day3} />

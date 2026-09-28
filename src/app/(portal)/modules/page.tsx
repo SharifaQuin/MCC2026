@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { getModuleListForUser } from "@/lib/courses";
+import { getTrainingExperienceVersion } from "@/lib/rookieJourney";
 import { requireOnboardingComplete } from "@/lib/onboarding";
 import { t } from "@/lib/i18n";
 import BackToTraining from "@/components/BackToTraining";
@@ -16,6 +17,9 @@ export default async function ModulesPage() {
   const session = await getSession();
   if (!session) redirect("/login");
   await requireOnboardingComplete(session);
+  // A Rookie-mode trainee never browses the classic Academy directly —
+  // their only path through lessons is the Rookie Day sequence.
+  if (session.role === "TRAINEE" && (await getTrainingExperienceVersion()) === "rookie") redirect("/");
   const labels = t(session.language);
   const modules = await getModuleListForUser(session.sub);
   const nextModule = modules.find((m) => !m.locked && m.status !== "COMPLETED");

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { getModuleOverview, markModuleInProgress } from "@/lib/courses";
+import { getTrainingExperienceVersion } from "@/lib/rookieJourney";
 import { requireOnboardingComplete } from "@/lib/onboarding";
 import { t } from "@/lib/i18n";
 
@@ -9,6 +10,7 @@ export default async function ModuleOverviewPage({ params }: { params: { slug: s
   const session = await getSession();
   if (!session) redirect("/login");
   await requireOnboardingComplete(session);
+  if (session.role === "TRAINEE" && (await getTrainingExperienceVersion()) === "rookie") redirect("/");
   const labels = t(session.language);
 
   const overview = await getModuleOverview(params.slug, session.sub);
