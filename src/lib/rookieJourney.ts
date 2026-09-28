@@ -314,6 +314,84 @@ export function buildRookieRail(position: RookieJourneyPosition): RookieRailStop
   ];
 }
 
+// The calendar position (getRookieJourneyPosition) alone decided what a
+// trainee saw: once hireDate + 10 days had passed, they landed in
+// AWAITING_30 permanently — even if they never actually opened Day 1-9's
+// content (a missed shift, a slow start, admin content added late). There
+// was no way back into Days 1-10 short of an admin editing their hire
+// date, and no way to catch up on more than one day per calendar day even
+// once they noticed they'd fallen behind.
+//
+// This computes the trainee's *effective* day instead: the earliest
+// Rookie Day (1..10) that isn't fully completed yet, capped at whatever
+// the calendar has actually unlocked (so a trainee still can't binge
+// Day 5 on Day 1 — only catch up on days the calendar already passed).
+// Once every day 1-10 is genuinely complete, this defers to the plain
+// calendar position (AWAITING_30/60/90), same as before. HR-facing
+// calendar milestones (Day-3 readiness, Day-10 review, Day-30 Seal
+// eligibility) intentionally keep using the raw calendar position
+// elsewhere — those are real-time compliance deadlines, not training
+// pace, and shouldn't be pushed back by a slow start.
+async function getRookieDayCompletionMap(userId: string): Promise<Map<number, boolean>> {
+  const days = await prisma.rookieDay.findMany({
+    where: { dayNumber: { lte: ROOKIE_DAY_COUNT } },
+    select: {
+      dayNumber: true,
+      lessons: { where: { slot: "ROOKIE_DAY" }, select: { lessonId: true } },
+      contentItems: { select: { id: true } },
+    },
+  });
+
+  const allLessonIds = days.flatMap((d) => d.lessons.map((l) => l.lessonId));
+  const allContentIds = days.flatMap((d) => d.contentItems.map((c) => c.id));
+  const [completedLessons, completedContent] = await Promise.all([
+    allLessonIds.length
+      ? prisma.lessonProgress.findMany({ where: { userId, lessonId: { in: allLessonIds } }, select: { lessonId: true } })
+      : Promise.resolve([]),
+    allContentIds.length
+      ? prisma.rookieContentProgress.findMany({
+          where: { userId, contentItemId: { in: allContentIds } },
+          select: { contentItemId: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const doneLessonIds = new Set(completedLessons.map((r) => r.lessonId));
+  const doneContentIds = new Set(completedContent.map((r) => r.contentItemId));
+
+  const map = new Map<number, boolean>();
+  for (const d of days) {
+    const total = d.lessons.length + d.contentItems.length;
+    // A day with nothing assigned yet can't be "incomplete forever" —
+    // treat it as complete so it never blocks catch-up on later days.
+    const done =
+      total === 0 ||
+      (d.lessons.every((l) => doneLessonIds.has(l.lessonId)) && d.contentItems.every((c) => doneContentIds.has(c.id)));
+    map.set(d.dayNumber, done);
+  }
+  return map;
+}
+
+export async function getEffectiveRookiePosition(userId: string): Promise<RookieJourneyPosition> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { hireDate: true, createdAt: true } });
+  const calendarPosition = getRookieJourneyPosition(rookieAnchorDate(user ?? { hireDate: null, createdAt: new Date() }));
+
+  const completion = await getRookieDayCompletionMap(userId);
+  let firstIncompleteDay: number | undefined;
+  for (let day = 1; day <= ROOKIE_DAY_COUNT; day++) {
+    if (!completion.get(day)) {
+      firstIncompleteDay = day;
+      break;
+    }
+  }
+
+  // Every day 1-10 genuinely done — defer entirely to the calendar (this
+  // is what actually advances a trainee into AWAITING_30/60/90).
+  if (firstIncompleteDay === undefined) return calendarPosition;
+
+  const calendarDay = calendarPosition.phase === "ROOKIE_DAY" ? calendarPosition.day : ROOKIE_DAY_COUNT;
+  return { phase: "ROOKIE_DAY", day: Math.min(calendarDay, firstIncompleteDay) };
+}
+
 // ── Admin config: Rookie Days + lesson/field-skill assignment ──
 
 export async function getAllRookieDaysForAdmin() {
@@ -486,12 +564,7 @@ export interface TodaysRookieTraining {
 }
 
 export async function getTodaysRookieTraining(userId: string): Promise<TodaysRookieTraining> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { hireDate: true, createdAt: true },
-  });
-  const anchor = rookieAnchorDate(user ?? { hireDate: null, createdAt: new Date() });
-  const position = getRookieJourneyPosition(anchor);
+  const position = await getEffectiveRookiePosition(userId);
   const rail = buildRookieRail(position);
 
   if (position.phase !== "ROOKIE_DAY") {
@@ -619,11 +692,11 @@ export async function getRookieSequenceNextHref(userId: string, lessonId: string
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { role: true, hireDate: true, createdAt: true },
+    select: { role: true },
   });
   if (!user || user.role !== "TRAINEE") return null;
 
-  const position = getRookieJourneyPosition(rookieAnchorDate(user));
+  const position = await getEffectiveRookiePosition(userId);
   if (position.phase !== "ROOKIE_DAY") return null;
 
   const dayConfig = await prisma.rookieDay.findUnique({
