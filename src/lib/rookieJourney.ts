@@ -588,21 +588,6 @@ async function fetchRookieDayConfig(dayNumber: number) {
       },
       contentItems: {
         orderBy: { order: "asc" },
-        include: {
-          sourceLessons: {
-            include: {
-              lesson: {
-                select: {
-                  titleEn: true,
-                  order: true,
-                  videoUrl: true,
-                  videoUrlEs: true,
-                  module: { select: { order: true } },
-                },
-              },
-            },
-          },
-        },
       },
       fieldSkills: { orderBy: { order: "asc" }, include: { fieldSkill: true } },
     },
@@ -649,22 +634,12 @@ function buildRookieDaySequence(
       completed: completedLessonIds.has(l.lesson.id),
     })),
     ...dayConfig.contentItems.map((c) => {
-      // Only an ORIENTATION card is a straight condensation of its source
-      // lessons (Day 1's consolidation) — a PRACTICAL_LESSON/SCENARIO/RECAP
-      // card's sourceLessons are lineage only (what informed its authored
-      // text), not a stand-in for its own video, so those never inherit one.
-      const sourceVideos =
-        c.kind === "ORIENTATION"
-          ? c.sourceLessons
-              .filter((sl) => sl.lesson.videoUrl)
-              .sort((a, b) => a.lesson.module.order - b.lesson.module.order || a.lesson.order - b.lesson.order)
-              .map((sl) => ({ videoUrl: sl.lesson.videoUrl!, videoUrlEs: sl.lesson.videoUrlEs, label: sl.lesson.titleEn }))
-          : [];
-      const videos = sourceVideos.length
-        ? sourceVideos
-        : c.videoUrl
-          ? [{ videoUrl: c.videoUrl, videoUrlEs: c.videoUrlEs, label: c.titleEn }]
-          : [];
+      // A content item's video comes only from its own videoUrl/videoUrlEs,
+      // set directly in the admin Rookie Content editor — a card's
+      // sourceLessons are lineage only (what informed its authored text),
+      // never an automatic stand-in for its own video, so admins have one
+      // clear, editable place to set or remove a card's video.
+      const videos = c.videoUrl ? [{ videoUrl: c.videoUrl, videoUrlEs: c.videoUrlEs, label: c.titleEn }] : [];
       return {
         order: c.order,
         kind: c.kind,
