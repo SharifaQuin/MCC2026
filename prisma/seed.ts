@@ -1481,26 +1481,29 @@ async function seedRookieCurriculumDay1Adjustment() {
   );
 }
 
-// The real Synthesia "Who We Are" video, meant to play as part of Day 1's
-// "Welcome to Mama's" orientation card — guarded so it's only set once and
-// an Admin editing it afterward (via /admin/rookie-journey) isn't overwritten
-// on the next deploy.
-async function seedRookieDay1WelcomeVideo() {
+// Superseded one-time fix: Day 1's condensed cards now pull video straight
+// from their source lessons' own videoUrl (set via the ordinary Content
+// Editor), rather than needing one set directly on the card — see
+// getTodaysRookieTraining in rookieJourney.ts. This clears the one-off
+// direct-on-card video an earlier deploy set (redundant with, and now
+// invisible behind, "Welcome & Our History"'s own video), so the admin
+// content-card editor doesn't show a stale value nothing actually uses.
+// Guarded to the exact stale value so it never touches a value an admin
+// has since set intentionally.
+async function cleanupSupersededDay1CardVideo() {
+  const STALE_VALUE = "https://share.synthesia.io/embeds/videos/ceb43f15-4411-491a-8e7e-282a9ec5b500";
   const day1 = await prisma.rookieDay.findUnique({ where: { dayNumber: 1 }, select: { id: true } });
   if (!day1) return;
   const card = await prisma.rookieContentItem.findFirst({
-    where: { rookieDayId: day1.id, titleEn: "Welcome to Mama's" },
-    select: { id: true, videoUrl: true },
+    where: { rookieDayId: day1.id, titleEn: "Welcome to Mama's", videoUrl: STALE_VALUE },
+    select: { id: true },
   });
-  if (!card || card.videoUrl) {
-    console.log("Rookie Curriculum: Day 1 welcome video already set or card not found, skipping.");
+  if (!card) {
+    console.log("Rookie Curriculum: no stale Day 1 card video to clean up.");
     return;
   }
-  await prisma.rookieContentItem.update({
-    where: { id: card.id },
-    data: { videoUrl: "https://share.synthesia.io/embeds/videos/ceb43f15-4411-491a-8e7e-282a9ec5b500" },
-  });
-  console.log("Rookie Curriculum: set Day 1 welcome video.");
+  await prisma.rookieContentItem.update({ where: { id: card.id }, data: { videoUrl: null } });
+  console.log("Rookie Curriculum: cleaned up superseded Day 1 card video.");
 }
 
 async function main() {
@@ -1516,7 +1519,7 @@ async function main() {
   await seedRookieJourney();
   await seedRookieCurriculumContent();
   await seedRookieCurriculumDay1Adjustment();
-  await seedRookieDay1WelcomeVideo();
+  await cleanupSupersededDay1CardVideo();
 }
 
 main()

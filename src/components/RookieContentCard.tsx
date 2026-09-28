@@ -17,8 +17,7 @@ export interface RookieContentCardData {
   revealEn?: string | null;
   revealEs?: string | null;
   hasFutureVideoSlot?: boolean;
-  videoUrl?: string | null;
-  videoUrlEs?: string | null;
+  videos?: { videoUrl: string; videoUrlEs: string | null; label: string }[];
   estimatedMinutes?: number | null;
   completed: boolean;
 }
@@ -92,20 +91,20 @@ export default function RookieContentCard({ item, language }: { item: RookieCont
         </div>
       ) : (
         <div>
-          {(() => {
-            const videoUrl = (isEs && item.videoUrlEs) || item.videoUrl;
-            return videoUrl ? (
-              <div className="mb-3 aspect-video w-full overflow-hidden rounded-md bg-black">
+          {item.videos?.map((v, i) => {
+            const videoUrl = (isEs && v.videoUrlEs) || v.videoUrl;
+            return (
+              <div key={i} className="mb-3 aspect-video w-full overflow-hidden rounded-md bg-black">
                 <iframe
                   src={videoUrl}
                   className="h-full w-full"
                   allow="encrypted-media; fullscreen; microphone; screen-wake-lock;"
                   allowFullScreen
-                  title={isEs && item.titleEs ? item.titleEs : item.titleEn}
+                  title={v.label}
                 />
               </div>
-            ) : null;
-          })()}
+            );
+          })}
           <LessonContent text={(isEs ? item.bodyEs : item.bodyEn) ?? ""} />
           {item.hasFutureVideoSlot && <p className="mt-2 text-xs italic text-neutral-400">{labels.rookieVideoComingSoon}</p>}
           {!completed && (

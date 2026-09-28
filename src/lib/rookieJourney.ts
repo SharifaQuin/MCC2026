@@ -481,8 +481,14 @@ export interface RookieDaySequenceEntry {
   revealEn?: string | null;
   revealEs?: string | null;
   hasFutureVideoSlot?: boolean;
-  videoUrl?: string | null;
-  videoUrlEs?: string | null;
+  // A card can condense several existing lessons (see sourceLessons), and
+  // any of those may carry its own video (set via the ordinary Content
+  // Editor on that lesson) — so a card shows one video per source lesson
+  // that has one, in module/lesson order, not just a single video of its
+  // own. Falls back to the card's own videoUrl/videoUrlEs only when none
+  // of its source lessons have a video (e.g. the practical-lesson cards,
+  // which aren't condensed from any existing lesson).
+  videos?: { videoUrl: string; videoUrlEs: string | null; label: string }[];
   estimatedMinutes?: number | null;
   completed: boolean;
 }
@@ -581,7 +587,24 @@ export async function getTodaysRookieTraining(userId: string): Promise<TodaysRoo
         orderBy: { order: "asc" },
         include: { lesson: { include: { module: { select: { slug: true } } } } },
       },
-      contentItems: { orderBy: { order: "asc" } },
+      contentItems: {
+        orderBy: { order: "asc" },
+        include: {
+          sourceLessons: {
+            include: {
+              lesson: {
+                select: {
+                  titleEn: true,
+                  order: true,
+                  videoUrl: true,
+                  videoUrlEs: true,
+                  module: { select: { order: true } },
+                },
+              },
+            },
+          },
+        },
+      },
       fieldSkills: { orderBy: { order: "asc" }, include: { fieldSkill: true } },
     },
   });
@@ -624,24 +647,41 @@ export async function getTodaysRookieTraining(userId: string): Promise<TodaysRoo
       lessonOrder: l.lesson.order,
       completed: completedLessonIds.has(l.lesson.id),
     })),
-    ...dayConfig.contentItems.map((c) => ({
-      order: c.order,
-      kind: c.kind,
-      id: c.id,
-      titleEn: c.titleEn,
-      titleEs: c.titleEs,
-      bodyEn: c.bodyEn,
-      bodyEs: c.bodyEs,
-      promptEn: c.promptEn,
-      promptEs: c.promptEs,
-      revealEn: c.revealEn,
-      revealEs: c.revealEs,
-      hasFutureVideoSlot: c.hasFutureVideoSlot,
-      videoUrl: c.videoUrl,
-      videoUrlEs: c.videoUrlEs,
-      estimatedMinutes: c.estimatedMinutes,
-      completed: completedContentIds.has(c.id),
-    })),
+    ...dayConfig.contentItems.map((c) => {
+      // Only an ORIENTATION card is a straight condensation of its source
+      // lessons (Day 1's consolidation) — a PRACTICAL_LESSON/SCENARIO/RECAP
+      // card's sourceLessons are lineage only (what informed its authored
+      // text), not a stand-in for its own video, so those never inherit one.
+      const sourceVideos =
+        c.kind === "ORIENTATION"
+          ? c.sourceLessons
+              .filter((sl) => sl.lesson.videoUrl)
+              .sort((a, b) => a.lesson.module.order - b.lesson.module.order || a.lesson.order - b.lesson.order)
+              .map((sl) => ({ videoUrl: sl.lesson.videoUrl!, videoUrlEs: sl.lesson.videoUrlEs, label: sl.lesson.titleEn }))
+          : [];
+      const videos = sourceVideos.length
+        ? sourceVideos
+        : c.videoUrl
+          ? [{ videoUrl: c.videoUrl, videoUrlEs: c.videoUrlEs, label: c.titleEn }]
+          : [];
+      return {
+        order: c.order,
+        kind: c.kind,
+        id: c.id,
+        titleEn: c.titleEn,
+        titleEs: c.titleEs,
+        bodyEn: c.bodyEn,
+        bodyEs: c.bodyEs,
+        promptEn: c.promptEn,
+        promptEs: c.promptEs,
+        revealEn: c.revealEn,
+        revealEs: c.revealEs,
+        hasFutureVideoSlot: c.hasFutureVideoSlot,
+        videos,
+        estimatedMinutes: c.estimatedMinutes,
+        completed: completedContentIds.has(c.id),
+      };
+    }),
   ].sort((a, b) => a.order - b.order);
 
   return {
