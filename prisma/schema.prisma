@@ -2246,6 +2246,12 @@ model RookieContentItem {
   // True only for the 6 practical lessons named for a future real MCC
   // demonstration video — never auto-generated, never required to complete.
   hasFutureVideoSlot Boolean           @default(false)
+  // An actual video for this card (e.g. a Synthesia embed link) — separate
+  // from hasFutureVideoSlot, which only flags a practical-lesson card as
+  // awaiting a not-yet-filmed real demonstration. Optional; watching it is
+  // never required to mark the card reviewed.
+  videoUrl           String?
+  videoUrlEs         String?
   estimatedMinutes   Int?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt

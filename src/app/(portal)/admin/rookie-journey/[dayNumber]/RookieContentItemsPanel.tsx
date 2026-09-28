@@ -23,6 +23,8 @@ export interface ContentItemRow {
   revealEn: string | null;
   revealEs: string | null;
   hasFutureVideoSlot: boolean;
+  videoUrl: string | null;
+  videoUrlEs: string | null;
   estimatedMinutes: number | null;
   sourceLessonIds: string[];
   sourceLessonLabels: string[];
@@ -45,6 +47,8 @@ const EMPTY_FORM: RookieContentItemFormInput = {
   revealEn: "",
   revealEs: "",
   hasFutureVideoSlot: false,
+  videoUrl: "",
+  videoUrlEs: "",
   estimatedMinutes: undefined,
   sourceLessonIds: [],
 };
@@ -203,6 +207,26 @@ function ContentForm({
         </label>
       )}
 
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-xs font-medium text-neutral-700">
+          Video URL (EN) — optional, e.g. a Synthesia embed link
+          <input
+            value={form.videoUrl ?? ""}
+            onChange={(e) => field("videoUrl", e.target.value)}
+            placeholder="https://share.synthesia.io/embeds/videos/..."
+            className="mt-1 w-full rounded-md border border-neutral-300 p-2 text-sm"
+          />
+        </label>
+        <label className="text-xs font-medium text-neutral-700">
+          Video URL (ES) — optional dub, falls back to the EN video if blank
+          <input
+            value={form.videoUrlEs ?? ""}
+            onChange={(e) => field("videoUrlEs", e.target.value)}
+            className="mt-1 w-full rounded-md border border-neutral-300 p-2 text-sm"
+          />
+        </label>
+      </div>
+
       <div>
         <p className="mb-1 text-xs font-medium text-neutral-700">Source lesson(s) this card condenses (traceability only)</p>
         <div className="max-h-40 overflow-y-auto rounded-md border border-neutral-200 p-2">
@@ -286,6 +310,8 @@ export default function RookieContentItemsPanel({
                   revealEn: item.revealEn ?? "",
                   revealEs: item.revealEs ?? "",
                   hasFutureVideoSlot: item.hasFutureVideoSlot,
+                  videoUrl: item.videoUrl ?? "",
+                  videoUrlEs: item.videoUrlEs ?? "",
                   estimatedMinutes: item.estimatedMinutes ?? undefined,
                   sourceLessonIds: item.sourceLessonIds,
                 }}

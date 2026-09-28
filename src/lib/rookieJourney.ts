@@ -481,6 +481,8 @@ export interface RookieDaySequenceEntry {
   revealEn?: string | null;
   revealEs?: string | null;
   hasFutureVideoSlot?: boolean;
+  videoUrl?: string | null;
+  videoUrlEs?: string | null;
   estimatedMinutes?: number | null;
   completed: boolean;
 }
@@ -635,6 +637,8 @@ export async function getTodaysRookieTraining(userId: string): Promise<TodaysRoo
       revealEn: c.revealEn,
       revealEs: c.revealEs,
       hasFutureVideoSlot: c.hasFutureVideoSlot,
+      videoUrl: c.videoUrl,
+      videoUrlEs: c.videoUrlEs,
       estimatedMinutes: c.estimatedMinutes,
       completed: completedContentIds.has(c.id),
     })),

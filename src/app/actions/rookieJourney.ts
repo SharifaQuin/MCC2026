@@ -169,6 +169,8 @@ export interface RookieContentItemFormInput {
   revealEn?: string;
   revealEs?: string;
   hasFutureVideoSlot: boolean;
+  videoUrl?: string;
+  videoUrlEs?: string;
   estimatedMinutes?: number;
   sourceLessonIds: string[];
 }
@@ -198,6 +200,8 @@ export async function createRookieContentItemAction(dayNumber: number, input: Ro
       revealEn: input.revealEn || null,
       revealEs: input.revealEs || null,
       hasFutureVideoSlot: input.hasFutureVideoSlot,
+      videoUrl: input.videoUrl || null,
+      videoUrlEs: input.videoUrlEs || null,
       estimatedMinutes: input.estimatedMinutes ?? null,
     },
   });
@@ -226,6 +230,8 @@ export async function updateRookieContentItemAction(contentItemId: string, input
         revealEn: input.revealEn || null,
         revealEs: input.revealEs || null,
         hasFutureVideoSlot: input.hasFutureVideoSlot,
+        videoUrl: input.videoUrl || null,
+        videoUrlEs: input.videoUrlEs || null,
         estimatedMinutes: input.estimatedMinutes ?? null,
       },
     }),

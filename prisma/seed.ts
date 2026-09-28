@@ -1481,6 +1481,28 @@ async function seedRookieCurriculumDay1Adjustment() {
   );
 }
 
+// The real Synthesia "Who We Are" video, meant to play as part of Day 1's
+// "Welcome to Mama's" orientation card — guarded so it's only set once and
+// an Admin editing it afterward (via /admin/rookie-journey) isn't overwritten
+// on the next deploy.
+async function seedRookieDay1WelcomeVideo() {
+  const day1 = await prisma.rookieDay.findUnique({ where: { dayNumber: 1 }, select: { id: true } });
+  if (!day1) return;
+  const card = await prisma.rookieContentItem.findFirst({
+    where: { rookieDayId: day1.id, titleEn: "Welcome to Mama's" },
+    select: { id: true, videoUrl: true },
+  });
+  if (!card || card.videoUrl) {
+    console.log("Rookie Curriculum: Day 1 welcome video already set or card not found, skipping.");
+    return;
+  }
+  await prisma.rookieContentItem.update({
+    where: { id: card.id },
+    data: { videoUrl: "https://share.synthesia.io/embeds/videos/ceb43f15-4411-491a-8e7e-282a9ec5b500" },
+  });
+  console.log("Rookie Curriculum: set Day 1 welcome video.");
+}
+
 async function main() {
   await seedAdmin();
   await seedTestAccounts();
@@ -1494,6 +1516,7 @@ async function main() {
   await seedRookieJourney();
   await seedRookieCurriculumContent();
   await seedRookieCurriculumDay1Adjustment();
+  await seedRookieDay1WelcomeVideo();
 }
 
 main()

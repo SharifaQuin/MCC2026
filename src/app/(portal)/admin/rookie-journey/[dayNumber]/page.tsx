@@ -73,6 +73,8 @@ export default async function RookieDayAdminPage({ params }: { params: { dayNumb
             revealEn: c.revealEn,
             revealEs: c.revealEs,
             hasFutureVideoSlot: c.hasFutureVideoSlot,
+            videoUrl: c.videoUrl,
+            videoUrlEs: c.videoUrlEs,
             estimatedMinutes: c.estimatedMinutes,
             sourceLessonIds: c.sourceLessons.map((sl) => sl.lessonId),
             sourceLessonLabels: c.sourceLessons.map((sl) => `${sl.lesson.module.titleEn} — ${sl.lesson.titleEn}`),

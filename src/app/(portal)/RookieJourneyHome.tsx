@@ -175,6 +175,8 @@ export default async function RookieJourneyHome({ session }: { session: SessionP
                       revealEn: entry.revealEn,
                       revealEs: entry.revealEs,
                       hasFutureVideoSlot: entry.hasFutureVideoSlot,
+                      videoUrl: entry.videoUrl,
+                      videoUrlEs: entry.videoUrlEs,
                       estimatedMinutes: entry.estimatedMinutes,
                       completed: entry.completed,
                     }}
