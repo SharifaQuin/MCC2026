@@ -10,6 +10,7 @@ export interface EmployeeAssignmentRow {
   assigned: boolean;
   signedAt: string | null;
   signedName: string | null;
+  signedPdfDataUrl: string | null;
 }
 
 function AssignmentCheckbox({
@@ -80,6 +81,15 @@ export default function AssignmentTable({
                       <p className="mt-1 text-xs text-neutral-500">
                         Signed as &ldquo;{row.signedName}&rdquo;
                       </p>
+                    )}
+                    {row.signedPdfDataUrl && (
+                      <a
+                        href={row.signedPdfDataUrl}
+                        download={`${row.name.replace(/[^\w\- ]+/g, "")} - Signed.pdf`}
+                        className="mt-1 block text-xs font-medium text-brand-700 hover:underline"
+                      >
+                        Download signed PDF →
+                      </a>
                     )}
                   </div>
                 ) : row.assigned ? (

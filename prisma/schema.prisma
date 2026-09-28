@@ -1059,15 +1059,22 @@ model OnboardingDocument {
 // One document assigned to one employee. signedAt/signedName are null until
 // they sign — the pair together is the e-signature record (typed full name
 // + timestamp), which is what gates that employee out of Training.
+// signedPdfDataUrl is the permanent, tamper-evident record: the original
+// document (or its text) with a signing-certificate page appended at sign
+// time (name, timestamp, IP, user agent, and a hash of the original file),
+// generated once and never regenerated — this is what a DocuSign-style
+// "completed" copy provides, kept as a base64 data URI like every other
+// uploaded/generated file in this app.
 model OnboardingAssignment {
-  id         String             @id @default(cuid())
-  documentId String
-  document   OnboardingDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  userId     String
-  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  signedAt   DateTime?
-  signedName String?
-  createdAt  DateTime           @default(now())
+  id               String             @id @default(cuid())
+  documentId       String
+  document         OnboardingDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  signedAt         DateTime?
+  signedName       String?
+  signedPdfDataUrl String?            @db.Text
+  createdAt        DateTime           @default(now())
 
   @@unique([documentId, userId])
 }

@@ -48,8 +48,19 @@ export default async function DocumentSignPage({
 
       {doc.signedAt ? (
         <div className="mt-6 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
-          Signed by <span className="font-medium">{doc.signedName}</span> on{" "}
-          {new Date(doc.signedAt).toLocaleString()}.
+          <p>
+            Signed by <span className="font-medium">{doc.signedName}</span> on{" "}
+            {new Date(doc.signedAt).toLocaleString()}.
+          </p>
+          {doc.signedPdfDataUrl && (
+            <a
+              href={doc.signedPdfDataUrl}
+              download={`${doc.title.replace(/[^\w\- ]+/g, "")} - Signed.pdf`}
+              className="mt-2 inline-block font-medium text-green-900 underline hover:text-green-700"
+            >
+              Download signed copy (PDF) →
+            </a>
+          )}
         </div>
       ) : (
         <form action={action} className="mt-6 rounded-lg border border-neutral-200 bg-white p-6">

@@ -16,7 +16,7 @@ export default async function AdminDocumentDetailPage({ params }: { params: { id
     }),
     prisma.onboardingAssignment.findMany({
       where: { documentId: doc.id },
-      select: { userId: true, signedAt: true, signedName: true },
+      select: { userId: true, signedAt: true, signedName: true, signedPdfDataUrl: true },
     }),
   ]);
 
@@ -30,6 +30,7 @@ export default async function AdminDocumentDetailPage({ params }: { params: { id
       assigned: !!a,
       signedAt: a?.signedAt ? a.signedAt.toISOString() : null,
       signedName: a?.signedName ?? null,
+      signedPdfDataUrl: a?.signedPdfDataUrl ?? null,
     };
   });
 

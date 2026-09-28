@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 
 export const PAGE_WIDTH = 612; // US Letter, points
@@ -136,6 +137,127 @@ export async function renderSignedDocumentPdf(opts: {
         color: GRAY,
       });
     });
+  }
+
+  const bytes = await pdfDoc.save();
+  return `data:application/pdf;base64,${Buffer.from(bytes).toString("base64")}`;
+}
+
+export interface OnboardingSignatureStampInput {
+  title: string;
+  contentText: string | null;
+  originalFileDataUrl: string | null;
+  employeeName: string;
+  employeeEmail: string;
+  signedName: string;
+  signedAt: Date;
+  ipAddress: string | null;
+  userAgent: string | null;
+}
+
+// Produces the permanent, tamper-evident signed copy for an Onboarding
+// Document: the original uploaded PDF (or, if the document is plain text
+// instead, that text rendered onto letterhead pages) with a signing
+// certificate page appended — name, timestamp, IP, user agent, and a
+// SHA-256 fingerprint of the original file so tampering with the source
+// afterward would be detectable. Generated once at sign time and never
+// regenerated, same as a DocuSign "completed" copy.
+export async function stampOnboardingSignature(input: OnboardingSignatureStampInput): Promise<string> {
+  let pdfDoc: PDFDocument;
+  let originalFingerprint: string | null = null;
+
+  if (input.originalFileDataUrl) {
+    const base64 = input.originalFileDataUrl.split(",")[1] ?? "";
+    const originalBytes = Buffer.from(base64, "base64");
+    originalFingerprint = crypto.createHash("sha256").update(originalBytes).digest("hex");
+    pdfDoc = await PDFDocument.load(originalBytes, { ignoreEncryption: true });
+  } else {
+    pdfDoc = await PDFDocument.create();
+  }
+
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const logoBytes = fs.readFileSync(path.join(process.cwd(), "public", "brand", "mcc-logo-mark.png"));
+  const logo = await pdfDoc.embedPng(logoBytes);
+  const maxWidth = PAGE_WIDTH - MARGIN * 2;
+
+  // A text-only document (no uploaded PDF) has no pages yet — render its
+  // body onto letterhead pages first, exactly what the trainee read on
+  // the sign page, so the permanent copy still contains the full text.
+  if (!input.originalFileDataUrl && input.contentText) {
+    let page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    drawLetterhead(page, logo, boldFont, font);
+    let y = PAGE_HEIGHT - MARGIN - HEADER_HEIGHT;
+    page.drawText(input.title, { x: MARGIN, y, size: 16, font: boldFont, color: rgb(0, 0, 0) });
+    y -= 28;
+
+    const paragraphs = input.contentText.split(/\n{2,}/);
+    for (const paragraph of paragraphs) {
+      for (const rawLine of paragraph.split("\n")) {
+        for (const line of wrapLine(rawLine, font, BODY_FONT_SIZE, maxWidth)) {
+          if (y - LINE_HEIGHT < MARGIN) {
+            page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+            drawLetterhead(page, logo, boldFont, font);
+            y = PAGE_HEIGHT - MARGIN - HEADER_HEIGHT;
+          }
+          page.drawText(line, { x: MARGIN, y, size: BODY_FONT_SIZE, font, color: rgb(0, 0, 0) });
+          y -= LINE_HEIGHT;
+        }
+      }
+      y -= LINE_HEIGHT / 2;
+    }
+  }
+
+  // The signing certificate — always its own trailing page(s), appended
+  // after the original document/content, never mixed into it.
+  let certPage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  drawLetterhead(certPage, logo, boldFont, font);
+  let y = PAGE_HEIGHT - MARGIN - HEADER_HEIGHT;
+
+  certPage.drawText("Certificate of Signature", { x: MARGIN, y, size: 18, font: boldFont, color: rgb(0, 0, 0) });
+  y -= 32;
+
+  function row(label: string, value: string) {
+    if (y - LINE_HEIGHT * 2 < MARGIN) {
+      certPage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      drawLetterhead(certPage, logo, boldFont, font);
+      y = PAGE_HEIGHT - MARGIN - HEADER_HEIGHT;
+    }
+    certPage.drawText(label, { x: MARGIN, y, size: 9, font: boldFont, color: GRAY });
+    y -= 13;
+    for (const line of wrapLine(value, font, BODY_FONT_SIZE, maxWidth)) {
+      certPage.drawText(line, { x: MARGIN, y, size: BODY_FONT_SIZE, font, color: rgb(0, 0, 0) });
+      y -= LINE_HEIGHT;
+    }
+    y -= 8;
+  }
+
+  row("Document", input.title);
+  row("Signed by (typed name)", input.signedName);
+  row("Employee account", `${input.employeeName} (${input.employeeEmail})`);
+  row("Date & time signed", input.signedAt.toLocaleString("en-US", { timeZoneName: "short" }));
+  row("IP address", input.ipAddress ?? "Not captured");
+  row("Browser / device", input.userAgent ?? "Not captured");
+  if (originalFingerprint) {
+    row("Original file fingerprint (SHA-256)", originalFingerprint);
+  }
+
+  y -= 4;
+  for (const line of wrapLine(
+    "By typing the name above and checking the agreement box, the signer affirmed they read and agreed to the " +
+      "terms of the attached document. This certificate, together with the document it is attached to, " +
+      "constitutes the complete, permanent record of that electronic signature.",
+    font,
+    9,
+    maxWidth
+  )) {
+    if (y - 12 < MARGIN) {
+      certPage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      drawLetterhead(certPage, logo, boldFont, font);
+      y = PAGE_HEIGHT - MARGIN - HEADER_HEIGHT;
+    }
+    certPage.drawText(line, { x: MARGIN, y, size: 9, font, color: GRAY });
+    y -= 12;
   }
 
   const bytes = await pdfDoc.save();

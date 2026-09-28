@@ -66,6 +66,7 @@ export interface OnboardingAssignmentDetail {
   fileName: string | null;
   signedAt: Date | null;
   signedName: string | null;
+  signedPdfDataUrl: string | null;
 }
 
 // Returns null if the assignment doesn't exist or doesn't belong to this
@@ -89,5 +90,6 @@ export async function getOnboardingAssignmentDetail(
     fileName: assignment.document.fileName,
     signedAt: assignment.signedAt,
     signedName: assignment.signedName,
+    signedPdfDataUrl: assignment.signedPdfDataUrl,
   };
 }
