@@ -47,6 +47,47 @@ export async function createOnboardingDocumentAction(formData: FormData) {
   revalidatePath("/admin/documents");
 }
 
+export interface BulkOnboardingDocumentInput {
+  title: string;
+  fileDataUrl: string;
+  fileName: string;
+  assignByDefault: boolean;
+}
+
+// Bulk-upload submits one document per call (see BulkAddDocumentsForm) rather
+// than batching every file's base64 data into a single request — a handful
+// of real PDFs together easily exceeds the server actions body size limit,
+// while any one file comfortably fits.
+export async function createOnboardingDocumentFromDraftAction(item: BulkOnboardingDocumentInput) {
+  await requireAdmin();
+  if (!item.fileDataUrl) return;
+
+  const count = await prisma.onboardingDocument.count();
+  const doc = await prisma.onboardingDocument.create({
+    data: {
+      title: item.title.trim() || item.fileName || "Untitled Document",
+      fileDataUrl: item.fileDataUrl,
+      fileName: item.fileName || null,
+      assignByDefault: item.assignByDefault,
+      order: count + 1,
+    },
+  });
+
+  // Same backfill as the single-document path: assigning by default applies
+  // to every current employee immediately, not just future invites.
+  if (doc.assignByDefault) {
+    const users = await prisma.user.findMany({ where: { role: "TRAINEE" }, select: { id: true } });
+    if (users.length) {
+      await prisma.onboardingAssignment.createMany({
+        data: users.map((u) => ({ documentId: doc.id, userId: u.id })),
+        skipDuplicates: true,
+      });
+    }
+  }
+
+  revalidatePath("/admin/documents");
+}
+
 export async function updateOnboardingDocumentAction(documentId: string, formData: FormData) {
   await requireAdmin();
 

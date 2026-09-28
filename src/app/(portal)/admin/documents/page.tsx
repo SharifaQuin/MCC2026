@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import AddDocumentForm from "./AddDocumentForm";
+import BulkAddDocumentsForm from "./BulkAddDocumentsForm";
 
 export default async function AdminDocumentsPage() {
   const documents = await prisma.onboardingDocument.findMany({
@@ -45,7 +46,10 @@ export default async function AdminDocumentsPage() {
         )}
       </div>
 
-      <AddDocumentForm />
+      <div className="space-y-3">
+        <AddDocumentForm />
+        <BulkAddDocumentsForm />
+      </div>
     </div>
   );
 }
