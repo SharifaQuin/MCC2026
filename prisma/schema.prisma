@@ -1053,6 +1053,19 @@ model OnboardingDocument {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  // On-document Signature/Date field placement (page index is 0-based, x/y
+  // are PDF point coordinates in the page's own space) — auto-detected from
+  // the uploaded PDF's text, or manually overridden by an admin. Null means
+  // no field was found/placed; the signed copy then falls back to the
+  // trailing certificate page only.
+  sigFieldPage       Int?
+  sigFieldX          Float?
+  sigFieldY          Float?
+  dateFieldPage      Int?
+  dateFieldX         Float?
+  dateFieldY         Float?
+  fieldsAutoDetected Boolean @default(false)
+
   assignments OnboardingAssignment[]
 }
 

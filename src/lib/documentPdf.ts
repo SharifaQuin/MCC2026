@@ -153,6 +153,12 @@ export interface OnboardingSignatureStampInput {
   signedAt: Date;
   ipAddress: string | null;
   userAgent: string | null;
+  // Where to draw the typed name / date directly onto the original document
+  // (page index is 0-based, x/y are PDF points in that page's own space) —
+  // auto-detected from the PDF's text or placed manually by an admin. Either
+  // may be null if no matching field exists on the document.
+  sigField: { page: number; x: number; y: number } | null;
+  dateField: { page: number; x: number; y: number } | null;
 }
 
 // Produces the permanent, tamper-evident signed copy for an Onboarding
@@ -206,6 +212,30 @@ export async function stampOnboardingSignature(input: OnboardingSignatureStampIn
       }
       y -= LINE_HEIGHT / 2;
     }
+  }
+
+  // Stamp the typed name and date directly onto the original document's own
+  // Signature/Date blank, DocuSign-style, in addition to (never instead of)
+  // the certificate page below.
+  const pages = pdfDoc.getPages();
+  const dateText = input.signedAt.toLocaleDateString("en-US");
+  if (input.sigField && pages[input.sigField.page]) {
+    pages[input.sigField.page].drawText(input.signedName, {
+      x: input.sigField.x,
+      y: input.sigField.y,
+      size: BODY_FONT_SIZE,
+      font: boldFont,
+      color: NAVY,
+    });
+  }
+  if (input.dateField && pages[input.dateField.page]) {
+    pages[input.dateField.page].drawText(dateText, {
+      x: input.dateField.x,
+      y: input.dateField.y,
+      size: BODY_FONT_SIZE,
+      font: boldFont,
+      color: NAVY,
+    });
   }
 
   // The signing certificate — always its own trailing page(s), appended

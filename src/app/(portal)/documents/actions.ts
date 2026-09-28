@@ -35,6 +35,16 @@ export async function signOnboardingDocumentAction(assignmentId: string, formDat
   const signedAt = new Date();
   const headerList = headers();
 
+  const doc = assignment.document;
+  const sigField =
+    doc.sigFieldPage != null && doc.sigFieldX != null && doc.sigFieldY != null
+      ? { page: doc.sigFieldPage, x: doc.sigFieldX, y: doc.sigFieldY }
+      : null;
+  const dateField =
+    doc.dateFieldPage != null && doc.dateFieldX != null && doc.dateFieldY != null
+      ? { page: doc.dateFieldPage, x: doc.dateFieldX, y: doc.dateFieldY }
+      : null;
+
   const signedPdfDataUrl = await stampOnboardingSignature({
     title: assignment.document.title,
     contentText: assignment.document.contentText,
@@ -45,6 +55,8 @@ export async function signOnboardingDocumentAction(assignmentId: string, formDat
     signedAt,
     ipAddress: getClientIp(headerList),
     userAgent: headerList.get("user-agent"),
+    sigField,
+    dateField,
   });
 
   await prisma.onboardingAssignment.update({

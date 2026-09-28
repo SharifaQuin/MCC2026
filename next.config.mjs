@@ -14,6 +14,15 @@ const nextConfig = {
     // and to load Sentry's server/edge config.
     instrumentationHook: true,
   },
+  webpack: (config) => {
+    // pdfjs-dist's legacy Node build only *optionally* requires `canvas`
+    // (guarded at runtime, for page rendering we never use — this app only
+    // reads the PDF text layer for signature/date field detection), but
+    // webpack still tries to statically resolve it. Alias it away so the
+    // build doesn't need the native canvas package installed at all.
+    config.resolve.alias.canvas = false;
+    return config;
+  },
 };
 
 // Wrapping is safe even without a Sentry account/DSN configured — it just

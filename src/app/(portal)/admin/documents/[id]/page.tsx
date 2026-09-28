@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import EditDocumentForm from "./EditDocumentForm";
 import AssignmentTable, { type EmployeeAssignmentRow } from "./AssignmentTable";
+import FieldPlacementPanel from "./FieldPlacementPanel";
 
 export default async function AdminDocumentDetailPage({ params }: { params: { id: string } }) {
   const doc = await prisma.onboardingDocument.findUnique({ where: { id: params.id } });
@@ -44,6 +45,22 @@ export default async function AdminDocumentDetailPage({ params }: { params: { id
       </div>
 
       <EditDocumentForm doc={doc} />
+
+      <FieldPlacementPanel
+        documentId={doc.id}
+        hasFile={!!doc.fileDataUrl}
+        sigField={
+          doc.sigFieldPage != null && doc.sigFieldX != null && doc.sigFieldY != null
+            ? { page: doc.sigFieldPage, x: doc.sigFieldX, y: doc.sigFieldY }
+            : null
+        }
+        dateField={
+          doc.dateFieldPage != null && doc.dateFieldX != null && doc.dateFieldY != null
+            ? { page: doc.dateFieldPage, x: doc.dateFieldX, y: doc.dateFieldY }
+            : null
+        }
+        fieldsAutoDetected={doc.fieldsAutoDetected}
+      />
 
       <div>
         <h2 className="mb-3 text-lg font-medium text-neutral-900">Assigned Employees</h2>
