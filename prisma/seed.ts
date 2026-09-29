@@ -5,6 +5,7 @@ import { hashPassword } from "../src/lib/password";
 import { generateNextEmployeeId } from "../src/lib/employeeId";
 import { seedDefaultHiringQuestions } from "../src/lib/recruiting";
 import { assignDefaultOnboardingDocuments } from "../src/lib/onboarding";
+import { autoDetectPdfFields } from "../src/lib/pdfFieldDetect";
 import { FIELD_SKILL_LIBRARY, ROOKIE_DAY_DEFAULTS } from "../src/lib/rookieJourney";
 import { LESSON_DAY_ASSIGNMENTS, ROOKIE_CONTENT_SEED } from "../src/lib/rookieCurriculumContent";
 
@@ -1506,6 +1507,43 @@ async function cleanupSupersededDay1CardVideo() {
   console.log("Rookie Curriculum: cleaned up superseded Day 1 card video.");
 }
 
+// Onboarding documents uploaded before the Signature/Date field-placement
+// feature existed never had auto-detect run on them. Idempotent — once a
+// document's fieldsAutoDetected flag is set, later deploys skip it (a
+// document created or edited after the feature shipped already goes
+// through detectFieldColumns() in the admin actions and arrives here with
+// the flag already set).
+async function backfillOnboardingDocumentFields() {
+  const docs = await prisma.onboardingDocument.findMany({
+    where: { fileDataUrl: { not: null }, fieldsAutoDetected: false },
+    select: { id: true, fileDataUrl: true },
+  });
+  let updated = 0;
+  for (const doc of docs) {
+    const base64 = doc.fileDataUrl!.split(",")[1];
+    if (!base64) continue;
+    try {
+      const { signature, date } = await autoDetectPdfFields(Buffer.from(base64, "base64"));
+      await prisma.onboardingDocument.update({
+        where: { id: doc.id },
+        data: {
+          sigFieldPage: signature?.page ?? null,
+          sigFieldX: signature?.x ?? null,
+          sigFieldY: signature?.y ?? null,
+          dateFieldPage: date?.page ?? null,
+          dateFieldX: date?.x ?? null,
+          dateFieldY: date?.y ?? null,
+          fieldsAutoDetected: true,
+        },
+      });
+      updated++;
+    } catch (e) {
+      console.error(`Signature field auto-detect failed for document ${doc.id}:`, e);
+    }
+  }
+  console.log(`Backfilled signature/date field auto-detect onto ${updated} onboarding document(s).`);
+}
+
 async function main() {
   await seedAdmin();
   await seedTestAccounts();
@@ -1520,6 +1558,7 @@ async function main() {
   await seedRookieCurriculumContent();
   await seedRookieCurriculumDay1Adjustment();
   await cleanupSupersededDay1CardVideo();
+  await backfillOnboardingDocumentFields();
 }
 
 main()
