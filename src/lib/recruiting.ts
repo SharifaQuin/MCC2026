@@ -1297,7 +1297,7 @@ export async function sendInterviewReminder(
     emailBody = bodyLines.join("\n");
 
     const smsLines = [
-      `Mama's Cleaning Crew: reminder — your in-person interview for ${jobPostingTitle} is ${timeframeEn} (${whenText}) at ${logistics.address.split("\n")[0]}.`,
+      `Mama's Cleaning Crew: reminder — your in-person interview for ${jobPostingTitle} is ${timeframeEn} (${whenText}) at ${logistics.address.replace(/\n/g, ", ")}.`,
     ];
     if (confirmLink) smsLines.push(`Please confirm / confirme: ${confirmLink}`);
     smsBody = smsLines.join(" ");
@@ -1393,6 +1393,45 @@ export async function notifyStaffApplicantCantMakeIt(
   await postSlackDMToOwner(
     [
       `:warning: *${applicant.firstName} ${applicant.lastName}* can't make their ${jobPostingTitle} interview (${whenText}) — needs rescheduling.`,
+      `<${profileUrl}|View applicant>`,
+    ].join("\n")
+  );
+}
+
+// Fired the moment a candidate picks their own slot on the public booking
+// page — nobody on staff otherwise finds out an interview just landed on
+// the calendar until they happen to check it, so this mirrors
+// notifyStaffApplicantCantMakeIt: an email plus a Slack DM to the owner.
+// Best-effort, same as every other notification here.
+async function notifyStaffCandidateBookedInterview(
+  applicant: { id: string; firstName: string; lastName: string },
+  jobPostingTitle: string,
+  scheduledAt: Date
+) {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+  const profileUrl = `${appUrl}/recruiting/applicants/${applicant.id}`;
+  const whenText = `${formatInBusinessTimezone(scheduledAt)} Pacific Time`;
+
+  const notifyEmail = process.env.RECRUITING_NOTIFY_EMAIL || process.env.MS_GRAPH_SENDER_EMAIL;
+  if (notifyEmail) {
+    try {
+      await sendEmail({
+        to: notifyEmail,
+        subject: `${applicant.firstName} ${applicant.lastName} booked an interview`,
+        body: [
+          `${applicant.firstName} ${applicant.lastName} just booked their own ${jobPostingTitle} interview for ${whenText}.`,
+          "",
+          `View their profile: ${profileUrl}`,
+        ].join("\n"),
+      });
+    } catch {
+      // Swallow — a notification failure should never block the booking from being recorded.
+    }
+  }
+
+  await postSlackDMToOwner(
+    [
+      `:calendar: *${applicant.firstName} ${applicant.lastName}* booked their ${jobPostingTitle} interview for ${whenText}.`,
       `<${profileUrl}|View applicant>`,
     ].join("\n")
   );
@@ -1548,6 +1587,7 @@ export async function bookInterviewSlot(
     null,
     updated.jobPosting.titleEs
   );
+  await notifyStaffCandidateBookedInterview(updated, updated.jobPosting.titleEn, slot.startsAt);
 
   return { ok: true };
 }
