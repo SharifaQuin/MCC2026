@@ -135,6 +135,12 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
               <dd>{lead.serviceInterest}</dd>
             </div>
           )}
+          {lead.squareFootage && (
+            <div>
+              <dt className="text-neutral-400">Square Footage</dt>
+              <dd>{lead.squareFootage.toLocaleString()} sqft</dd>
+            </div>
+          )}
           <div>
             <dt className="text-neutral-400">Received</dt>
             <dd>{lead.createdAt.toLocaleDateString()}</dd>

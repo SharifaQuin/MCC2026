@@ -126,7 +126,7 @@ export default async function LeadFormPage({
                 type="number"
                 name="squareFootage"
                 min={1}
-                step={10}
+                step={1}
                 placeholder="e.g. 1800"
                 required
                 className="w-full rounded-md border border-neutral-300 px-3 py-2"
