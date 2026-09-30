@@ -276,7 +276,7 @@ export default async function ApplicantDetailPage({
 
       <div className="rounded-lg border border-neutral-200 bg-white p-4">
         <h2 className="mb-3 font-medium text-neutral-900">Move Applicant</h2>
-        <StageControls applicantId={applicant.id} stage={applicant.stage} />
+        <StageControls applicantId={applicant.id} stage={applicant.stage} scheduledAt={applicant.scheduledAt} />
       </div>
     </div>
   );

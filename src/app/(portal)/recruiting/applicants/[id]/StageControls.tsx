@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import type { ApplicantStage } from "@prisma/client";
 import { setApplicantStageAction, rejectApplicantAction } from "../actions";
 import { STAGE_LABELS, SCHEDULING_STAGES } from "@/lib/recruiting";
+import { businessTimeParts } from "@/lib/timezone";
 
 // Phase 1 keeps stage changes manual — a manager reviews and moves the
 // applicant forward themselves. Automated scheduling/messaging on these
@@ -39,18 +40,42 @@ const ALL_STAGES = Object.keys(STAGE_LABELS) as ApplicantStage[];
 export default function StageControls({
   applicantId,
   stage,
+  scheduledAt,
 }: {
   applicantId: string;
   stage: ApplicantStage;
+  scheduledAt?: Date | string | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [scheduling, setScheduling] = useState<ApplicantStage | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [overriding, setOverriding] = useState(false);
   const options = NEXT_STAGES[stage] ?? [];
+  const isCurrentlyScheduled = scheduledAt && (SCHEDULING_STAGES as string[]).includes(stage);
+
+  // Prefilling the reschedule form with the existing date/time (read in the
+  // business timezone, same as the confirmation email shows it) so staff
+  // are editing the current appointment, not starting from a blank form.
+  const currentDefaults = isCurrentlyScheduled ? businessTimeParts(new Date(scheduledAt!)) : null;
+  const defaultDate = currentDefaults
+    ? `${currentDefaults.year}-${String(currentDefaults.month).padStart(2, "0")}-${String(currentDefaults.day).padStart(2, "0")}`
+    : undefined;
+  const defaultTime = currentDefaults
+    ? `${String(currentDefaults.hour).padStart(2, "0")}:${String(currentDefaults.minute).padStart(2, "0")}`
+    : undefined;
 
   return (
     <div className="space-y-3">
+      {isCurrentlyScheduled && scheduling !== stage && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => setScheduling(stage)}
+          className="rounded-md border border-brand-300 px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-60"
+        >
+          Reschedule this interview
+        </button>
+      )}
       {options.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {options.map((next) => (
@@ -104,7 +129,7 @@ export default function StageControls({
           className="rounded-md border border-neutral-200 bg-neutral-50 p-3"
         >
           <label className="mb-1 block text-xs font-medium text-neutral-700">
-            When is the {STAGE_LABELS[scheduling]}?{" "}
+            {scheduling === stage ? "New date/time for the" : "When is the"} {STAGE_LABELS[scheduling]}?{" "}
             <span className="font-normal text-neutral-500">(Pacific Time)</span>
           </label>
           <div className="flex flex-wrap items-end gap-2">
@@ -112,12 +137,14 @@ export default function StageControls({
               type="date"
               name="scheduledDate"
               required
+              defaultValue={scheduling === stage ? defaultDate : undefined}
               className="rounded-md border border-neutral-300 px-3 py-2 text-sm"
             />
             <input
               type="time"
               name="scheduledTime"
               required
+              defaultValue={scheduling === stage ? defaultTime : undefined}
               className="rounded-md border border-neutral-300 px-3 py-2 text-sm"
             />
             <button
