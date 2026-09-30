@@ -41,12 +41,20 @@ export default async function ManagementPage() {
           <h1 className="text-2xl font-semibold">Management</h1>
           <p className="mt-1 text-sm text-neutral-500">Monday Team Update — draft, approve, and send to Slack.</p>
         </div>
-        <Link
-          href="/management/route-board"
-          className="shrink-0 rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-        >
-          Route Board →
-        </Link>
+        <div className="flex shrink-0 gap-2">
+          <Link
+            href="/management/route-board"
+            className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Route Board →
+          </Link>
+          <Link
+            href="/management/slot-capacity"
+            className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Slot Capacity Feed →
+          </Link>
+        </div>
       </div>
       <WeeklyUpdateManager updates={rows} canEdit={canEdit} defaultWeekOf={toDateKey(nextMondayFrom())} />
     </div>

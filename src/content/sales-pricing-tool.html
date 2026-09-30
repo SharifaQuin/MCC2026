@@ -463,6 +463,24 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 .rdp-badge-match{background:var(--green-lt);color:var(--green);}
 .rdp-badge-mismatch{background:var(--red-lt);color:var(--red);}
 .rdp-remove-btn{font-size:10.5px;color:var(--red);background:none;border:none;cursor:pointer;text-decoration:underline;}
+.rdp-live-list{display:flex;flex-direction:column;gap:10px;}
+.rdp-live-card{border:1px solid var(--paper-dark);border-radius:8px;padding:12px 14px;background:#fff;}
+.rdp-live-card:first-child{border-color:var(--green);background:var(--green-lt);}
+.rdp-live-top{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.rdp-live-headline{font-size:14px;font-weight:700;color:var(--ink);}
+.rdp-live-badge{display:inline-block;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap;}
+.rdp-badge-live-good{background:var(--green-lt);color:var(--green);}
+.rdp-badge-live-warn{background:var(--gold-lt);color:var(--gold);}
+.rdp-badge-live-bad{background:var(--red-lt);color:var(--red);}
+.rdp-live-reason{font-size:11.5px;color:var(--ink-lt);margin-top:4px;}
+.rdp-live-repeat{font-size:11px;color:var(--ink-lt);margin-top:4px;}
+.rdp-live-mgr{font-size:10.5px;color:var(--ink-lt);margin-top:6px;padding-top:6px;border-top:1px dashed var(--paper-dark);}
+.rdp-live-actions{display:flex;gap:8px;margin-top:8px;}
+.rdp-live-book-btn{font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;padding:5px 11px;border-radius:6px;border:none;background:var(--green);color:#fff;cursor:pointer;}
+.rdp-live-book-btn:disabled{opacity:.6;cursor:default;}
+.rdp-live-booked{margin-top:8px;padding-top:8px;border-top:1px solid var(--paper-dark);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:11px;}
+.rdp-live-hold{color:var(--green);font-weight:600;}
+.rdp-live-tcs{display:flex;align-items:center;gap:5px;font-weight:600;color:var(--green);cursor:pointer;}
 </style>
 </head>
 <body>
@@ -2414,14 +2432,182 @@ function rdpCurrentCity(){
   return el ? el.value : '';
 }
 
-function renderRdpResult(){
+// ===== Live capacity (MCC Slot Booking Recommender) =====
+// Tries the real engine first — real per-date capacity, drive time, and
+// recurrence fit, driven by the owner's monthly open_slots feed. Falls back
+// to the historical city/weekday combos above only when no feed is loaded
+// for the current month yet, so the panel never goes blank and reps never
+// see two disagreeing recommendations.
+const SLOT_MONTH = new Date().toISOString().slice(0, 7);
+
+function syntheticAddressForCity(city){ return `, ${city}, CA`; }
+
+function slotEngineFrequency(){ return state.frequency || 'onetime'; }
+
+function setRdpLegacyControlsVisible(visible){
+  const overrideRow = document.querySelector('.rdp-override-row');
+  if(overrideRow) overrideRow.style.display = visible ? '' : 'none';
+  ['rdp-compare','rdp-window-compare'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el && !visible) el.innerHTML = '';
+  });
+}
+
+function routeBadgeClass(tier){
+  return tier === 'On route' ? 'rdp-badge-live-good' : tier === 'Minor detour' ? 'rdp-badge-live-warn' : 'rdp-badge-live-bad';
+}
+
+function nextMonthKey(monthKey){
+  const [y, m] = monthKey.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m, 1)); // m is already 1-based next month in UTC terms
+  return d.toISOString().slice(0, 7);
+}
+
+async function fetchLiveAvailabilityForMonth(month, address, price, frequency){
+  try{
+    const res = await fetch('/api/sales/slot-recommender/recommend', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ month, address, price, frequency }),
+    });
+    if(!res.ok) return null;
+    return await res.json();
+  }catch(e){
+    return null;
+  }
+}
+
+// Tries the current calendar month first, then next month — the owner
+// typically loads next month's feed during the last week of the prior
+// month (BUILD_SPEC §10), so late in the month "today" and the loaded
+// feed are usually one month apart.
+async function fetchLiveAvailability(address, price, frequency){
+  const first = await fetchLiveAvailabilityForMonth(SLOT_MONTH, address, price, frequency);
+  const noFeed = (r) => !r || (r.warnings || []).some(w => w.includes('No capacity feed loaded'));
+  if(!noFeed(first)) { first.month = SLOT_MONTH; return first; }
+  const next = await fetchLiveAvailabilityForMonth(nextMonthKey(SLOT_MONTH), address, price, frequency);
+  if(!noFeed(next)) { next.month = nextMonthKey(SLOT_MONTH); return next; }
+  return first;
+}
+
+function renderLiveCards(live){
+  const box = document.getElementById('rdp-result');
+  if(!live.results.length){
+    box.innerHTML = `<p class="rdp-empty">${(live.warnings && live.warnings[0]) || 'No opening fits this job this month. Offer next month or check with the owner about overtime.'}</p>`;
+    return;
+  }
+
+  const cards = live.results.map((c, i) => {
+    const mgr = live.isManager
+      ? `<div class="rdp-live-mgr">Score ${c.score} · Drive cost $${c.estDriveCost} · Day: ${c.dayStatus}</div>`
+      : '';
+    return `
+    <div class="rdp-live-card">
+      <div class="rdp-live-top">
+        <div class="rdp-live-headline">${c.headline}</div>
+        <div class="rdp-live-badge ${routeBadgeClass(c.routeTier)}">${c.routeTier}</div>
+      </div>
+      <div class="rdp-live-reason">${c.reason}</div>
+      ${c.repeatNote ? `<div class="rdp-live-repeat">↻ ${c.repeatNote}</div>` : ''}
+      ${mgr}
+      <div class="rdp-live-actions">
+        <button class="rdp-copy-btn" data-phrase="${c.script.replace(/"/g, '&quot;')}">Copy</button>
+        <button class="rdp-live-book-btn" data-idx="${i}">Book</button>
+      </div>
+      <div class="rdp-live-booked" id="rdp-live-booked-${i}" style="display:none;"></div>
+    </div>`;
+  }).join('');
+
+  box.innerHTML = `<div class="rdp-live-list">${cards}</div>`;
+
+  box.querySelectorAll('.rdp-copy-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      try{
+        await navigator.clipboard.writeText(btn.getAttribute('data-phrase'));
+        const orig = btn.textContent;
+        btn.textContent = 'Copied';
+        setTimeout(()=>{ btn.textContent = orig; }, 1500);
+      }catch(e){
+        btn.textContent = 'Select & copy manually';
+      }
+    });
+  });
+
+  box.querySelectorAll('.rdp-live-book-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const idx = parseInt(btn.getAttribute('data-idx'));
+      const c = live.results[idx];
+      btn.disabled = true;
+      btn.textContent = 'Booking...';
+      try{
+        const r = computeCurrent();
+        const res = await fetch('/api/sales/slot-recommender/book', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            month: live.month, date: c.date, block: c.block, window: c.window,
+            city: live.lead.city, address: live.lead.address, personHours: live.lead.personHours,
+            price: Math.round(r.price * 100) / 100, frequency: slotEngineFrequency(),
+          }),
+        });
+        const data = await res.json();
+        if(!res.ok || data.ok === false){
+          btn.disabled = false;
+          btn.textContent = 'Book';
+          alert((data && data.reason) || 'Could not book this slot — re-run recommendations.');
+          return;
+        }
+        btn.textContent = 'Booked';
+        const bookingId = data.bookingId;
+        const holder = document.getElementById(`rdp-live-booked-${idx}`);
+        holder.style.display = '';
+        holder.innerHTML = `
+          <span class="rdp-live-hold">✓ Held for this lead — enter it in TCS to confirm</span>
+          <label class="rdp-live-tcs"><input type="checkbox"> Entered in TCS</label>`;
+        holder.querySelector('input[type=checkbox]').addEventListener('change', async (e)=>{
+          await fetch('/api/sales/slot-recommender/confirm-tcs', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ bookingId, entered: e.target.checked }),
+          });
+        });
+      }catch(e){
+        btn.disabled = false;
+        btn.textContent = 'Book';
+        alert('Could not book this slot — try again.');
+      }
+    });
+  });
+}
+
+async function renderRdpResult(){
   const city = rdpCurrentCity();
   const box = document.getElementById('rdp-result');
   if(!box) return;
   if(!city || city === 'Other'){
     box.innerHTML = `<p class="rdp-empty">Pick a city above to see the best day &amp; arrival window for this lead.</p>`;
+    setRdpLegacyControlsVisible(false);
     return;
   }
+
+  const addressField = document.getElementById('save-client-address');
+  const address = (addressField && addressField.value.trim()) || syntheticAddressForCity(city);
+  const r = computeCurrent();
+  const live = await fetchLiveAvailability(address, r.price, slotEngineFrequency());
+
+  if(live && !(live.warnings || []).some(w => w.includes('No capacity feed loaded'))){
+    setRdpLegacyControlsVisible(false);
+    renderLiveCards(live);
+    return;
+  }
+
+  setRdpLegacyControlsVisible(true);
+  renderRdpResultStatic(city);
+}
+
+function renderRdpResultStatic(city){
+  const box = document.getElementById('rdp-result');
+  if(!box) return;
 
   const {combos, hasData} = rdpTopCombos(city, 3);
   const cards = combos.map((c, i)=>{

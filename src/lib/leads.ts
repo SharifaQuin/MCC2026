@@ -42,6 +42,7 @@ export const LEAD_FREQUENCY_OPTIONS: { key: string; label: string }[] = [
   { key: "onetime", label: "One-Time" },
   { key: "weekly", label: "Weekly" },
   { key: "biweekly", label: "Bi-Weekly" },
+  { key: "triweekly", label: "Tri-Weekly" },
   { key: "monthly", label: "Monthly" },
   { key: "asneeded", label: "As Needed" },
   { key: "unsure", label: "Unsure" },

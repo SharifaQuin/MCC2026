@@ -177,6 +177,8 @@ model User {
   leadNotesWritten            LeadNote[]
   leadStageChangesMade        LeadStageChange[]
   assignedLeads               Lead[]                 @relation("LeadAssignedTo")
+  slotFeedImports              SlotFeedMonth[]
+  slotBookingsAsRep             SlotBooking[]
   hiredFromApplicant          Applicant?             @relation("ApplicantHiredUser")
   applicantsViewed            Applicant[]            @relation("ApplicantViewedBy")
   onboardingAssignments       OnboardingAssignment[]
@@ -1604,6 +1606,7 @@ model Lead {
   communications LeadCommunication[]
   notes          LeadNote[]
   stageChanges   LeadStageChange[]
+  slotBookings   SlotBooking[]
 
   @@index([stage])
   @@index([source])
@@ -2303,4 +2306,84 @@ model RookieContentProgress {
   completedAt   DateTime          @default(now())
 
   @@unique([userId, contentItemId])
+}
+
+// ===== MCC Slot Booking Recommender =====
+// One owner-uploaded monthly capacity feed (schema mcc-open-slots/v1),
+// replaced wholesale on re-import. Engine bookings (SlotBooking) are NOT
+// nested under it — they're keyed by (month, date, block) so re-importing a
+// month's feed never loses or double-counts a booking already made through
+// the engine; open capacity is always feed capacity minus live SlotBooking
+// rows for that date, computed at read time rather than stored/decremented.
+model SlotFeedMonth {
+  id                 String   @id @default(cuid())
+  month              String   @unique // "2026-10"
+  schema             String // "mcc-open-slots/v1", the feed's own schema tag
+  generatedAt        DateTime // the owner-side capacity review's own timestamp
+  settings           Json // {teams, people, hours_per_person_day, pace_per_person_hour, min_lead_days, excluded_customers}
+  windowValuePerHour Json // {window: $/hr}
+  routeBoard         Json // {city: {weekday: count}}
+  importedAt         DateTime @default(now())
+  importedById       String?
+  importedBy         User?    @relation(fields: [importedById], references: [id])
+
+  dates SlotFeedDate[]
+}
+
+model SlotFeedDate {
+  id              String        @id @default(cuid())
+  feedMonthId     String
+  feedMonth       SlotFeedMonth @relation(fields: [feedMonthId], references: [id], onDelete: Cascade)
+  date            DateTime      @db.Date
+  weekday         String
+  status          String // Open | Tight | OVERBOOKED, as imported
+  openPersonHours Float
+  openDollars     Float
+  // {Morning: {open, windows: [...]}, Midday: {...}, Afternoon: {...}} as imported
+  blocks          Json
+  // The feed's own booked[] jobs for this date ([{block, window, city,
+  // address}]) — the route the teams are already committed to, used for
+  // route scoring. Separate from SlotBooking, which the engine itself made.
+  bookedJobs      Json          @default("[]")
+
+  @@unique([feedMonthId, date])
+  @@index([date])
+}
+
+enum SlotBookingStatus {
+  HOLD
+  CONFIRMED
+  RELEASED
+}
+
+// A booking the recommender itself made. Deliberately NOT a child of
+// SlotFeedDate (see note above) — keyed by month/date/block so it survives
+// that month's feed being replaced by a fresh import. TCS remains the system
+// of record for the schedule; this only tracks the engine's own hold so two
+// reps can't sell the same opening, plus whether the confirmed job has been
+// manually keyed into TCS yet.
+model SlotBooking {
+  id            String            @id @default(cuid())
+  month         String
+  date          DateTime          @db.Date
+  block         String
+  window        String
+  city          String
+  address       String // client data — never surface another lead's address in the rep UI
+  leadId        String?
+  lead          Lead?             @relation(fields: [leadId], references: [id])
+  repId         String
+  rep           User              @relation(fields: [repId], references: [id])
+  personHours   Float
+  price         Float?
+  frequency     String?
+  status        SlotBookingStatus @default(HOLD)
+  holdExpiresAt DateTime?
+  confirmedAt   DateTime?
+  enteredTcsAt  DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([month, date, block])
+  @@index([leadId])
 }
