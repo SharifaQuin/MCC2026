@@ -2387,3 +2387,25 @@ model SlotBooking {
   @@index([month, date, block])
   @@index([leadId])
 }
+
+// Permanent record of a date's outcome, written once (by the nightly
+// scheduler tick) the moment that date passes — before the next monthly
+// feed import can ever overwrite SlotFeedDate's numbers for it. Without
+// this, a day's open-capacity figure would just quietly disappear once its
+// month's feed is replaced; this is what lets the owner see "$X left on the
+// table this month" as a running, permanent total.
+model SlotCapacitySnapshot {
+  id                      String   @id @default(cuid())
+  month                   String
+  date                    DateTime @db.Date
+  weekday                 String
+  openDollarsAtImport     Float
+  openPersonHoursAtImport Float
+  bookedDollars           Float // sum of CONFIRMED SlotBooking.price for this date
+  bookedPersonHours       Float
+  lostDollars             Float // max(0, openDollarsAtImport - bookedDollars)
+  createdAt               DateTime @default(now())
+
+  @@unique([month, date])
+  @@index([month])
+}

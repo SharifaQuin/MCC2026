@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getMonthlyFinancials, getOwnerSettings, getLoans } from "@/lib/financials";
+import { resolveActiveSlotMonth, getSlotCapacityMonthSummary } from "@/lib/slotCapacitySummary";
 import {
   upsertMonthlyFinancialsAction,
   updateDrawPolicyAction,
@@ -72,6 +73,9 @@ export default async function FinancialsPage({
     getLoans(),
     getQuickBooksConnection(),
   ]);
+
+  const activeSlotMonth = await resolveActiveSlotMonth();
+  const slotCapacity = activeSlotMonth ? await getSlotCapacityMonthSummary(activeSlotMonth) : null;
 
   const selectedMonth = searchParams.month ?? "";
   const isNew = selectedMonth === "new";
@@ -232,6 +236,33 @@ export default async function FinancialsPage({
               ) : (
                 <p className="mt-0.5 text-sm text-neutral-400">Set a draw policy to see this</p>
               )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {slotCapacity?.loaded && (
+        <section className="mb-8 rounded-lg border border-neutral-200 bg-white p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-medium text-neutral-900">Open Capacity — {slotCapacity.month}</h2>
+            <Link href="/management/slot-capacity" className="text-xs font-medium text-brand-700 hover:underline">
+              Day-by-day breakdown →
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+            <div className="rounded-md bg-neutral-50 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Still Fillable</p>
+              <p className="mt-0.5 text-lg font-semibold text-neutral-900">{money(slotCapacity.openRemainingDollars)}</p>
+              <p className="mt-1 text-xs text-neutral-400">{slotCapacity.daysRemaining} days left this month</p>
+            </div>
+            <div className="rounded-md bg-green-50 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-green-700">Booked via Engine</p>
+              <p className="mt-0.5 text-lg font-semibold text-green-800">{money(slotCapacity.bookedDollars)}</p>
+            </div>
+            <div className="rounded-md bg-red-50 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-red-700">Lost (Unfilled, Days Passed)</p>
+              <p className="mt-0.5 text-lg font-semibold text-red-700">{money(slotCapacity.lostDollars)}</p>
+              <p className="mt-1 text-xs text-neutral-400">{slotCapacity.daysPassed} days passed this month</p>
             </div>
           </div>
         </section>

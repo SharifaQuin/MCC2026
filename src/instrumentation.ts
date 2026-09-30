@@ -31,6 +31,7 @@ export async function register() {
   const { runLeadDigestSchedulerTick } = await import("@/lib/leadDigestScheduler");
   const { runInterviewReminderSchedulerTick } = await import("@/lib/interviewReminderScheduler");
   const { runPayrollReminderSchedulerTick } = await import("@/lib/payrollReminderScheduler");
+  const { runSlotCapacitySnapshotSchedulerTick } = await import("@/lib/slotCapacitySnapshotScheduler");
 
   setInterval(() => {
     runWeeklyUpdateSchedulerTick().catch((err) => {
@@ -47,6 +48,9 @@ export async function register() {
     });
     runPayrollReminderSchedulerTick().catch((err) => {
       console.error("[payrollReminderScheduler] tick failed:", err);
+    });
+    runSlotCapacitySnapshotSchedulerTick().catch((err) => {
+      console.error("[slotCapacitySnapshotScheduler] tick failed:", err);
     });
   }, 60_000);
 }
