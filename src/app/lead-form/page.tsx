@@ -1,5 +1,11 @@
 import { prisma } from "@/lib/prisma";
-import { getLeadFormConfig, LEAD_SERVICE_OPTIONS, LEAD_HOW_HEARD_OPTIONS, guessHowHeardFromSrc } from "@/lib/leads";
+import {
+  getLeadFormConfig,
+  LEAD_SERVICE_OPTIONS,
+  LEAD_FREQUENCY_OPTIONS,
+  LEAD_HOW_HEARD_OPTIONS,
+  guessHowHeardFromSrc,
+} from "@/lib/leads";
 import { submitLeadAction } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -134,6 +140,26 @@ export default async function LeadFormPage({
               <p className="mt-1 text-xs text-neutral-500">
                 Helps us give you a more accurate quote.
               </p>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-neutral-700">
+                How often would you like this cleaned? *
+              </label>
+              <select
+                name="frequency"
+                required
+                defaultValue=""
+                className="w-full rounded-md border border-neutral-300 px-3 py-2"
+              >
+                <option value="" disabled>
+                  Select one...
+                </option>
+                {LEAD_FREQUENCY_OPTIONS.map((f) => (
+                  <option key={f.key} value={f.key}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </>
         )}

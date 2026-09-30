@@ -1584,6 +1584,7 @@ model Lead {
   sourceDetail     String?
   serviceInterest  String?
   squareFootage    Int?
+  frequency        String?
   message          String?    @db.Text
   stage            LeadStage  @default(NEW_INQUIRY)
   estimatedValue   Float?

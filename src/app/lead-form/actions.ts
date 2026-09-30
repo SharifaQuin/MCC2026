@@ -8,6 +8,7 @@ import {
   notifyNewLead,
   getLeadFormConfig,
   LEAD_SERVICE_LABELS,
+  LEAD_FREQUENCY_LABELS,
   LEAD_HOW_HEARD_OPTIONS,
   createDraftQuoteForLead,
 } from "@/lib/leads";
@@ -46,6 +47,8 @@ export async function submitLeadAction(formData: FormData) {
   const serviceKey = String(formData.get("serviceInterest") ?? "").trim() || null;
   const squareFootageRaw = String(formData.get("squareFootage") ?? "").trim();
   const squareFootage = squareFootageRaw ? parseInt(squareFootageRaw, 10) || null : null;
+  const frequencyKey = String(formData.get("frequency") ?? "").trim();
+  const frequency = LEAD_FREQUENCY_LABELS[frequencyKey] ?? null;
   const message = String(formData.get("message") ?? "").trim() || null;
   // The visible "How did you hear about us?" dropdown is authoritative —
   // it's the customer's own direct answer. The ?src= campaign tag only
@@ -79,7 +82,8 @@ export async function submitLeadAction(formData: FormData) {
     (config.addressRequired && !address) ||
     (config.serviceInterestRequired && !serviceKey) ||
     (config.messageRequired && !message) ||
-    (config.serviceInterestEnabled && !squareFootage)
+    (config.serviceInterestEnabled && !squareFootage) ||
+    (config.serviceInterestEnabled && !frequency)
   ) {
     redirect("/lead-form?error=incomplete");
   }
@@ -111,6 +115,7 @@ export async function submitLeadAction(formData: FormData) {
       address,
       serviceInterest,
       squareFootage,
+      frequency,
       message,
       source,
       customFields: customFields.length > 0 ? customFields : undefined,

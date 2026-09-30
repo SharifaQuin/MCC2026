@@ -33,6 +33,24 @@ export const LEAD_SERVICE_LABELS: Record<string, string> = Object.fromEntries(
   LEAD_SERVICE_OPTIONS.map((s) => [s.key, s.label])
 );
 
+// The public lead form's "How often would you like this cleaned?" dropdown
+// — a lead-qualification question, distinct from the Pricing Calculator's
+// own recurring-discount frequency selector (which has no "As Needed" or
+// "Unsure" option, since every quote it builds needs one concrete billing
+// cadence). Stored as a plain label on the Lead, same as serviceInterest.
+export const LEAD_FREQUENCY_OPTIONS: { key: string; label: string }[] = [
+  { key: "onetime", label: "One-Time" },
+  { key: "weekly", label: "Weekly" },
+  { key: "biweekly", label: "Bi-Weekly" },
+  { key: "monthly", label: "Monthly" },
+  { key: "asneeded", label: "As Needed" },
+  { key: "unsure", label: "Unsure" },
+];
+
+export const LEAD_FREQUENCY_LABELS: Record<string, string> = Object.fromEntries(
+  LEAD_FREQUENCY_OPTIONS.map((f) => [f.key, f.label])
+);
+
 export const LEAD_SOURCE_LABELS: Record<string, string> = {
   WEBSITE_FORM: "Website Form",
   PHONE_CALL: "Phone Call",
@@ -719,6 +737,7 @@ export async function buildLeadExportCsv(): Promise<string> {
     "Source",
     "Stage",
     "Service Interest",
+    "Cleaning Frequency",
     "Estimated Value",
     "Quote Reference",
     "Lost Reason",
@@ -739,6 +758,7 @@ export async function buildLeadExportCsv(): Promise<string> {
         csvEscape(LEAD_SOURCE_LABELS[l.source] ?? l.source),
         csvEscape(LEAD_STAGE_LABELS[l.stage] ?? l.stage),
         csvEscape(l.serviceInterest),
+        csvEscape(l.frequency),
         csvEscape(l.estimatedValue),
         csvEscape(l.quoteKey),
         csvEscape(l.lostReason),
