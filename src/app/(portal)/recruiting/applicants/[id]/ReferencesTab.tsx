@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { addReferenceCheckAction, deleteReferenceCheckAction } from "../actions";
 import { REFERENCE_VERDICT_LABELS } from "@/lib/recruiting";
+import { formatPhone } from "@/lib/formatPhone";
 
 interface ReferenceCheckEntry {
   id: string;
@@ -86,7 +87,7 @@ function ReferenceCard({
           <p className="text-xs text-neutral-500">
             {entry.referenceRelationship}
             {entry.durationKnown ? ` — ${entry.durationKnown}` : ""}
-            {entry.referencePhone ? ` · ${entry.referencePhone}` : ""}
+            {entry.referencePhone ? ` · ${formatPhone(entry.referencePhone)}` : ""}
           </p>
         </div>
         {canEdit && (

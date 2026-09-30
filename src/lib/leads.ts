@@ -3,6 +3,7 @@ import type { LeadStage, LeadSource } from "@prisma/client";
 import { sendEmail } from "@/lib/email";
 import { postSlackDMToOwner } from "@/lib/slack";
 import { csvEscape } from "@/lib/export";
+import { formatPhone } from "@/lib/formatPhone";
 
 // Mirrors the Pricing Calculator's SERVICES/SERVICE_LABELS in
 // src/content/sales-pricing-tool.html exactly (same key strings) — a lead
@@ -733,7 +734,7 @@ export async function buildLeadExportCsv(): Promise<string> {
         csvEscape(l.firstName),
         csvEscape(l.lastName),
         csvEscape(l.email),
-        csvEscape(l.phone),
+        csvEscape(formatPhone(l.phone)),
         csvEscape(l.address),
         csvEscape(LEAD_SOURCE_LABELS[l.source] ?? l.source),
         csvEscape(LEAD_STAGE_LABELS[l.stage] ?? l.stage),

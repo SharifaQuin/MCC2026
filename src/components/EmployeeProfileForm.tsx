@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { setEmployeeProfileFieldsAction } from "@/app/actions/staff";
+import { formatPhone } from "@/lib/formatPhone";
 import type { EmploymentType } from "@prisma/client";
 
 const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
@@ -42,7 +43,7 @@ export default function EmployeeProfileForm({
     return (
       <div className="rounded-lg border border-neutral-200 bg-white p-4">
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <Field label="Phone" value={fields.phone} />
+          <Field label="Phone" value={formatPhone(fields.phone)} />
           <Field label="Address" value={fields.address} />
           <Field
             label="Employment Type"

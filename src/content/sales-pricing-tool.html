@@ -2908,7 +2908,7 @@ function renderPreviousQuotesList(){
     return `
     <div class="prevquote-item" onclick="loadSavedQuoteFromList('${safeId}')">
       <div class="prevquote-name">${d.clientName || '(no name)'} <span class="sc-status-badge ${d.status||'pending'}" style="font-size:9px;padding:2px 8px;vertical-align:1px;">${d.status==='won'?'Won':d.status==='lost'?'Lost':'Pending'}</span></div>
-      <div class="prevquote-meta">${item.id}${d.phone ? ' · '+d.phone : ''} · ${serviceLabel}${priceStr ? ' · '+priceStr : ''}${savedDateStr ? ' · '+savedDateStr : ''}</div>
+      <div class="prevquote-meta">${item.id}${d.phone ? ' · '+formatPhone(d.phone) : ''} · ${serviceLabel}${priceStr ? ' · '+priceStr : ''}${savedDateStr ? ' · '+savedDateStr : ''}</div>
     </div>`;
   }).join('');
 }
@@ -2945,6 +2945,16 @@ function formatDate(iso){
   if(!iso) return '';
   const d = new Date(iso+'T00:00:00');
   return d.toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'});
+}
+
+// Displays a US phone as "(555) 123-4567" regardless of how it was typed
+// in — this app has no input-time normalization, so stored values vary.
+function formatPhone(raw){
+  if(!raw) return raw || '';
+  const digits = String(raw).replace(/\D/g,'');
+  const tenDigits = (digits.length === 11 && digits.charAt(0) === '1') ? digits.slice(1) : digits;
+  if(tenDigits.length !== 10) return raw;
+  return `(${tenDigits.slice(0,3)}) ${tenDigits.slice(3,6)}-${tenDigits.slice(6)}`;
 }
 
 function renderQuote(data){

@@ -9,6 +9,7 @@ import {
   extractZipFromAddress,
 } from "@/lib/leads";
 import { getMessageTemplates } from "@/lib/messageTemplates";
+import { formatPhone } from "@/lib/formatPhone";
 import LeadStageControls from "./LeadStageControls";
 import LeadCommunicationPanel from "./LeadCommunicationPanel";
 import LeadDealDetailsForm from "./LeadDealDetailsForm";
@@ -120,7 +121,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
           </div>
           <div>
             <dt className="text-neutral-400">Phone</dt>
-            <dd>{lead.phone}</dd>
+            <dd>{formatPhone(lead.phone)}</dd>
           </div>
           {lead.address && (
             <div>

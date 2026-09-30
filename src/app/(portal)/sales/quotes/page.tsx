@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
 import { prisma } from "@/lib/prisma";
+import { formatPhone } from "@/lib/formatPhone";
 
 const SERVICE_LABELS: Record<string, string> = {
   standard: "Standard Clean",
@@ -150,7 +151,7 @@ export default async function SalesQuotesPage({
                   </Link>
                   <div className="text-xs text-neutral-500">
                     {q.id}
-                    {q.phone ? ` · ${q.phone}` : ""}
+                    {q.phone ? ` · ${formatPhone(q.phone)}` : ""}
                     {q.clientEmail ? ` · ${q.clientEmail}` : ""}
                   </div>
                 </td>

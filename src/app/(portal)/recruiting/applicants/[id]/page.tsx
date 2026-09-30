@@ -4,6 +4,7 @@ import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
 import { STAGE_LABELS, SCHEDULING_STAGES, INTERVIEW_SCORECARD_COMPETENCIES, DEFAULT_PHONE_SCREEN_CRITERIA, WORKING_SESSION_CHECKLIST_ITEMS, getOnboardingChecklist, SCORED_CATEGORIES } from "@/lib/recruiting";
 import { getMessageTemplates } from "@/lib/messageTemplates";
 import { formatInBusinessTimezone } from "@/lib/timezone";
+import { formatPhone } from "@/lib/formatPhone";
 import StageControls from "./StageControls";
 import InterviewDecisionPanel from "./InterviewDecisionPanel";
 import CommunicationPanel from "./CommunicationPanel";
@@ -192,7 +193,7 @@ export default async function ApplicantDetailPage({
           </div>
           <div>
             <dt className="text-neutral-400">Phone</dt>
-            <dd>{applicant.phone}</dd>
+            <dd>{formatPhone(applicant.phone)}</dd>
           </div>
           <div>
             <dt className="text-neutral-400">Applied</dt>
