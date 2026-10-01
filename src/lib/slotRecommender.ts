@@ -444,6 +444,7 @@ export interface HoldSlotInput {
   price?: number;
   frequency?: string;
   leadId?: string;
+  clientName?: string;
   repId: string;
 }
 
@@ -494,6 +495,7 @@ export async function holdSlot(input: HoldSlotInput): Promise<{ ok: true; bookin
         city: input.city,
         address: input.address,
         leadId: input.leadId,
+        clientName: input.clientName,
         repId: input.repId,
         personHours: input.personHours,
         price: input.price,

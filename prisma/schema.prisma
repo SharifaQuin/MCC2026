@@ -2370,6 +2370,10 @@ model SlotBooking {
   window        String
   city          String
   address       String // client data — never surface another lead's address in the rep UI
+  // Free-text label for a booking made without a Lead record (e.g. a repeat
+  // client calling in directly) — not shown/used anywhere a Lead's own
+  // name would normally appear; purely so the rep can tell bookings apart.
+  clientName    String?
   leadId        String?
   lead          Lead?             @relation(fields: [leadId], references: [id])
   repId         String

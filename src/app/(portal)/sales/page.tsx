@@ -5,6 +5,7 @@ import { loadLeadKpis } from "@/lib/leads";
 import { resolveActiveSlotMonth, getNextOpenSlots } from "@/lib/slotCapacitySummary";
 import { setSalesGoalAction, setSalesActualsAction } from "@/app/(portal)/sales/actions";
 import AdSpendForm from "./AdSpendForm";
+import NextOpenSlotsCard from "./NextOpenSlotsCard";
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
@@ -195,35 +196,11 @@ export default async function SalesPage() {
               Full capacity view →
             </Link>
           </div>
-          {nextOpenSlots.length === 0 ? (
-            <p className="mt-3 text-sm text-neutral-500">
-              No open slots left to offer in {activeSlotMonth} — check next month&rsquo;s feed, or
-              ask the owner about overtime.
-            </p>
-          ) : (
-            <ul className="mt-4 divide-y divide-neutral-100">
-              {nextOpenSlots.map((s, i) => (
-                <li key={`${s.date}-${s.block}-${s.window}`} className="flex items-center justify-between py-2.5">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-700">
-                      {i + 1}
-                    </span>
-                    <div>
-                      <p className="text-sm font-medium text-neutral-900">
-                        {s.weekday}, {new Date(s.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                        {" · "}
-                        {s.window}
-                      </p>
-                      <p className="text-xs text-neutral-500">
-                        {s.block} · {s.teamsOpen} team{s.teamsOpen === 1 ? "" : "s"} open
-                        {s.windowValuePerHour ? ` · ~$${Math.round(s.windowValuePerHour)}/hr` : ""}
-                      </p>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+          <NextOpenSlotsCard slots={nextOpenSlots} month={activeSlotMonth} />
+          <p className="mt-3 text-xs text-neutral-400">
+            An old client calling in? Use &ldquo;Book for a call-in client&rdquo; on any slot below —
+            no quote needed.
+          </p>
           <Link
             href="/sales/pricing-tool"
             className="mt-4 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
