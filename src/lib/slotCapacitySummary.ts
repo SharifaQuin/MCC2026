@@ -167,6 +167,81 @@ export async function getSlotCapacityDayBreakdown(month: string, now: Date = new
     });
 }
 
+const BLOCK_ORDER = ["Morning", "Midday", "Afternoon"] as const;
+
+function addDaysIso(iso: string, n: number): string {
+  const d = new Date(iso + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+export interface NextOpenSlot {
+  date: string;
+  weekday: string;
+  block: string;
+  window: string;
+  teamsOpen: number;
+  windowValuePerHour: number | null;
+}
+
+/** The soonest bookable block+window combos with room, earliest first —
+ *  rep-safe fields only (no score/drive-cost/day-status; see BUILD_SPEC
+ *  §4 on what managers see that reps don't). Mirrors the same "today +
+ *  min_lead_days, active bookings subtracted" rules recommendSlots uses,
+ *  but isn't scored against any one lead's address. */
+export async function getNextOpenSlots(month: string, limit = 5, now: Date = new Date()): Promise<NextOpenSlot[]> {
+  const feedMonth = await prisma.slotFeedMonth.findUnique({ where: { month } });
+  if (!feedMonth) return [];
+
+  const todayIso = businessDateKey(now);
+  const minLeadDays = (feedMonth.settings as { min_lead_days?: number })?.min_lead_days ?? 1;
+  const earliest = addDaysIso(todayIso, minLeadDays);
+  const wv = feedMonth.windowValuePerHour as Record<string, number>;
+
+  const dates = await prisma.slotFeedDate.findMany({
+    where: { feedMonthId: feedMonth.id, date: { gte: new Date(earliest + "T00:00:00Z") } },
+    orderBy: { date: "asc" },
+  });
+  if (!dates.length) return [];
+
+  const active = await prisma.slotBooking.findMany({
+    where: {
+      month,
+      date: { gte: new Date(earliest + "T00:00:00Z") },
+      OR: [{ status: "CONFIRMED" }, { status: "HOLD", holdExpiresAt: { gt: now } }],
+    },
+  });
+  const bookedByDateBlock = new Map<string, number>();
+  for (const b of active) {
+    const key = `${b.date.toISOString()}|${b.block}`;
+    bookedByDateBlock.set(key, (bookedByDateBlock.get(key) || 0) + 1);
+  }
+
+  const results: NextOpenSlot[] = [];
+  for (const d of dates) {
+    const blocks = d.blocks as Record<string, { open: number; windows: string[] }>;
+    for (const block of BLOCK_ORDER) {
+      const blockDef = blocks[block];
+      if (!blockDef) continue;
+      const booked = bookedByDateBlock.get(`${d.date.toISOString()}|${block}`) || 0;
+      const teamsOpen = blockDef.open - booked;
+      if (teamsOpen <= 0) continue;
+      for (const window of blockDef.windows) {
+        results.push({
+          date: d.date.toISOString().slice(0, 10),
+          weekday: d.weekday,
+          block,
+          window,
+          teamsOpen,
+          windowValuePerHour: wv[window] ?? null,
+        });
+        if (results.length >= limit) return results;
+      }
+    }
+  }
+  return results;
+}
+
 /** Which month's feed the sales/reporting UI should treat as "current":
  *  this calendar month if loaded, else next month (the owner typically
  *  loads next month's feed during the last week of the prior month). */

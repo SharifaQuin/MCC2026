@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
 import { loadSalesDashboard } from "@/lib/salesDashboard";
 import { loadLeadKpis } from "@/lib/leads";
+import { resolveActiveSlotMonth, getNextOpenSlots } from "@/lib/slotCapacitySummary";
 import { setSalesGoalAction, setSalesActualsAction } from "@/app/(portal)/sales/actions";
 import AdSpendForm from "./AdSpendForm";
 
@@ -19,6 +20,9 @@ const money = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDi
 export default async function SalesPage() {
   const { canEdit } = await requireDepartmentAccess("SALES");
   const [dash, leadKpis] = await Promise.all([loadSalesDashboard(), loadLeadKpis()]);
+
+  const activeSlotMonth = await resolveActiveSlotMonth();
+  const nextOpenSlots = activeSlotMonth ? await getNextOpenSlots(activeSlotMonth, 5) : [];
 
   const goalHit = dash.goal > 0 && dash.revenueTowardGoal >= dash.goal;
 
@@ -182,6 +186,52 @@ export default async function SalesPage() {
           </div>
         )}
       </section>
+
+      {activeSlotMonth && (
+        <section className="mt-6 rounded-lg border border-neutral-200 bg-white p-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium text-neutral-900">Next Open Slots to Fill</h2>
+            <Link href="/management/slot-capacity" className="text-xs font-medium text-brand-700 hover:underline">
+              Full capacity view →
+            </Link>
+          </div>
+          {nextOpenSlots.length === 0 ? (
+            <p className="mt-3 text-sm text-neutral-500">
+              No open slots left to offer in {activeSlotMonth} — check next month&rsquo;s feed, or
+              ask the owner about overtime.
+            </p>
+          ) : (
+            <ul className="mt-4 divide-y divide-neutral-100">
+              {nextOpenSlots.map((s, i) => (
+                <li key={`${s.date}-${s.block}-${s.window}`} className="flex items-center justify-between py-2.5">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-700">
+                      {i + 1}
+                    </span>
+                    <div>
+                      <p className="text-sm font-medium text-neutral-900">
+                        {s.weekday}, {new Date(s.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        {" · "}
+                        {s.window}
+                      </p>
+                      <p className="text-xs text-neutral-500">
+                        {s.block} · {s.teamsOpen} team{s.teamsOpen === 1 ? "" : "s"} open
+                        {s.windowValuePerHour ? ` · ~$${Math.round(s.windowValuePerHour)}/hr` : ""}
+                      </p>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Link
+            href="/sales/pricing-tool"
+            className="mt-4 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            Open Pricing Tool to Book
+          </Link>
+        </section>
+      )}
 
       <section className="mt-6 rounded-lg border border-neutral-200 bg-white p-6">
         <div className="flex items-center justify-between">
