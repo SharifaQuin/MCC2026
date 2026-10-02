@@ -20,12 +20,15 @@ const NEXT_STAGES: Record<string, ApplicantStage[]> = {
   // moves someone into this stage (see the Recruiting Inbox) — these are
   // just the manual fallbacks if staff need to override from here.
   INTERVIEW_INVITE_SENT: ["IN_PERSON_SCHEDULED", "PHONE_INTERVIEW_SCHEDULED", "REJECTED", "BENCH"],
-  PHONE_INTERVIEW_SCHEDULED: ["PHONE_INTERVIEW_PASSED", "PHONE_INTERVIEW_FAILED", "IN_PERSON_SCHEDULED"],
+  PHONE_INTERVIEW_SCHEDULED: ["PHONE_INTERVIEW_PASSED", "PHONE_INTERVIEW_FAILED", "IN_PERSON_SCHEDULED", "NO_SHOW"],
   PHONE_INTERVIEW_PASSED: ["IN_PERSON_SCHEDULED", "REJECTED", "BENCH"],
   PHONE_INTERVIEW_FAILED: ["REJECTED", "BENCH", "IN_PERSON_SCHEDULED"],
-  IN_PERSON_SCHEDULED: ["IN_PERSON_PASSED", "IN_PERSON_FAILED"],
+  IN_PERSON_SCHEDULED: ["IN_PERSON_PASSED", "IN_PERSON_FAILED", "NO_SHOW"],
   IN_PERSON_PASSED: ["OFFER_SENT", "REJECTED", "BENCH"],
   IN_PERSON_FAILED: ["REJECTED", "BENCH"],
+  // No-show from either scheduling stage — staff can give them another
+  // chance at either interview type, or move them off the active pipeline.
+  NO_SHOW: ["PHONE_INTERVIEW_SCHEDULED", "IN_PERSON_SCHEDULED", "REJECTED", "BENCH"],
   OFFER_SENT: ["HIRED", "REJECTED"],
   // A misclick straight to Hired is exactly the kind of mistake that used
   // to have no way back — moving back to Offer Sent walks it off cleanly

@@ -10,7 +10,9 @@ import { getPendingOnboardingCount } from "@/lib/onboarding";
 import { getLatestMonthlyFinancials, getTeamGoals, getChecklistTasksForRole, getOpenLoans } from "@/lib/financials";
 import { reachedGrowthStages } from "@/lib/checklistDisplay";
 import { estimateLoanPayoff } from "@/lib/loans";
+import { getTodayCardData } from "@/lib/hrToday";
 import ChecklistSidebar from "@/components/ChecklistSidebar";
+import TodayCard from "./TodayCard";
 import RookieJourneyHome from "./RookieJourneyHome";
 import TraineeHome from "./TraineeHome";
 import TrainerHome from "./TrainerHome";
@@ -61,15 +63,17 @@ export default async function HomePage() {
   const hasSalesAccess = hasDepartmentAccess(session.role, grants, "SALES").canView;
   const isAdmin = session.role === "ADMIN";
 
-  const [training, recruiting, sales, latestFinancials, teamGoals, checklistTasks, openLoans] = await Promise.all([
-    loadAdminDashboard(),
-    loadRecruitingDashboard(),
-    hasSalesAccess ? loadSalesDashboard() : Promise.resolve(null),
-    isAdmin ? getLatestMonthlyFinancials() : Promise.resolve(null),
-    getTeamGoals(),
-    getChecklistTasksForRole(session.role),
-    isAdmin ? getOpenLoans() : Promise.resolve([]),
-  ]);
+  const [training, recruiting, sales, latestFinancials, teamGoals, checklistTasks, openLoans, todayCard] =
+    await Promise.all([
+      loadAdminDashboard(),
+      loadRecruitingDashboard(),
+      hasSalesAccess ? loadSalesDashboard() : Promise.resolve(null),
+      isAdmin ? getLatestMonthlyFinancials() : Promise.resolve(null),
+      getTeamGoals(),
+      getChecklistTasksForRole(session.role),
+      isAdmin ? getOpenLoans() : Promise.resolve([]),
+      getTodayCardData(),
+    ]);
 
   const growthStaircase = (teamGoals.growth_staircase_monthly_revenue as number[] | undefined) ?? [];
   const currentStageStatus = teamGoals.current_stage_status as string | undefined;
@@ -99,6 +103,8 @@ export default async function HomePage() {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_300px] lg:items-start">
         <div className="space-y-6">
+          <TodayCard data={todayCard} />
+
           {isAdmin && latestFinancials && (
             <section className="rounded-lg border border-neutral-200 bg-white p-6">
               <div className="flex items-center justify-between">

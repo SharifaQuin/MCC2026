@@ -92,6 +92,21 @@ export function lastDayOfBusinessMonth(date: Date): Date {
   return new Date(Date.UTC(y, m, 0));
 }
 
+// The real UTC instant range [start, end) covering one full calendar day in
+// the business timezone — for "what's due/scheduled today" queries, which
+// need the day's actual start/end moment (accounting for DST), not just a
+// date string comparison.
+export function businessDayRangeUtc(now: Date = new Date()): { start: Date; end: Date } {
+  const todayKey = businessDateKey(now);
+  const [y, m, d] = todayKey.split("-").map(Number);
+  const tomorrow = new Date(Date.UTC(y, m - 1, d + 1));
+  const tomorrowKey = `${tomorrow.getUTCFullYear()}-${String(tomorrow.getUTCMonth() + 1).padStart(2, "0")}-${String(tomorrow.getUTCDate()).padStart(2, "0")}`;
+  return {
+    start: zonedTimeToUtc(`${todayKey}T00:00`),
+    end: zonedTimeToUtc(`${tomorrowKey}T00:00`),
+  };
+}
+
 // { year, month, day, weekday, hour, minute } of a Date as read in the
 // business timezone — weekday is ISO-style (Mon=1..Sun=7).
 export function businessTimeParts(date: Date): {

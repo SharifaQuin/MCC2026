@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useTransition } from "react";
 import { setApplicantStageAction } from "./applicants/actions";
 import { PRIMARY_NEXT_STAGE, SCHEDULING_STAGES } from "@/lib/recruiting";
+import { formatInBusinessTimezone } from "@/lib/timezone";
 import type { ApplicantStage } from "@prisma/client";
 
 interface Card {
@@ -49,7 +50,7 @@ function ApplicantCard({ applicant }: { applicant: Card }) {
       )}
       {applicant.scheduledAt && (SCHEDULING_STAGES as string[]).includes(applicant.stage) && (
         <p className="mt-1 text-xs text-amber-700">
-          {new Date(applicant.scheduledAt).toLocaleString()}
+          {formatInBusinessTimezone(new Date(applicant.scheduledAt))} PT
         </p>
       )}
       {primary &&

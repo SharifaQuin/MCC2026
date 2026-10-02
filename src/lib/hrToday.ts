@@ -1,7 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { STAFF_ROLES } from "@/lib/staff";
 import { buildMilestoneTimeline } from "@/lib/milestones";
-import { NEEDS_DECISION_STAGES } from "@/lib/recruiting";
+import { NEEDS_DECISION_STAGES, SCHEDULING_STAGES } from "@/lib/recruiting";
+import { businessDayRangeUtc } from "@/lib/timezone";
+import { effectiveChecklistStatus } from "@/lib/financials";
+import { getDueStatus } from "@/lib/checklistDisplay";
+import type { ApplicantStage } from "@prisma/client";
 
 export interface HrTodayItem {
   label: string;
@@ -72,4 +76,100 @@ export function buildHrDigestMessage(items: HrTodayItem[]): string {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const lines = items.map((item) => `• ${item.label}: *${item.count}*`);
   return [":clipboard: *HR Needs Attention Today*", "", ...lines, "", `${appUrl}/hr`].join("\n");
+}
+
+export interface TodayInterview {
+  applicantId: string;
+  name: string;
+  stage: ApplicantStage;
+  scheduledAt: string;
+}
+
+export interface TodayFollowUp {
+  leadId: string;
+  name: string;
+  followUpDueAt: string;
+}
+
+export interface TodayOverdueTask {
+  id: string;
+  task: string;
+  targetDate: string | null;
+}
+
+export interface TodayPendingPayroll {
+  entryId: string;
+  employeeName: string;
+  payPeriodLabel: string;
+}
+
+export interface TodayCardData {
+  interviews: TodayInterview[];
+  followUpsDue: TodayFollowUp[];
+  overdueTasks: TodayOverdueTask[];
+  pendingPayroll: TodayPendingPayroll[];
+}
+
+// Read-only "what's on deck today" card for the Home page — none of the
+// existing getHrTodayAttentionItems counts cover any of these four (that
+// helper is pure counts-by-area, not today-scoped), so each is its own
+// small query here rather than bending that one to fit.
+export async function getTodayCardData(now: Date = new Date()): Promise<TodayCardData> {
+  const { start, end } = businessDayRangeUtc(now);
+
+  const [interviews, followUps, checklistTasks, pendingPayrollEntries] = await Promise.all([
+    prisma.applicant.findMany({
+      where: {
+        stage: { in: SCHEDULING_STAGES },
+        scheduledAt: { gte: start, lt: end },
+      },
+      select: { id: true, firstName: true, lastName: true, stage: true, scheduledAt: true },
+      orderBy: { scheduledAt: "asc" },
+    }),
+    prisma.lead.findMany({
+      where: {
+        stage: { notIn: ["WON", "LOST"] },
+        followUpDueAt: { gte: start, lt: end },
+      },
+      select: { id: true, firstName: true, lastName: true, followUpDueAt: true },
+      orderBy: { followUpDueAt: "asc" },
+    }),
+    prisma.checklistTask.findMany({
+      select: { id: true, task: true, frequency: true, status: true, updatedAt: true, targetDate: true, dueFridayOfWeek: true },
+    }),
+    prisma.payrollEntry.findMany({
+      where: { status: "PENDING" },
+      select: { id: true, employee: { select: { name: true } }, payPeriod: { select: { label: true } } },
+      orderBy: { createdAt: "asc" },
+    }),
+  ]);
+
+  const overdueTasks: TodayOverdueTask[] = checklistTasks
+    .map((t) => ({ ...t, effectiveStatus: effectiveChecklistStatus(t, now) }))
+    .filter((t) => getDueStatus(t, now) === "OVERDUE")
+    .map((t) => ({
+      id: t.id,
+      task: t.task,
+      targetDate: t.targetDate ? t.targetDate.toISOString() : null,
+    }));
+
+  return {
+    interviews: interviews.map((a) => ({
+      applicantId: a.id,
+      name: `${a.firstName} ${a.lastName}`,
+      stage: a.stage,
+      scheduledAt: a.scheduledAt!.toISOString(),
+    })),
+    followUpsDue: followUps.map((l) => ({
+      leadId: l.id,
+      name: `${l.firstName} ${l.lastName}`,
+      followUpDueAt: l.followUpDueAt!.toISOString(),
+    })),
+    overdueTasks,
+    pendingPayroll: pendingPayrollEntries.map((p) => ({
+      entryId: p.id,
+      employeeName: p.employee.name,
+      payPeriodLabel: p.payPeriod.label,
+    })),
+  };
 }

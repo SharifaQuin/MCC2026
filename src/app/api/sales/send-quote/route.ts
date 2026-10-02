@@ -50,7 +50,10 @@ export async function POST(request: Request) {
     body,
     from: SALES_MAILBOX,
     bcc: SALES_MAILBOX,
-    replyTo: typeof quote.mailbox === "string" && quote.mailbox ? quote.mailbox : undefined,
+    // Always the Sales mailbox — a per-quote "mailbox" value saved by an
+    // older client, or left blank, must never produce a quote email with
+    // nowhere for the client's Accept/Decline reply to go.
+    replyTo: SALES_MAILBOX,
   });
 
   if (!result.ok) {

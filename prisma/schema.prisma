@@ -62,6 +62,10 @@ enum ApplicantStage {
   HIRED
   REJECTED
   BENCH
+  // Didn't show up for a scheduled Phone/Zoom or In-Person interview — set
+  // from StageControls on either SCHEDULING_STAGES stage. From here staff
+  // can reschedule, reject, or bench (see NEXT_STAGES in StageControls.tsx).
+  NO_SHOW
 }
 
 enum ApplicantSource {

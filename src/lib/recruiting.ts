@@ -1748,6 +1748,7 @@ export const STAGE_LABELS: Record<string, string> = {
   // Recruiting 2.0, since this is exactly the "keep good candidates on file
   // without treating them as needing daily attention" Talent Pool concept.
   BENCH: "Talent Pool",
+  NO_SHOW: "No-Show",
 };
 
 export const STAGE_TONE: Record<string, string> = {
@@ -1765,6 +1766,7 @@ export const STAGE_TONE: Record<string, string> = {
   HIRED: "bg-green-100 text-green-700",
   REJECTED: "bg-red-100 text-red-700",
   BENCH: "bg-gold-100 text-gold-700",
+  NO_SHOW: "bg-orange-100 text-orange-700",
 };
 
 // The main forward-moving columns for the pipeline board. REJECTED/BENCH/
@@ -1786,6 +1788,7 @@ export const NEEDS_DECISION_STAGES: ApplicantStage[] = [
   "PRESCREEN_FAILED",
   "PHONE_INTERVIEW_FAILED",
   "IN_PERSON_FAILED",
+  "NO_SHOW",
 ];
 export const ARCHIVED_STAGES: ApplicantStage[] = ["REJECTED", "BENCH"];
 

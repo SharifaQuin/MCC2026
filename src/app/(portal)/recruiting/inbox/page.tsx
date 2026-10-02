@@ -82,12 +82,14 @@ export default async function RecruitingInboxPage() {
               <span className="mt-1 block font-medium text-brand-600">
                 Next: {nextInterview.firstName} {nextInterview.lastName},{" "}
                 {new Date(nextInterview.scheduledAt).toLocaleString("en-US", {
+                  timeZone: "America/Los_Angeles",
                   weekday: "short",
                   month: "short",
                   day: "numeric",
                   hour: "numeric",
                   minute: "2-digit",
-                })}
+                })}{" "}
+                PT
               </span>
             )}
           </p>
