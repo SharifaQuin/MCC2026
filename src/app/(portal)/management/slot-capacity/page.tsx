@@ -1,13 +1,23 @@
 import Link from "next/link";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
 import { prisma } from "@/lib/prisma";
+import { hasDepartmentAccess } from "@/lib/departments";
 import { resolveActiveSlotMonth, getSlotCapacityMonthSummary, getSlotCapacityDayBreakdown } from "@/lib/slotCapacitySummary";
 import SlotFeedUploadForm from "./SlotFeedUploadForm";
 
 const money = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
 export default async function SlotCapacityPage() {
-  await requireDepartmentAccess("MANAGEMENT");
+  const { session } = await requireDepartmentAccess("MANAGEMENT");
+
+  // Not everyone with Management access also has Sales (e.g. a service
+  // manager granted Management but not Sales) — only link to the bookings
+  // list, which is Sales-gated, when this viewer can actually open it.
+  const grants = await prisma.departmentAccess.findMany({
+    where: { userId: session.sub },
+    select: { department: true, canEdit: true },
+  });
+  const hasSalesAccess = hasDepartmentAccess(session.role, grants, "SALES").canView;
 
   const months = await prisma.slotFeedMonth.findMany({
     orderBy: { month: "desc" },
@@ -44,7 +54,14 @@ export default async function SlotCapacityPage() {
 
       {summary && (
         <div className="mt-8 rounded-lg border border-neutral-200 bg-white p-6">
-          <h2 className="text-lg font-medium text-neutral-900">{summary.month} at a glance</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium text-neutral-900">{summary.month} at a glance</h2>
+            {hasSalesAccess && (
+              <Link href="/sales/bookings" className="text-xs font-medium text-brand-700 hover:underline">
+                View individual bookings →
+              </Link>
+            )}
+          </div>
           <p className="mt-1 text-xs text-neutral-500">
             {summary.daysPassed} day{summary.daysPassed === 1 ? "" : "s"} passed ·{" "}
             {summary.daysRemaining} day{summary.daysRemaining === 1 ? "" : "s"} left to fill

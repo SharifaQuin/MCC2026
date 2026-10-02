@@ -25,9 +25,14 @@ export default async function OpenSlotsPage() {
             Every open team slot still available this month, earliest first.
           </p>
         </div>
-        <Link href="/sales" className="shrink-0 text-sm font-medium text-brand-700 hover:underline">
-          ← Back to Sales
-        </Link>
+        <div className="flex shrink-0 items-center gap-4">
+          <Link href="/sales/bookings" className="text-sm font-medium text-brand-700 hover:underline">
+            View booked slots →
+          </Link>
+          <Link href="/sales" className="text-sm font-medium text-brand-700 hover:underline">
+            ← Back to Sales
+          </Link>
+        </div>
       </div>
 
       <div className="rounded-lg border border-neutral-200 bg-white p-6">

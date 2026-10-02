@@ -196,6 +196,9 @@ export default async function SalesPage() {
               <Link href="/sales/open-slots" className="text-xs font-medium text-brand-700 hover:underline">
                 View all open slots →
               </Link>
+              <Link href="/sales/bookings" className="text-xs font-medium text-brand-700 hover:underline">
+                View booked slots →
+              </Link>
               <Link href="/management/slot-capacity" className="text-xs font-medium text-brand-700 hover:underline">
                 Full capacity view →
               </Link>
