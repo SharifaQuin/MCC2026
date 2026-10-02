@@ -115,9 +115,13 @@ export interface TodayCardAccess {
   // task, everyone else only the ones marked TEAM-visible — an OWNER_ONLY
   // task must never show as an overdue item to a manager.
   isAdmin: boolean;
-  // Pending (unsigned) payroll is financial/HR data — admin-only, same as
-  // the Financials section of the Home page.
+  // Lead follow-ups are Sales data — same Sales department-access check the
+  // Home page already uses to gate its Sales KPI section.
   hasSalesAccess: boolean;
+  // Pending (unsigned) payroll — matches middleware.ts's own /staff gate
+  // (ADMIN or SERVICE_MANAGER), since that's who can already open the full
+  // /staff/payroll page. Pass isAdminOrServiceManager(session.role).
+  canViewPayroll: boolean;
 }
 
 // Read-only "what's on deck today" card for the Home page — none of the
@@ -133,7 +137,7 @@ export async function getTodayCardData(
   now: Date = new Date()
 ): Promise<TodayCardData> {
   const { start, end } = businessDayRangeUtc(now);
-  const { isAdmin, hasSalesAccess } = access;
+  const { isAdmin, hasSalesAccess, canViewPayroll } = access;
 
   const [interviews, followUps, checklistTasks, pendingPayrollEntries] = await Promise.all([
     prisma.applicant.findMany({
@@ -158,7 +162,7 @@ export async function getTodayCardData(
       where: isAdmin ? undefined : { visibility: "TEAM" },
       select: { id: true, task: true, frequency: true, status: true, updatedAt: true, targetDate: true, dueFridayOfWeek: true },
     }),
-    isAdmin
+    canViewPayroll
       ? prisma.payrollEntry.findMany({
           where: { status: "PENDING" },
           select: { id: true, employee: { select: { name: true } }, payPeriod: { select: { label: true } } },

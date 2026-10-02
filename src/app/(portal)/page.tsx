@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/session";
+import { getSession, isAdminOrServiceManager } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { hasDepartmentAccess } from "@/lib/departments";
 import { loadAdminDashboard } from "@/lib/dashboard";
@@ -62,6 +62,10 @@ export default async function HomePage() {
   });
   const hasSalesAccess = hasDepartmentAccess(session.role, grants, "SALES").canView;
   const isAdmin = session.role === "ADMIN";
+  // Matches middleware.ts's own /staff/payroll gate — a SERVICE_MANAGER can
+  // already open the full payroll page, so the Today card's payroll section
+  // shouldn't be stricter than the page it links to.
+  const canViewPayroll = isAdminOrServiceManager(session.role);
 
   const [training, recruiting, sales, latestFinancials, teamGoals, checklistTasks, openLoans, todayCard] =
     await Promise.all([
@@ -72,7 +76,7 @@ export default async function HomePage() {
       getTeamGoals(),
       getChecklistTasksForRole(session.role),
       isAdmin ? getOpenLoans() : Promise.resolve([]),
-      getTodayCardData({ isAdmin, hasSalesAccess }),
+      getTodayCardData({ isAdmin, hasSalesAccess, canViewPayroll }),
     ]);
 
   const growthStaircase = (teamGoals.growth_staircase_monthly_revenue as number[] | undefined) ?? [];
@@ -103,7 +107,12 @@ export default async function HomePage() {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_300px] lg:items-start">
         <div className="space-y-6">
-          <TodayCard data={todayCard} isAdmin={isAdmin} hasSalesAccess={hasSalesAccess} />
+          <TodayCard
+            data={todayCard}
+            isAdmin={isAdmin}
+            hasSalesAccess={hasSalesAccess}
+            canViewPayroll={canViewPayroll}
+          />
 
           {isAdmin && latestFinancials && (
             <section className="rounded-lg border border-neutral-200 bg-white p-6">

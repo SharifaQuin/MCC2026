@@ -37,10 +37,12 @@ export default function TodayCard({
   data,
   isAdmin,
   hasSalesAccess,
+  canViewPayroll,
 }: {
   data: TodayCardData;
   isAdmin: boolean;
   hasSalesAccess: boolean;
+  canViewPayroll: boolean;
 }) {
   return (
     <section className="rounded-lg border border-neutral-200 bg-white p-6">
@@ -84,7 +86,7 @@ export default function TodayCard({
           ))}
         </Section>
 
-        {isAdmin && (
+        {canViewPayroll && (
           <Section title="Pending Payroll" emptyLabel="Nothing today">
             {data.pendingPayroll.map((p) => (
               <li key={p.entryId} className="text-sm">
