@@ -72,7 +72,7 @@ export default async function HomePage() {
       getTeamGoals(),
       getChecklistTasksForRole(session.role),
       isAdmin ? getOpenLoans() : Promise.resolve([]),
-      getTodayCardData(),
+      getTodayCardData({ isAdmin, hasSalesAccess }),
     ]);
 
   const growthStaircase = (teamGoals.growth_staircase_monthly_revenue as number[] | undefined) ?? [];
@@ -103,7 +103,7 @@ export default async function HomePage() {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_300px] lg:items-start">
         <div className="space-y-6">
-          <TodayCard data={todayCard} />
+          <TodayCard data={todayCard} isAdmin={isAdmin} hasSalesAccess={hasSalesAccess} />
 
           {isAdmin && latestFinancials && (
             <section className="rounded-lg border border-neutral-200 bg-white p-6">

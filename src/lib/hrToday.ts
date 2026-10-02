@@ -110,12 +110,30 @@ export interface TodayCardData {
   pendingPayroll: TodayPendingPayroll[];
 }
 
+export interface TodayCardAccess {
+  // Mirrors getChecklistTasksForRole's own gate: ADMIN sees every checklist
+  // task, everyone else only the ones marked TEAM-visible — an OWNER_ONLY
+  // task must never show as an overdue item to a manager.
+  isAdmin: boolean;
+  // Pending (unsigned) payroll is financial/HR data — admin-only, same as
+  // the Financials section of the Home page.
+  hasSalesAccess: boolean;
+}
+
 // Read-only "what's on deck today" card for the Home page — none of the
 // existing getHrTodayAttentionItems counts cover any of these four (that
 // helper is pure counts-by-area, not today-scoped), so each is its own
-// small query here rather than bending that one to fit.
-export async function getTodayCardData(now: Date = new Date()): Promise<TodayCardData> {
+// small query here rather than bending that one to fit. Gated the same way
+// the Home page itself gates the Financials and Sales sections — each
+// section is scoped at the query level, never fetched then hidden, so a
+// manager's response never contains payroll or admin-only task data in the
+// first place.
+export async function getTodayCardData(
+  access: TodayCardAccess,
+  now: Date = new Date()
+): Promise<TodayCardData> {
   const { start, end } = businessDayRangeUtc(now);
+  const { isAdmin, hasSalesAccess } = access;
 
   const [interviews, followUps, checklistTasks, pendingPayrollEntries] = await Promise.all([
     prisma.applicant.findMany({
@@ -126,22 +144,27 @@ export async function getTodayCardData(now: Date = new Date()): Promise<TodayCar
       select: { id: true, firstName: true, lastName: true, stage: true, scheduledAt: true },
       orderBy: { scheduledAt: "asc" },
     }),
-    prisma.lead.findMany({
-      where: {
-        stage: { notIn: ["WON", "LOST"] },
-        followUpDueAt: { gte: start, lt: end },
-      },
-      select: { id: true, firstName: true, lastName: true, followUpDueAt: true },
-      orderBy: { followUpDueAt: "asc" },
-    }),
+    hasSalesAccess
+      ? prisma.lead.findMany({
+          where: {
+            stage: { notIn: ["WON", "LOST"] },
+            followUpDueAt: { gte: start, lt: end },
+          },
+          select: { id: true, firstName: true, lastName: true, followUpDueAt: true },
+          orderBy: { followUpDueAt: "asc" },
+        })
+      : Promise.resolve([]),
     prisma.checklistTask.findMany({
+      where: isAdmin ? undefined : { visibility: "TEAM" },
       select: { id: true, task: true, frequency: true, status: true, updatedAt: true, targetDate: true, dueFridayOfWeek: true },
     }),
-    prisma.payrollEntry.findMany({
-      where: { status: "PENDING" },
-      select: { id: true, employee: { select: { name: true } }, payPeriod: { select: { label: true } } },
-      orderBy: { createdAt: "asc" },
-    }),
+    isAdmin
+      ? prisma.payrollEntry.findMany({
+          where: { status: "PENDING" },
+          select: { id: true, employee: { select: { name: true } }, payPeriod: { select: { label: true } } },
+          orderBy: { createdAt: "asc" },
+        })
+      : Promise.resolve([]),
   ]);
 
   const overdueTasks: TodayOverdueTask[] = checklistTasks
