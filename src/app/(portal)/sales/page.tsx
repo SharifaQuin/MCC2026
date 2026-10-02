@@ -192,9 +192,14 @@ export default async function SalesPage() {
         <section className="mt-6 rounded-lg border border-neutral-200 bg-white p-6">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-medium text-neutral-900">Next Open Slots to Fill</h2>
-            <Link href="/management/slot-capacity" className="text-xs font-medium text-brand-700 hover:underline">
-              Full capacity view →
-            </Link>
+            <div className="flex items-center gap-3">
+              <Link href="/sales/open-slots" className="text-xs font-medium text-brand-700 hover:underline">
+                View all open slots →
+              </Link>
+              <Link href="/management/slot-capacity" className="text-xs font-medium text-brand-700 hover:underline">
+                Full capacity view →
+              </Link>
+            </div>
           </div>
           <NextOpenSlotsCard slots={nextOpenSlots} month={activeSlotMonth} />
           <p className="mt-3 text-xs text-neutral-400">

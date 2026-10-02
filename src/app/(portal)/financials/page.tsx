@@ -10,6 +10,7 @@ import {
 import { getQuickBooksConnection, isQuickBooksConfigured } from "@/lib/quickbooks";
 import LoansManager from "./LoansManager";
 import PullFromQuickBooksButton from "./PullFromQuickBooksButton";
+import UploadFinanceOverviewButton from "./UploadFinanceOverviewButton";
 
 const money = (n: number) =>
   `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -338,6 +339,7 @@ export default async function FinancialsPage({
               <Field label="Month label (e.g. Jan)" name="monthLabel" defaultValue={editing?.monthLabel ?? ""} />
             </div>
 
+            <UploadFinanceOverviewButton />
             {quickBooksConnection && <PullFromQuickBooksButton />}
 
             <fieldset className="space-y-3">

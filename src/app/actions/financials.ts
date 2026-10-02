@@ -10,6 +10,11 @@ import {
   QuickBooksReauthRequiredError,
   type ProfitAndLossSummary,
 } from "@/lib/quickbooks";
+import {
+  parseFinanceOverviewWorkbook,
+  type FinanceOverviewFieldKey,
+  type FinanceOverviewMonthOption,
+} from "@/lib/financeOverviewImport";
 
 async function requireOwnerAccess() {
   const session = await getSession();
@@ -142,6 +147,37 @@ export async function pullFromQuickBooksAction(month: string): Promise<PullFromQ
     return { error: "Couldn't get a Profit and Loss report from QuickBooks for that month." };
   }
   return { summary };
+}
+
+export interface ParseFinanceOverviewResult {
+  error?: string;
+  month?: string;
+  monthLabel?: string;
+  values?: Partial<Record<FinanceOverviewFieldKey, number>>;
+  availableMonths?: FinanceOverviewMonthOption[];
+}
+
+// Parses an uploaded copy of the owner's own "Finance Overview" tracker
+// (the workbook behind this page before it existed, and what the monthly
+// close process still produces) and hands back one month's numbers for
+// UploadFinanceOverviewButton to drop into the form fields below — same
+// trust model as pullFromQuickBooksAction: nothing is saved until the
+// owner reviews it and clicks Save.
+export async function parseFinanceOverviewAction(formData: FormData): Promise<ParseFinanceOverviewResult> {
+  await requireOwnerAccess();
+
+  const file = formData.get("financeOverviewFile");
+  if (!file || typeof file === "string" || file.size === 0) {
+    return { error: "Choose a Finance Overview workbook to upload." };
+  }
+  if (!/\.xlsx$/i.test(file.name)) {
+    return { error: "That doesn't look like an .xlsx file." };
+  }
+
+  const monthHint = String(formData.get("monthHint") ?? "").trim();
+  const result = await parseFinanceOverviewWorkbook(await file.arrayBuffer(), monthHint || undefined);
+  if ("error" in result) return result;
+  return result;
 }
 
 export async function disconnectQuickBooksAction() {
