@@ -10,7 +10,20 @@ import { sendEmail } from "@/lib/email";
 
 const REMINDER_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000;
 
+// Employees don't have dashboard access yet, so these reminder emails
+// ("log in and sign your hours at {appUrl}/payroll") point them at a
+// portal they can't use. Gated off by default — including when the env
+// var is unset or anything other than the literal string "true" — until
+// the owner explicitly approves employee rollout and confirms access.
+// This only pauses the reminder emails: the separate emailed Excel
+// payroll reports and signed-file reply flow are untouched.
+export function isPayrollReminderEmailsEnabled(): boolean {
+  return process.env.PAYROLL_REMINDER_EMAILS_ENABLED === "true";
+}
+
 export async function runPayrollReminderSchedulerTick(now: Date = new Date()): Promise<void> {
+  if (!isPayrollReminderEmailsEnabled()) return;
+
   const cutoff = new Date(now.getTime() - REMINDER_INTERVAL_MS);
 
   const candidates = await prisma.payrollEntry.findMany({
@@ -46,6 +59,7 @@ export async function runPayrollReminderSchedulerTick(now: Date = new Date()): P
     });
     if (!result.ok) {
       console.error(`[payrollReminderScheduler] failed to email ${entry.employee.email}:`, result.error);
+      continue; // leave signatureReminderSentAt alone so a failed send gets retried next tick, not silently treated as sent
     }
 
     await prisma.payrollEntry.update({
