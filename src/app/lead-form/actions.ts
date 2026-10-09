@@ -12,6 +12,7 @@ import {
   LEAD_HOW_HEARD_OPTIONS,
   createDraftQuoteForLead,
 } from "@/lib/leads";
+import { maybeSendAfterHoursAutoReply } from "@/lib/leadAutoReply";
 
 const VALID_HOW_HEARD_VALUES = new Set(LEAD_HOW_HEARD_OPTIONS.map((o) => o.value));
 
@@ -140,6 +141,14 @@ export async function submitLeadAction(formData: FormData) {
   }
 
   await notifyNewLead(lead);
+
+  // Best-effort, same as notifyNewLead above — an after-hours auto-reply
+  // failing should never block the form's own redirect.
+  try {
+    await maybeSendAfterHoursAutoReply(lead);
+  } catch (err) {
+    console.error("[leadAutoReply] failed:", err);
+  }
 
   redirect("/lead-form/thank-you");
 }
