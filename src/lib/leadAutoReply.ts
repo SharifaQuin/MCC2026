@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
 import { getBusinessHours, isWithinBusinessHours } from "@/lib/businessHours";
+import { normalizePhoneDigits } from "@/lib/formatPhone";
 
 export const AFTER_HOURS_AUTO_REPLY_SUBJECT = "Thanks for reaching out — Mama's Cleaning Crew";
 export const AFTER_HOURS_AUTO_REPLY_MESSAGE =
@@ -37,32 +38,12 @@ export async function maybeSendAfterHoursAutoReply(
   if (claim.count === 0) return; // already handled (or somehow already claimed)
 
   // Never send to an existing client (someone with a prior Won lead on
-  // file) or an employee — matched by exact email/phone string equality
-  // against Lead/User records. This is a best-effort match, not a
-  // normalized one: a phone typed in a different format than what's on
-  // file for that person won't match.
-  const [existingClient, employee] = await Promise.all([
-    prisma.lead.findFirst({
-      where: {
-        id: { not: lead.id },
-        stage: "WON",
-        OR: [
-          { email: { equals: lead.email, mode: "insensitive" } },
-          ...(lead.phone.trim() ? [{ phone: lead.phone }] : []),
-        ],
-      },
-      select: { id: true },
-    }),
-    prisma.user.findFirst({
-      where: {
-        OR: [
-          { email: { equals: lead.email, mode: "insensitive" } },
-          ...(lead.phone.trim() ? [{ phone: lead.phone }] : []),
-        ],
-      },
-      select: { id: true },
-    }),
-  ]);
+  // file) or an employee. Email matches on an indexed, cheap query first;
+  // phone only falls back to pulling the (small-business-sized) candidate
+  // list because comparing it needs digit-normalization — "(555) 123-4567"
+  // vs "5551234567" vs "+15551234567" should all match — which isn't
+  // something a plain column equality check can do.
+  const { existingClient, employee } = await findExistingClientOrEmployee(lead.email, lead.phone, lead.id);
   if (existingClient || employee) return; // claimed above, so this still never fires again
 
   const hasPhone = !!lead.phone.trim();
@@ -94,4 +75,49 @@ export async function maybeSendAfterHoursAutoReply(
       sentById: null,
     },
   });
+}
+
+// Email match is tried first via a cheap, indexed query — most matches
+// resolve there. Phone only falls back to pulling the candidate list (every
+// Won lead and every User) because comparing it needs digit-normalization,
+// which a plain column equality check can't do. Fine at this app's scale;
+// revisit if either table ever gets large enough for that fallback fetch to
+// matter.
+async function findExistingClientOrEmployee(
+  email: string,
+  phone: string,
+  excludeLeadId: string
+): Promise<{ existingClient: boolean; employee: boolean }> {
+  const [clientByEmail, employeeByEmail] = await Promise.all([
+    prisma.lead.findFirst({
+      where: { id: { not: excludeLeadId }, stage: "WON", email: { equals: email, mode: "insensitive" } },
+      select: { id: true },
+    }),
+    prisma.user.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
+      select: { id: true },
+    }),
+  ]);
+  if (clientByEmail || employeeByEmail) {
+    return { existingClient: !!clientByEmail, employee: !!employeeByEmail };
+  }
+
+  const phoneDigits = normalizePhoneDigits(phone);
+  if (phoneDigits.size === 0) return { existingClient: false, employee: false };
+
+  const matchesPhone = (candidate: string | null) =>
+    !!candidate && [...normalizePhoneDigits(candidate)].some((d) => phoneDigits.has(d));
+
+  const [clientCandidates, employeeCandidates] = await Promise.all([
+    prisma.lead.findMany({
+      where: { id: { not: excludeLeadId }, stage: "WON" },
+      select: { phone: true },
+    }),
+    prisma.user.findMany({ select: { phone: true } }),
+  ]);
+
+  return {
+    existingClient: clientCandidates.some((c) => matchesPhone(c.phone)),
+    employee: employeeCandidates.some((u) => matchesPhone(u.phone)),
+  };
 }
