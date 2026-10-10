@@ -1,8 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { sendEmail } from "@/lib/email";
-import { sendSms } from "@/lib/sms";
 import { getBusinessHours, isWithinBusinessHours } from "@/lib/businessHours";
 import { normalizePhoneDigits } from "@/lib/formatPhone";
+import { DEFAULT_SENDERS, type MessageSenders } from "@/lib/messageSenders";
 
 export const AFTER_HOURS_AUTO_REPLY_SUBJECT = "Thanks for reaching out — Mama's Cleaning Crew";
 export const AFTER_HOURS_AUTO_REPLY_MESSAGE =
@@ -26,7 +25,8 @@ export const AFTER_HOURS_AUTO_REPLY_MESSAGE =
 // notwithstanding (this fires once, it does not retry a failed attempt).
 export async function maybeSendAfterHoursAutoReply(
   lead: { id: string; email: string; phone: string },
-  now: Date = new Date()
+  now: Date = new Date(),
+  senders: MessageSenders = DEFAULT_SENDERS
 ): Promise<void> {
   const config = await getBusinessHours();
   if (isWithinBusinessHours(now, config)) return;
@@ -51,14 +51,23 @@ export async function maybeSendAfterHoursAutoReply(
   const channel: "SMS" | "EMAIL" | null = hasPhone ? "SMS" : hasEmail ? "EMAIL" : null;
   if (!channel) return;
 
-  const result =
-    channel === "SMS"
-      ? await sendSms({ to: lead.phone, text: AFTER_HOURS_AUTO_REPLY_MESSAGE })
-      : await sendEmail({
-          to: lead.email,
-          subject: AFTER_HOURS_AUTO_REPLY_SUBJECT,
-          body: AFTER_HOURS_AUTO_REPLY_MESSAGE,
-        });
+  let result: { ok: true } | { ok: false; error: string };
+  try {
+    result =
+      channel === "SMS"
+        ? await senders.sendSms({ to: lead.phone, text: AFTER_HOURS_AUTO_REPLY_MESSAGE })
+        : await senders.sendEmail({
+            to: lead.email,
+            subject: AFTER_HOURS_AUTO_REPLY_SUBJECT,
+            body: AFTER_HOURS_AUTO_REPLY_MESSAGE,
+          });
+  } catch (err) {
+    // sendEmail/sendSms threw instead of returning { ok: false } — still
+    // logged on the lead record exactly like a graceful failure, so there's
+    // always a visible trail of what was attempted even when the claim
+    // above (which already happened) means this never fires again.
+    result = { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 
   // Logged on the lead record (LeadCommunication) same as every other
   // outbound message to this lead — sentById is null since no staff member
