@@ -16,6 +16,7 @@ import {
 } from "@/lib/recruiting";
 import { generateInviteToken } from "@/lib/tokens";
 import { zonedTimeToUtc } from "@/lib/timezone";
+import { logAudit } from "@/lib/auditLog";
 import type {
   ApplicantStage,
   ApplicantSource,
@@ -35,6 +36,30 @@ const VALID_REFERENCE_VERDICTS = new Set([
 
 const VALID_APPLICANT_SOURCES = new Set(["CAREERS_PAGE", "INDEED", "ZIPRECRUITER", "REFERRAL", "WALK_IN", "OTHER"]);
 
+function requireEdit(canEdit: boolean) {
+  if (!canEdit) throw new Error("Not authorized to make changes here.");
+}
+
+// Final hiring-pipeline moves an Office Assistant must never make directly
+// — even with an approved "Send for approval" request, the designated
+// manager carries these out themselves, manually, in this same UI (see
+// src/app/actions/approvals.ts). Approval never grants this role a new
+// permission; it only produces a decision for the manager to act on.
+const OFFICE_ASSISTANT_BLOCKED_STAGES = new Set<ApplicantStage>(["OFFER_SENT", "HIRED", "REJECTED", "BENCH"]);
+
+function assertRoutineStageTransition(role: string, stage: ApplicantStage) {
+  if (role === "OFFICE_ASSISTANT" && OFFICE_ASSISTANT_BLOCKED_STAGES.has(stage)) {
+    throw new Error(
+      "This stage change needs the authorized manager — submit a Send for approval request instead."
+    );
+  }
+}
+
+// "offer_letter"/"payroll" checklist items read as proxies for an Offer
+// Sent / hiring-adjacent action, so they're withheld even though the rest
+// of the onboarding checklist is routine for this role.
+const OFFICE_ASSISTANT_BLOCKED_ONBOARDING_ITEMS = new Set(["offer_letter", "payroll"]);
+
 const STAGE_TIMESTAMP_FIELD: Partial<Record<ApplicantStage, "rejectedAt" | "benchedAt" | "hiredAt">> = {
   REJECTED: "rejectedAt",
   BENCH: "benchedAt",
@@ -49,7 +74,9 @@ export async function setApplicantStageAction(
   stage: ApplicantStage,
   scheduledAt?: string
 ) {
-  const { session } = await requireRecruitingAccess();
+  const { session, canEdit } = await requireRecruitingAccess();
+  requireEdit(canEdit);
+  assertRoutineStageTransition(session.role, stage);
   const timestampField = STAGE_TIMESTAMP_FIELD[stage];
   const scheduledAtDate =
     SCHEDULING_STAGES.includes(stage) && scheduledAt ? zonedTimeToUtc(scheduledAt) : undefined;
@@ -117,6 +144,16 @@ export async function setApplicantStageAction(
     );
   }
 
+  if (session.role === "OFFICE_ASSISTANT") {
+    await logAudit({
+      actorId: session.sub,
+      action: "APPLICANT_STAGE_CHANGED",
+      recordType: "Applicant",
+      recordId: applicantId,
+      changedFields: { stage: { from: previous?.stage, to: stage } },
+    });
+  }
+
   revalidatePath(`/recruiting/applicants/${applicantId}`);
   revalidatePath("/recruiting/applicants");
   revalidatePath("/recruiting");
@@ -127,7 +164,13 @@ export async function setApplicantStageAction(
 // spam applications, duplicates, or no-shows that were never real
 // candidates to begin with.
 export async function rejectApplicantAction(applicantId: string, sendEmailToApplicant: boolean) {
-  const { session } = await requireRecruitingAccess();
+  const { session, canEdit } = await requireRecruitingAccess();
+  requireEdit(canEdit);
+  if (session.role === "OFFICE_ASSISTANT") {
+    throw new Error(
+      "Rejecting an applicant needs the authorized manager — submit a Send for approval request instead."
+    );
+  }
 
   const applicant = await prisma.applicant.update({
     where: { id: applicantId },
@@ -162,7 +205,8 @@ export async function rejectApplicantAction(applicantId: string, sendEmailToAppl
 // application form (a call, an in-person conversation) — added directly
 // by a manager, skipping the prescreen questions since none were asked.
 export async function createManualApplicantAction(formData: FormData) {
-  await requireRecruitingAccess();
+  const { canEdit } = await requireRecruitingAccess();
+  requireEdit(canEdit);
 
   const jobPostingId = String(formData.get("jobPostingId") ?? "");
   const firstName = String(formData.get("firstName") ?? "").trim();
@@ -209,10 +253,14 @@ export async function createManualApplicantAction(formData: FormData) {
 // (append-only, who-said-it-and-when) instead of the old single
 // Applicant.notes field that silently overwrote itself on every edit.
 export async function addApplicantNoteAction(applicantId: string, formData: FormData) {
-  const { session } = await requireRecruitingAccess();
+  const { session, canEdit } = await requireRecruitingAccess();
+  requireEdit(canEdit);
   const body = String(formData.get("body") ?? "").trim();
   if (!body) return;
   await prisma.applicantNote.create({ data: { applicantId, authorId: session.sub, body } });
+  if (session.role === "OFFICE_ASSISTANT") {
+    await logAudit({ actorId: session.sub, action: "APPLICANT_NOTE_ADDED", recordType: "Applicant", recordId: applicantId });
+  }
   revalidatePath(`/recruiting/applicants/${applicantId}`);
 }
 
@@ -226,7 +274,8 @@ export async function savePhoneScreenAction(
   criteriaLabels: string[],
   formData: FormData
 ) {
-  const { session } = await requireRecruitingAccess();
+  const { session, canEdit } = await requireRecruitingAccess();
+  requireEdit(canEdit);
 
   await Promise.all(
     questionIds.map((questionId) => {
@@ -269,6 +318,10 @@ export async function savePhoneScreenAction(
     },
   });
 
+  if (session.role === "OFFICE_ASSISTANT") {
+    await logAudit({ actorId: session.sub, action: "PHONE_SCREEN_SAVED", recordType: "Applicant", recordId: applicantId });
+  }
+
   revalidatePath(`/recruiting/applicants/${applicantId}`);
 }
 
@@ -282,7 +335,8 @@ export async function saveInterviewAnswersAction(
   questionIds: string[],
   formData: FormData
 ) {
-  await requireRecruitingAccess();
+  const { canEdit } = await requireRecruitingAccess();
+  requireEdit(canEdit);
 
   await Promise.all(
     questionIds.map((questionId) => {
@@ -308,7 +362,8 @@ export async function saveInterviewScorecardAction(
   competencies: string[],
   formData: FormData
 ) {
-  const { session } = await requireRecruitingAccess();
+  const { session, canEdit } = await requireRecruitingAccess();
+  requireEdit(canEdit);
 
   const recommendationRaw = String(formData.get("recommendation") ?? "");
   const recommendation = (VALID_RECOMMENDATIONS.has(recommendationRaw)
@@ -350,11 +405,19 @@ export async function saveInterviewScorecardAction(
     })
   );
 
+  if (session.role === "OFFICE_ASSISTANT") {
+    await logAudit({ actorId: session.sub, action: "INTERVIEW_SCORECARD_SAVED", recordType: "Applicant", recordId: applicantId });
+  }
+
   revalidatePath(`/recruiting/applicants/${applicantId}`);
 }
 
 export async function deleteInterviewScorecardAction(applicantId: string, scorecardId: string) {
-  await requireRecruitingAccess();
+  const { session, canEdit } = await requireRecruitingAccess();
+  requireEdit(canEdit);
+  if (session.role === "OFFICE_ASSISTANT") {
+    throw new Error("Deleting a scorecard isn't available for this role.");
+  }
   await prisma.interviewScorecard.delete({ where: { id: scorecardId } });
   revalidatePath(`/recruiting/applicants/${applicantId}`);
 }
@@ -368,7 +431,11 @@ export async function saveWorkingSessionAction(
   checklistLabels: string[],
   formData: FormData
 ) {
-  const { session } = await requireRecruitingAccess();
+  const { session, canEdit } = await requireRecruitingAccess();
+  requireEdit(canEdit);
+  if (session.role === "OFFICE_ASSISTANT") {
+    throw new Error("Working session evaluations aren't available for this role.");
+  }
 
   const preSessionChecklist = checklistLabels.map((label, i) => ({
     label,
@@ -424,7 +491,11 @@ export async function saveWorkingSessionAction(
 // At least two calls are recommended per finalist, so each call is its own
 // row rather than a single record — "Add Reference Check" appends a new one.
 export async function addReferenceCheckAction(applicantId: string, formData: FormData) {
-  const { session } = await requireRecruitingAccess();
+  const { session, canEdit } = await requireRecruitingAccess();
+  requireEdit(canEdit);
+  if (session.role === "OFFICE_ASSISTANT") {
+    throw new Error("Reference checks aren't available for this role.");
+  }
 
   const verdictRaw = String(formData.get("verdict") ?? "");
   const verdict = (VALID_REFERENCE_VERDICTS.has(verdictRaw) ? verdictRaw : null) as ReferenceVerdict | null;
@@ -456,7 +527,11 @@ export async function addReferenceCheckAction(applicantId: string, formData: For
 }
 
 export async function deleteReferenceCheckAction(applicantId: string, referenceCheckId: string) {
-  await requireRecruitingAccess();
+  const { session, canEdit } = await requireRecruitingAccess();
+  requireEdit(canEdit);
+  if (session.role === "OFFICE_ASSISTANT") {
+    throw new Error("Reference checks aren't available for this role.");
+  }
   await prisma.referenceCheck.delete({ where: { id: referenceCheckId } });
   revalidatePath(`/recruiting/applicants/${applicantId}`);
 }
@@ -466,13 +541,27 @@ export async function toggleOnboardingChecklistItemAction(
   itemKey: string,
   completed: boolean
 ) {
-  const { session } = await requireRecruitingAccess();
+  const { session, canEdit } = await requireRecruitingAccess();
+  requireEdit(canEdit);
+  if (session.role === "OFFICE_ASSISTANT" && OFFICE_ASSISTANT_BLOCKED_ONBOARDING_ITEMS.has(itemKey)) {
+    throw new Error("This onboarding item needs the authorized manager.");
+  }
   await setOnboardingChecklistItem(applicantId, itemKey, completed, session.sub);
+  if (session.role === "OFFICE_ASSISTANT") {
+    await logAudit({
+      actorId: session.sub,
+      action: "ONBOARDING_CHECKLIST_TOGGLED",
+      recordType: "Applicant",
+      recordId: applicantId,
+      changedFields: { [itemKey]: { to: completed } },
+    });
+  }
   revalidatePath(`/recruiting/applicants/${applicantId}`);
 }
 
 export async function sendApplicantEmailAction(applicantId: string, formData: FormData) {
-  const { session } = await requireRecruitingAccess();
+  const { session, canEdit } = await requireRecruitingAccess();
+  requireEdit(canEdit);
   const subject = String(formData.get("subject") ?? "").trim();
   const body = String(formData.get("body") ?? "").trim();
   if (!subject || !body) return;
@@ -493,6 +582,10 @@ export async function sendApplicantEmailAction(applicantId: string, formData: Fo
     },
   });
 
+  if (session.role === "OFFICE_ASSISTANT") {
+    await logAudit({ actorId: session.sub, action: "APPLICANT_EMAIL_SENT", recordType: "Applicant", recordId: applicantId });
+  }
+
   revalidatePath(`/recruiting/applicants/${applicantId}`);
 }
 
@@ -504,7 +597,8 @@ export async function logApplicantReplyAction(
   channel: "EMAIL" | "SMS",
   formData: FormData
 ) {
-  const { session } = await requireRecruitingAccess();
+  const { session, canEdit } = await requireRecruitingAccess();
+  requireEdit(canEdit);
   const subject = channel === "EMAIL" ? String(formData.get("subject") ?? "").trim() || null : null;
   const body = String(formData.get("body") ?? "").trim();
   if (!body) return;
@@ -524,7 +618,8 @@ export async function logApplicantReplyAction(
 }
 
 export async function sendApplicantTextAction(applicantId: string, formData: FormData) {
-  const { session } = await requireRecruitingAccess();
+  const { session, canEdit } = await requireRecruitingAccess();
+  requireEdit(canEdit);
   const body = String(formData.get("body") ?? "").trim();
   if (!body) return;
 
@@ -542,6 +637,10 @@ export async function sendApplicantTextAction(applicantId: string, formData: For
       sentById: session.sub,
     },
   });
+
+  if (session.role === "OFFICE_ASSISTANT") {
+    await logAudit({ actorId: session.sub, action: "APPLICANT_TEXT_SENT", recordType: "Applicant", recordId: applicantId });
+  }
 
   revalidatePath(`/recruiting/applicants/${applicantId}`);
 }

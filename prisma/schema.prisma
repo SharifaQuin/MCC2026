@@ -12,6 +12,42 @@ enum Role {
   ADMIN
   TRAINER
   SERVICE_MANAGER
+  // A narrowly-scoped office support role — unlike SERVICE_MANAGER, it does
+  // NOT get broad implicit HR access (see resolveUserDepartments in
+  // src/lib/departments.ts, which special-cases SERVICE_MANAGER only).
+  // Everything this role can see/do is owner-configured per-area via
+  // AreaAccess (src/lib/officeAssistant.ts), not baked into the role itself.
+  OFFICE_ASSISTANT
+}
+
+// One owner-configurable area this narrow role can be given None/View/Edit
+// access to — mirrors Department/DepartmentAccess's own None/View/Edit shape
+// (row absent = no access, row present = view, canEdit = edit), but at a
+// finer grain than a whole Department, and only ever consulted for
+// OFFICE_ASSISTANT (see getAreaAccess) — every other role's access is
+// unaffected by this table's existence.
+enum PermissionArea {
+  HR_SUMMARY
+  RECRUITING
+  ONBOARDING
+  TRAINING
+  STAFF_DIRECTORY
+  SALES_LEADS
+  CALLBACK_QUEUE
+  OPERATIONAL_STATUS
+  ASSIGNED_TASKS
+}
+
+model AreaAccess {
+  id        String         @id @default(cuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  area      PermissionArea
+  canEdit   Boolean        @default(false)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([userId, area])
 }
 
 // A "vertical" of the business. HR is where the training/onboarding portal
@@ -250,6 +286,25 @@ model User {
   sealEvaluationsGiven    SealOfApprovalEvaluation[] @relation("SealEvalEvaluatedBy")
 
   rookieContentProgress RookieContentProgress[]
+
+  // Owner-configured, per-area None/View/Edit grants — only ever consulted
+  // for an OFFICE_ASSISTANT (see getAreaAccess in src/lib/officeAssistant.ts).
+  areaAccess AreaAccess[]
+
+  // Who an Office Assistant's "Send for approval" requests route to — set by
+  // the owner on the Permissions screen, alongside their area grants. Self-
+  // relation rather than a role check, since the owner picks a specific
+  // person, not "whoever happens to be a manager."
+  approvalManagerId String?
+  approvalManager   User?   @relation("ApprovalManagerOf", fields: [approvalManagerId], references: [id], onDelete: SetNull)
+  officeAssistants  User[]  @relation("ApprovalManagerOf")
+
+  approvalRequestsMade     ApprovalRequest[] @relation("ApprovalRequester")
+  approvalRequestsToDecide ApprovalRequest[] @relation("ApprovalManager")
+  approvalRequestsDecided  ApprovalRequest[] @relation("ApprovalDecidedBy")
+  approvalRequestsExecuted ApprovalRequest[] @relation("ApprovalExecutedBy")
+  auditLogEntries          AuditLogEntry[]
+  assignedChecklistTasks   ChecklistTask[]   @relation("ChecklistTaskAssignee")
 
   @@index([role])
 }
@@ -651,6 +706,7 @@ model Applicant {
   onboardingChecklist OnboardingChecklistItem[]
   bookedSlot          InterviewAvailabilitySlot?
   scheduledMessages   ScheduledMessage[]
+  approvalRequests    ApprovalRequest[]
 
   @@index([jobPostingId, stage])
 }
@@ -1537,6 +1593,13 @@ model ChecklistTask {
   order           Int                 @default(0)
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
+  // Nullable, additive — most tasks stay unassigned (the existing OWNER-vs-
+  // TEAM `visibility` is still what mainly decides who sees a task). This
+  // only exists so a TEAM-visibility task can additionally be handed to one
+  // specific person (e.g. an Office Assistant's own follow-ups) without
+  // becoming visible to every TEAM viewer as "theirs" to act on.
+  assigneeId String?
+  assignee   User?   @relation("ChecklistTaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
 }
 
 enum ChecklistTaskStatus {
@@ -1605,6 +1668,12 @@ model Lead {
   // never get a second one, regardless of how many times a caller might
   // invoke maybeSendAfterHoursAutoReply for it.
   autoReplySentAt  DateTime?
+  // Free-text callback note (e.g. "Spoke Spanish, confirmed fluent") — the
+  // callback queue's one piece of information with no existing home
+  // elsewhere on this model; everything else it needs (phone, source,
+  // request, owner, last attempt via LeadNote/LeadCommunication timestamps,
+  // next follow-up via followUpDueAt) already exists.
+  languageNote     String?
   // Snapshot of any custom lead-form-field answers at submission time —
   // [{label, value}], keyed by label rather than a live FK so relabeling or
   // deleting a LeadFormField later never corrupts a past lead's answers.
@@ -2468,4 +2537,93 @@ model SlotCapacitySnapshot {
 
   @@unique([month, date])
   @@index([month])
+}
+
+// General-purpose audit trail — the app otherwise only has bespoke,
+// per-entity activity logs (LeadNote, LeadStageChange, ApplicantNote...).
+// This one is deliberately NOT wired into every existing action (that would
+// be a much larger, separate change) — only into owner permission changes
+// and Office-Assistant-specific mutations, where "who changed what, when"
+// matters most for a brand-new, narrowly-scoped role. changedFields is a
+// plain {field: {from, to}} map of non-sensitive values only — never a
+// secret, a document blob, or free-text PII.
+model AuditLogEntry {
+  id            String   @id @default(cuid())
+  actorId       String?
+  actor         User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action        String
+  recordType    String
+  recordId      String?
+  changedFields Json?
+  createdAt     DateTime @default(now())
+
+  @@index([recordType, recordId])
+  @@index([actorId, createdAt])
+}
+
+enum ApprovalActionType {
+  REJECT_APPLICANT
+  OFFER_APPLICANT
+  SEND_MESSAGE
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  DECLINED
+  WITHDRAWN
+  // Record state (or the approver's own authority/routing) changed between
+  // submission and decision — the manager is shown this instead of being
+  // allowed to approve/decline a request that no longer matches reality.
+  NEEDS_RESUBMISSION
+}
+
+// Pedro's "Send for approval" request — deliberately request-only: approving
+// one never itself changes the applicant's stage, sends anything, or creates
+// an employee (see src/app/actions/approvals.ts). It just records a decision
+// the manager must still carry out manually, in the normal recruiting UI,
+// after reviewing the exact recipient/words themselves.
+model ApprovalRequest {
+  id          String             @id @default(cuid())
+  requesterId String
+  requester   User               @relation("ApprovalRequester", fields: [requesterId], references: [id])
+  managerId   String
+  manager     User               @relation("ApprovalManager", fields: [managerId], references: [id])
+  applicantId String
+  applicant   Applicant          @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  actionType  ApprovalActionType
+  rationale   String             @db.Text
+  // The exact proposed outcome/terms (e.g. "Decline — did not meet
+  // availability requirement" or "Offer $19/hr, start Mon Oct 19").
+  proposedOutcome String @db.Text
+  // Set only for actionType SEND_MESSAGE, or an OFFER/REJECT that includes
+  // an outbound message — the exact recipient and final text, so the
+  // manager reviews precisely what would go out, not a paraphrase.
+  recipientEmail String?
+  messageText    String? @db.Text
+  // The applicant's stage at submission time — compared against its current
+  // stage at decision time; a mismatch means the record moved on since this
+  // request was written, so the decision becomes NEEDS_RESUBMISSION instead
+  // of running against a stale snapshot.
+  applicantStageAtRequest ApplicantStage
+
+  status       ApprovalStatus @default(PENDING)
+  decisionNote String?        @db.Text
+  decidedById  String?
+  decidedBy    User?          @relation("ApprovalDecidedBy", fields: [decidedById], references: [id])
+  decidedAt    DateTime?
+
+  // Set when the manager marks their own separate, manual action (the real
+  // stage change / send) as done — an audit marker only, never written by
+  // anything in this model's own action code.
+  executedById String?
+  executedBy   User?     @relation("ApprovalExecutedBy", fields: [executedById], references: [id])
+  executedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([managerId, status])
+  @@index([requesterId, status])
+  @@index([applicantId])
 }

@@ -18,6 +18,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   TRAINER: "Trainer",
   SERVICE_MANAGER: "Service Manager",
   ADMIN: "Admin / Owner",
+  OFFICE_ASSISTANT: "Office Assistant",
 };
 
 const STASH_COOKIE_OPTS = {

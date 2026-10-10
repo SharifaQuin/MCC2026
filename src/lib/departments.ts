@@ -37,12 +37,25 @@ export interface AccessibleDepartment {
 // always has (view) access to HR — that's the training/onboarding portal
 // they already use — plus whatever else has been explicitly granted to them
 // (e.g. an assistant given Sales access).
+//
+// OFFICE_ASSISTANT is a deliberate exception to that last part: its access
+// to Sales/Operations/Management (and anything finer-grained within them)
+// comes entirely from the separate, narrower AreaAccess grants in
+// src/lib/officeAssistant.ts, never from whole-department DepartmentAccess
+// rows — even if a stale grant row exists for this user (e.g. left over
+// from before they were reassigned to this role from one that did use
+// department access). Only HR view (never edit) carries over, matching
+// every other non-admin, non-service-manager role.
 export function resolveUserDepartments(
   role: Role,
   grants: DepartmentGrant[]
 ): AccessibleDepartment[] {
   if (role === "ADMIN") {
     return DEPARTMENT_ORDER.map((department) => ({ department, canEdit: true }));
+  }
+
+  if (role === "OFFICE_ASSISTANT") {
+    return [{ department: "HR", canEdit: false }];
   }
 
   const result: AccessibleDepartment[] = [

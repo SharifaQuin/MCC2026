@@ -61,7 +61,6 @@ export async function middleware(req: NextRequest) {
       pathname.startsWith("/staff/document-templates") ||
       pathname.startsWith("/financials") ||
       pathname.startsWith("/assistant") ||
-      pathname.startsWith("/todo") ||
       pathname.startsWith("/test-accounts") ||
       pathname.startsWith("/api/quickbooks")) &&
     payload.role !== "ADMIN"
@@ -69,12 +68,34 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/", req.url));
   }
 
+  // Office Assistant can reach its own assigned/shared tasks here — the
+  // page itself (src/app/(portal)/todo/page.tsx) scopes what it actually
+  // fetches per role; this gate only decides who gets past the door.
   if (
-    (pathname.startsWith("/admin") ||
-      pathname.startsWith("/recruiting") ||
-      pathname.startsWith("/staff")) &&
+    pathname.startsWith("/todo") &&
+    payload.role !== "ADMIN" &&
+    payload.role !== "OFFICE_ASSISTANT"
+  ) {
+    return NextResponse.redirect(new URL("/", req.url));
+  }
+
+  if (
+    pathname.startsWith("/admin") &&
     payload.role !== "ADMIN" &&
     payload.role !== "SERVICE_MANAGER"
+  ) {
+    return NextResponse.redirect(new URL("/", req.url));
+  }
+
+  // Recruiting/Staff: Office Assistant is admitted here too, but with
+  // narrower access than Service Manager — requireRecruitingAccess and the
+  // Staff pages' own area-access checks (src/lib/officeAssistant.ts) decide
+  // what it can actually see/do once past this gate.
+  if (
+    (pathname.startsWith("/recruiting") || pathname.startsWith("/staff")) &&
+    payload.role !== "ADMIN" &&
+    payload.role !== "SERVICE_MANAGER" &&
+    payload.role !== "OFFICE_ASSISTANT"
   ) {
     return NextResponse.redirect(new URL("/", req.url));
   }

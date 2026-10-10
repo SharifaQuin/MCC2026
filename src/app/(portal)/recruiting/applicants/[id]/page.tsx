@@ -15,6 +15,7 @@ import WorkingSessionTab from "./WorkingSessionTab";
 import ReferencesTab from "./ReferencesTab";
 import ApplicantNotesTab from "./ApplicantNotesTab";
 import OnboardingChecklistTab from "./OnboardingChecklistTab";
+import ApprovalRequestPanel from "./ApprovalRequestPanel";
 
 export default async function ApplicantDetailPage({
   params,
@@ -279,6 +280,8 @@ export default async function ApplicantDetailPage({
         <h2 className="mb-3 font-medium text-neutral-900">Move Applicant</h2>
         <StageControls applicantId={applicant.id} stage={applicant.stage} scheduledAt={applicant.scheduledAt} />
       </div>
+
+      <ApprovalRequestPanel applicantId={applicant.id} session={session} />
     </div>
   );
 
