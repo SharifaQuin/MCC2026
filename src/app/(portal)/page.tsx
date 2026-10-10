@@ -82,8 +82,11 @@ export default async function HomePage() {
       loadRecruitingDashboard(),
       hasSalesAccess ? loadSalesDashboard() : Promise.resolve(null),
       isAdmin ? getLatestMonthlyFinancials() : Promise.resolve(null),
-      getTeamGoals(),
-      getChecklistTasksForRole(session.role),
+      // getTeamGoals() is ADMIN/SERVICE_MANAGER only (requireManagementAccess)
+      // — the Goals section that uses it is already hidden outright for
+      // Office Assistant, so skip the call entirely rather than let it throw.
+      isOfficeAssistant ? Promise.resolve({} as Record<string, unknown>) : getTeamGoals(),
+      getChecklistTasksForRole(session.role, isOfficeAssistant ? session.sub : undefined),
       isAdmin ? getOpenLoans() : Promise.resolve([]),
       getTodayCardData({ isAdmin, hasSalesAccess, canViewPayroll }),
     ]);
