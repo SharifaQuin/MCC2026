@@ -68,16 +68,11 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/", req.url));
   }
 
-  // Office Assistant can reach its own assigned/shared tasks here — the
-  // page itself (src/app/(portal)/todo/page.tsx) scopes what it actually
-  // fetches per role; this gate only decides who gets past the door.
-  if (
-    pathname.startsWith("/todo") &&
-    payload.role !== "ADMIN" &&
-    payload.role !== "OFFICE_ASSISTANT"
-  ) {
-    return NextResponse.redirect(new URL("/", req.url));
-  }
+  // Any authenticated role can reach /todo — a task can now be assigned to
+  // anyone (Trainee/Trainer/Service Manager/Office Assistant), and the page
+  // itself (src/app/(portal)/todo/page.tsx) scopes what each viewer actually
+  // sees/can edit; this gate only decides who gets past the door, same as
+  // e.g. /modules having no role gate at all.
 
   if (
     pathname.startsWith("/admin") &&

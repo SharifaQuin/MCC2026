@@ -5,6 +5,7 @@ import {
   addChecklistTaskAction,
   bulkAddChecklistTasksAction,
   deleteChecklistTaskAction,
+  setChecklistTaskAssigneeAction,
   setChecklistTaskCategoryAction,
   toggleChecklistTaskStatusAction,
   updateChecklistTaskNotesAction,
@@ -30,6 +31,13 @@ export interface ChecklistRow {
   notes: string | null;
   targetDate: string | null;
   dueFridayOfWeek: boolean;
+  assigneeId: string | null;
+  assigneeName: string | null;
+}
+
+export interface AssigneeOption {
+  id: string;
+  name: string;
 }
 
 const STATUS_CYCLE: ChecklistTaskStatus[] = ["NOT_STARTED", "IN_PROGRESS", "DONE"];
@@ -53,7 +61,7 @@ const DUE_BADGE_LABELS: Record<"OVERDUE" | "DUE_SOON", string> = {
   DUE_SOON: "Due soon",
 };
 
-function TaskRow({ task }: { task: ChecklistRow }) {
+function TaskRow({ task, assignees }: { task: ChecklistRow; assignees: AssigneeOption[] }) {
   const [pending, startTransition] = useTransition();
   const [expanded, setExpanded] = useState(false);
   const [notesDraft, setNotesDraft] = useState(task.notes ?? "");
@@ -111,6 +119,7 @@ function TaskRow({ task }: { task: ChecklistRow }) {
           <p className="mt-0.5 text-xs text-neutral-500">
             {task.frequency.replace("_", "-")} · {task.owner === "TEAM" ? "Team" : "Owner"} ·{" "}
             {task.visibility === "TEAM" ? "Visible to team" : "Owner only"}
+            {task.assigneeName && <> · Assigned to {task.assigneeName}</>}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -152,6 +161,27 @@ function TaskRow({ task }: { task: ChecklistRow }) {
               <option value="SALES">Sales</option>
               <option value="HR">HR</option>
               <option value="MANAGEMENT">Management/Admin</option>
+            </select>
+          </div>
+
+          <div onClick={(e) => e.stopPropagation()}>
+            <label className="mb-1 block text-xs font-medium text-neutral-600">Assign to</label>
+            <select
+              defaultValue={task.assigneeId ?? ""}
+              disabled={pending}
+              onChange={(e) => {
+                startTransition(() => {
+                  setChecklistTaskAssigneeAction(task.id, e.target.value);
+                });
+              }}
+              className="w-full max-w-xs rounded-md border border-neutral-300 px-2 py-1.5 text-xs"
+            >
+              <option value="">Unassigned</option>
+              {assignees.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -224,7 +254,7 @@ function TaskRow({ task }: { task: ChecklistRow }) {
   );
 }
 
-function AddTaskForm() {
+function AddTaskForm({ assignees }: { assignees: AssigneeOption[] }) {
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -281,6 +311,17 @@ function AddTaskForm() {
         <select name="visibility" className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm">
           <option value="OWNER_ONLY">Owner only</option>
           <option value="TEAM">Team</option>
+        </select>
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-neutral-600">Assign to (optional)</label>
+        <select name="assigneeId" className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm">
+          <option value="">Unassigned</option>
+          {assignees.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
         </select>
       </div>
       <div>
@@ -442,7 +483,13 @@ function BulkAddPanel({ onDone }: { onDone: () => void }) {
   );
 }
 
-export default function ChecklistManager({ tasks }: { tasks: ChecklistRow[] }) {
+export default function ChecklistManager({
+  tasks,
+  assignees,
+}: {
+  tasks: ChecklistRow[];
+  assignees: AssigneeOption[];
+}) {
   const [showAdd, setShowAdd] = useState(false);
   const [showBulkAdd, setShowBulkAdd] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -482,7 +529,7 @@ export default function ChecklistManager({ tasks }: { tasks: ChecklistRow[] }) {
 
       {showBulkAdd && <BulkAddPanel onDone={() => setShowBulkAdd(false)} />}
 
-      {showAdd && <AddTaskForm />}
+      {showAdd && <AddTaskForm assignees={assignees} />}
 
       {active.length === 0 ? (
         <p className="text-sm text-neutral-400">Nothing active right now.</p>
@@ -495,7 +542,7 @@ export default function ChecklistManager({ tasks }: { tasks: ChecklistRow[] }) {
               </p>
               <div className="space-y-2">
                 {group.tasks.map((t) => (
-                  <TaskRow key={t.id} task={t} />
+                  <TaskRow key={t.id} task={t} assignees={assignees} />
                 ))}
               </div>
             </div>
@@ -521,7 +568,7 @@ export default function ChecklistManager({ tasks }: { tasks: ChecklistRow[] }) {
                   </p>
                   <div className="space-y-2">
                     {group.tasks.map((t) => (
-                      <TaskRow key={t.id} task={t} />
+                      <TaskRow key={t.id} task={t} assignees={assignees} />
                     ))}
                   </div>
                 </div>

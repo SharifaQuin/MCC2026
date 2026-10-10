@@ -86,7 +86,7 @@ export default async function HomePage() {
       // — the Goals section that uses it is already hidden outright for
       // Office Assistant, so skip the call entirely rather than let it throw.
       isOfficeAssistant ? Promise.resolve({} as Record<string, unknown>) : getTeamGoals(),
-      getChecklistTasksForRole(session.role, isOfficeAssistant ? session.sub : undefined),
+      getChecklistTasksForRole(session.role, isAdmin ? undefined : session.sub),
       isAdmin ? getOpenLoans() : Promise.resolve([]),
       getTodayCardData({ isAdmin, hasSalesAccess, canViewPayroll }),
     ]);

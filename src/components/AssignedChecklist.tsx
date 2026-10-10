@@ -8,7 +8,7 @@ import {
 } from "@/app/actions/financials";
 import type { ChecklistTaskStatus } from "@prisma/client";
 
-export interface OfficeAssistantChecklistRow {
+export interface AssignedChecklistRow {
   id: string;
   task: string;
   effectiveStatus: ChecklistTaskStatus;
@@ -30,13 +30,14 @@ const STATUS_LABELS: Record<ChecklistTaskStatus, string> = {
   DONE: "Done",
 };
 
-// A deliberately narrow checklist view — no delete, no category change, no
-// bulk-add, no visibility/ownership change. Status/notes/date edits are
-// still re-checked server-side (requireChecklistTaskEditAccess in
+// A deliberately narrow checklist view for any non-admin viewer (Trainee,
+// Trainer, Service Manager, Office Assistant) — no delete, no category
+// change, no bulk-add, no reassignment. Status/notes/date edits are still
+// re-checked server-side (requireChecklistTaskEditAccess in
 // src/app/actions/financials.ts) against the same TEAM-or-assigned scope
 // this page already queried, so hiding these controls is UX only, not the
 // actual security boundary.
-function TaskRow({ task, canEdit }: { task: OfficeAssistantChecklistRow; canEdit: boolean }) {
+function TaskRow({ task, canEdit }: { task: AssignedChecklistRow; canEdit: boolean }) {
   const [pending, startTransition] = useTransition();
   const [expanded, setExpanded] = useState(false);
   const [notesDraft, setNotesDraft] = useState(task.notes ?? "");
@@ -133,11 +134,11 @@ function TaskRow({ task, canEdit }: { task: OfficeAssistantChecklistRow; canEdit
   );
 }
 
-export default function OfficeAssistantChecklist({
+export default function AssignedChecklist({
   tasks,
   canEdit,
 }: {
-  tasks: OfficeAssistantChecklistRow[];
+  tasks: AssignedChecklistRow[];
   canEdit: boolean;
 }) {
   if (tasks.length === 0) {

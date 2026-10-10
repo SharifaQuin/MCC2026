@@ -8,6 +8,8 @@ import { getOnboardingDocumentsForUser } from "@/lib/onboarding";
 import { getSignedDocumentsForUser } from "@/lib/documentTemplates";
 import { getEmployeePayrollEntries } from "@/lib/payroll";
 import { getOnboardingPace } from "@/lib/onboardingPace";
+import { getChecklistTasksForRole } from "@/lib/financials";
+import AssignedChecklist from "@/components/AssignedChecklist";
 
 // The real "home" for a Trainee — reached once onboarding paperwork is
 // signed (requireOnboardingComplete/HomePage still redirects to /documents
@@ -18,7 +20,7 @@ import { getOnboardingPace } from "@/lib/onboardingPace";
 export default async function TraineeHome({ session }: { session: SessionPayload }) {
   const labels = t(session.language);
 
-  const [user, modules, fieldEvals, onboardingDocs, personnelDocs, payrollEntries] = await Promise.all([
+  const [user, modules, fieldEvals, onboardingDocs, personnelDocs, payrollEntries, checklistTasks] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.sub },
       select: { createdAt: true, active: true, mustSetPassword: true, certificationStatus: true },
@@ -28,7 +30,18 @@ export default async function TraineeHome({ session }: { session: SessionPayload
     getOnboardingDocumentsForUser(session.sub),
     getSignedDocumentsForUser(session.sub),
     getEmployeePayrollEntries(session.sub),
+    getChecklistTasksForRole(session.role, session.sub),
   ]);
+
+  const checklistItems = checklistTasks.map((t) => ({
+    id: t.id,
+    task: t.task,
+    effectiveStatus: t.effectiveStatus,
+    notes: t.notes,
+    targetDate: t.targetDate ? t.targetDate.toISOString() : null,
+    dueFridayOfWeek: t.dueFridayOfWeek,
+    frequency: t.frequency,
+  }));
 
   const totalModules = modules.length;
   const completedModules = modules.filter((m) => m.status === "COMPLETED").length;
@@ -145,6 +158,13 @@ export default async function TraineeHome({ session }: { session: SessionPayload
             View full progress →
           </Link>
         </section>
+
+        {checklistItems.length > 0 && (
+          <section className="rounded-lg border border-neutral-200 bg-white p-6">
+            <h2 className="mb-2 text-lg font-medium text-neutral-900">Your Tasks</h2>
+            <AssignedChecklist tasks={checklistItems} canEdit={true} />
+          </section>
+        )}
 
         <p className="text-sm text-neutral-500">
           Need a quick refresher on a term?{" "}
