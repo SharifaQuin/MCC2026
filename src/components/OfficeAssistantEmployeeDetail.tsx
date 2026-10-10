@@ -1,4 +1,5 @@
 import type { getOfficeAssistantEmployeeDetail } from "@/lib/officeAssistantStaff";
+import TrainingAssignmentPanel from "@/components/TrainingAssignmentPanel";
 
 type Detail = NonNullable<Awaited<ReturnType<typeof getOfficeAssistantEmployeeDetail>>>;
 
@@ -16,7 +17,13 @@ function Field({ label, value }: { label: string; value: string | number | null 
 // supervisor/pair. No pay, payroll, banking/tax, disciplinary, medical, or
 // account-management fields ever reach this component because the data
 // loader behind it (src/lib/officeAssistantStaff.ts) never fetches them.
-export default function OfficeAssistantEmployeeDetail({ data }: { data: Detail }) {
+export default function OfficeAssistantEmployeeDetail({
+  data,
+  canEditTraining = false,
+}: {
+  data: Detail;
+  canEditTraining?: boolean;
+}) {
   return (
     <div className="space-y-6">
       <div className="rounded-lg border border-neutral-200 bg-white p-5">
@@ -28,9 +35,23 @@ export default function OfficeAssistantEmployeeDetail({ data }: { data: Detail }
           <Field label="Work Phone" value={data.phone} />
           <Field label="Office / Crew" value={[data.officeLocation, data.crewType].filter(Boolean).join(" / ") || null} />
           <Field label="Supervisor" value={data.supervisorName} />
-          {data.currentTrainerName && <Field label="Current Trainer" value={data.currentTrainerName} />}
+          {!canEditTraining && data.currentTrainer && (
+            <Field label="Current Trainer" value={data.currentTrainer.trainerName} />
+          )}
         </div>
       </div>
+
+      {canEditTraining && data.isTrainee && (
+        <div className="rounded-lg border border-neutral-200 bg-white p-5">
+          <h2 className="mb-3 text-lg font-medium text-neutral-900">Training Assignment</h2>
+          <TrainingAssignmentPanel
+            traineeId={data.id}
+            current={data.currentTrainer}
+            history={data.trainingHistory}
+            candidates={data.trainerCandidates}
+          />
+        </div>
+      )}
 
       <div className="rounded-lg border border-neutral-200 bg-white p-5">
         <h2 className="mb-3 text-lg font-medium text-neutral-900">Onboarding</h2>

@@ -13,6 +13,7 @@ export default async function StaffProfilePage({ params }: { params: { id: strin
   if (session.role === "OFFICE_ASSISTANT") {
     const access = await getAreaAccessForUser(session.sub, "STAFF_DIRECTORY");
     if (!access.canView) redirect("/");
+    const trainingAccess = await getAreaAccessForUser(session.sub, "TRAINING");
     const data = await getOfficeAssistantEmployeeDetail(params.id);
     if (!data) notFound();
     return (
@@ -20,7 +21,7 @@ export default async function StaffProfilePage({ params }: { params: { id: strin
         <Link href="/staff" className="mb-4 inline-block text-sm text-brand-700 hover:underline">
           ← Back to Staff Directory
         </Link>
-        <OfficeAssistantEmployeeDetail data={data} />
+        <OfficeAssistantEmployeeDetail data={data} canEditTraining={trainingAccess.canEdit} />
       </div>
     );
   }

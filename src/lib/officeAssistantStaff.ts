@@ -1,7 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { STAFF_ROLES, yearsOfService } from "@/lib/staff";
 import { getCurrentPairForEmployee } from "@/lib/pairing";
-import { getCurrentTrainerForTrainee } from "@/lib/trainingAssignment";
+import {
+  getCurrentTrainerForTrainee,
+  getTrainerCandidates,
+  getTrainingAssignmentHistoryForTrainee,
+} from "@/lib/trainingAssignment";
 import { buildMilestoneTimeline } from "@/lib/milestones";
 
 // A deliberately separate, narrow data path for Office Assistant's Staff
@@ -76,7 +80,7 @@ export async function getOfficeAssistantEmployeeDetail(userId: string) {
   });
   if (!user) return null;
 
-  const [onboardingDocs, pair, currentTrainer] = await Promise.all([
+  const [onboardingDocs, pair, currentTrainer, trainerCandidates, trainingHistory] = await Promise.all([
     prisma.onboardingAssignment.findMany({
       where: { userId },
       orderBy: { document: { order: "asc" } },
@@ -84,6 +88,8 @@ export async function getOfficeAssistantEmployeeDetail(userId: string) {
     }),
     getCurrentPairForEmployee(userId),
     user.role === "TRAINEE" ? getCurrentTrainerForTrainee(userId) : null,
+    user.role === "TRAINEE" ? getTrainerCandidates() : [],
+    user.role === "TRAINEE" ? getTrainingAssignmentHistoryForTrainee(userId) : [],
   ]);
 
   const milestoneReviewRows = await prisma.milestoneReview.findMany({ where: { employeeId: userId } });
@@ -108,7 +114,17 @@ export async function getOfficeAssistantEmployeeDetail(userId: string) {
     officeLocation: user.officeLocation,
     crewType: user.crewType,
     supervisorName: supervisorName(user.managerName, pair),
-    currentTrainerName: currentTrainer?.trainerName ?? null,
+    isTrainee: user.role === "TRAINEE",
+    currentTrainer: currentTrainer
+      ? {
+          assignmentId: currentTrainer.assignmentId,
+          trainerId: currentTrainer.trainerId,
+          trainerName: currentTrainer.trainerName,
+          startDate: currentTrainer.startDate.toISOString(),
+        }
+      : null,
+    trainerCandidates,
+    trainingHistory,
     onboarding: onboardingDocs.map((d) => ({
       id: d.id,
       title: d.document.title,

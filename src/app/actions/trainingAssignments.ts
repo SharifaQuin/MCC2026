@@ -3,15 +3,27 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getAreaAccessForUser } from "@/lib/officeAssistant";
+import { logAudit } from "@/lib/auditLog";
 
 export interface TrainingAssignmentState {
   error?: string;
   success?: boolean;
 }
 
+// Assigning/reassigning who trains whom is operational scheduling, not a
+// training-quality judgment call (field evaluations, quiz results, and
+// certification decisions stay entirely out of this Office Assistant's
+// reach — they aren't exposed by this file or by its narrow staff view).
 async function requireHrAccess() {
   const session = await getSession();
-  if (!session || (session.role !== "ADMIN" && session.role !== "SERVICE_MANAGER")) {
+  if (!session) throw new Error("Not authorized");
+  if (session.role === "OFFICE_ASSISTANT") {
+    const access = await getAreaAccessForUser(session.sub, "TRAINING");
+    if (!access.canEdit) throw new Error("Not authorized");
+    return session;
+  }
+  if (session.role !== "ADMIN" && session.role !== "SERVICE_MANAGER") {
     throw new Error("Not authorized");
   }
   return session;
@@ -71,6 +83,16 @@ export async function assignTrainerAction(
     }),
   ]);
 
+  if (session.role === "OFFICE_ASSISTANT") {
+    await logAudit({
+      actorId: session.sub,
+      action: "TRAINING_ASSIGNMENT_SET",
+      recordType: "User",
+      recordId: traineeId,
+      changedFields: { trainerId: { to: trainerId } },
+    });
+  }
+
   revalidateEmployeeViews(traineeId, trainerId);
   return { success: true };
 }
@@ -82,10 +104,13 @@ export async function endTrainingAssignmentAction(
   traineeId: string,
   trainerId: string
 ) {
-  await requireHrAccess();
+  const session = await requireHrAccess();
   await prisma.trainingAssignment.update({
     where: { id: assignmentId },
     data: { active: false, endDate: new Date() },
   });
+  if (session.role === "OFFICE_ASSISTANT") {
+    await logAudit({ actorId: session.sub, action: "TRAINING_ASSIGNMENT_ENDED", recordType: "User", recordId: traineeId });
+  }
   revalidateEmployeeViews(traineeId, trainerId);
 }
