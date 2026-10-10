@@ -11,6 +11,7 @@ import { getLatestMonthlyFinancials, getTeamGoals, getChecklistTasksForRole, get
 import { reachedGrowthStages } from "@/lib/checklistDisplay";
 import { estimateLoanPayoff } from "@/lib/loans";
 import { getTodayCardData } from "@/lib/hrToday";
+import { getAreaAccessForUser } from "@/lib/officeAssistant";
 import ChecklistSidebar from "@/components/ChecklistSidebar";
 import TodayCard from "./TodayCard";
 import RookieJourneyHome from "./RookieJourneyHome";
@@ -62,6 +63,14 @@ export default async function HomePage() {
   });
   const hasSalesAccess = hasDepartmentAccess(session.role, grants, "SALES").canView;
   const isAdmin = session.role === "ADMIN";
+  const isOfficeAssistant = session.role === "OFFICE_ASSISTANT";
+  // Home shows cross-department $ figures (Goals) and HR headline counts
+  // (Training/Recruiting) that no other non-admin role sees today — gate
+  // both behind this role's own HR_SUMMARY grant rather than leaving them
+  // open the way they already are for SERVICE_MANAGER/ADMIN.
+  const canViewHrSummary = isOfficeAssistant
+    ? (await getAreaAccessForUser(session.sub, "HR_SUMMARY")).canView
+    : true;
   // Matches middleware.ts's own /staff/payroll gate — a SERVICE_MANAGER can
   // already open the full payroll page, so the Today card's payroll section
   // shouldn't be stricter than the page it links to.
@@ -171,6 +180,7 @@ export default async function HomePage() {
             </section>
           )}
 
+          {!isOfficeAssistant && (
           <section className="rounded-lg border border-neutral-200 bg-white p-6">
             <h2 className="text-lg font-medium text-neutral-900">Goals</h2>
             {growthStaircase.length > 0 && (
@@ -199,6 +209,7 @@ export default async function HomePage() {
             )}
             {marketingBudgetNote && <p className="mt-1 text-xs text-neutral-400">{marketingBudgetNote}</p>}
           </section>
+          )}
 
           {sales && (
             <section className="rounded-lg border border-neutral-200 bg-white p-6">
@@ -246,6 +257,7 @@ export default async function HomePage() {
             </section>
           )}
 
+          {canViewHrSummary && (
           <div className="grid gap-6 md:grid-cols-2">
             <section className="rounded-lg border border-neutral-200 bg-white p-6">
               <h2 className="text-lg font-medium text-neutral-900">Training</h2>
@@ -253,21 +265,29 @@ export default async function HomePage() {
                 Onboarding, modules, certification, and field evaluations.
               </p>
               <div className="mt-4 grid grid-cols-2 gap-3">
-                <Stat label="Total Employees" value={training.totalEmployees} href="/admin/employees" />
-                <Stat label="In Training" value={training.inTraining} href="/admin/employees?status=ACTIVE" />
+                <Stat
+                  label="Total Employees"
+                  value={training.totalEmployees}
+                  href={isOfficeAssistant ? undefined : "/admin/employees"}
+                />
+                <Stat
+                  label="In Training"
+                  value={training.inTraining}
+                  href={isOfficeAssistant ? undefined : "/admin/employees?status=ACTIVE"}
+                />
                 <Stat
                   label="Completed All Training"
                   value={training.completedAll}
-                  href="/admin/employees?status=COMPLETED_ALL"
+                  href={isOfficeAssistant ? undefined : "/admin/employees?status=COMPLETED_ALL"}
                 />
                 <Stat
                   label="Pending Certification"
                   value={training.pendingCertifications.length}
-                  href="/admin/employees?status=PENDING_CERT"
+                  href={isOfficeAssistant ? undefined : "/admin/employees?status=PENDING_CERT"}
                 />
               </div>
               <Link
-                href="/admin"
+                href={isOfficeAssistant ? "/hr" : "/admin"}
                 className="mt-5 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
               >
                 View Training Dashboard
@@ -297,6 +317,7 @@ export default async function HomePage() {
               </Link>
             </section>
           </div>
+          )}
         </div>
 
         <aside className="lg:sticky lg:top-28">
