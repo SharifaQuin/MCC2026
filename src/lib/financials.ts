@@ -91,13 +91,25 @@ export type ChecklistTaskWithEffectiveStatus = ChecklistTask & {
 };
 
 // Role-scoped checklist read: ADMIN sees every task; everyone else (in
-// practice SERVICE_MANAGER, the only other role that reaches the home page)
-// only ever sees rows with visibility = TEAM.
+// practice SERVICE_MANAGER and OFFICE_ASSISTANT) only ever sees rows with
+// visibility = TEAM — Owner-only tasks (which is also where every private
+// finance task lives today) stay out of the query entirely, not just
+// hidden in the UI. Passing userId additionally surfaces that person's own
+// assigned tasks even if not TEAM-visible would otherwise... but a task
+// assigned to someone is always TEAM visibility in practice; this is a
+// defensive OR, not an expected path, since assigneeId never applies to an
+// Owner-only task.
 export async function getChecklistTasksForRole(
-  role: Role
+  role: Role,
+  userId?: string
 ): Promise<ChecklistTaskWithEffectiveStatus[]> {
   const tasks = await prisma.checklistTask.findMany({
-    where: role === "ADMIN" ? undefined : { visibility: "TEAM" },
+    where:
+      role === "ADMIN"
+        ? undefined
+        : userId
+          ? { OR: [{ visibility: "TEAM" }, { assigneeId: userId, visibility: { not: "OWNER_ONLY" } }] }
+          : { visibility: "TEAM" },
     orderBy: [{ order: "asc" }, { createdAt: "asc" }],
   });
   const now = new Date();

@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getAreaAccessForUser } from "@/lib/officeAssistant";
+import { logAudit } from "@/lib/auditLog";
 import type { ChecklistCategory, ChecklistOwner, ChecklistTaskStatus, ChecklistVisibility } from "@prisma/client";
 import {
   disconnectQuickBooks,
@@ -21,6 +23,27 @@ async function requireOwnerAccess() {
   if (!session || session.role !== "ADMIN") {
     throw new Error("Not authorized");
   }
+  return session;
+}
+
+// Office Assistant may only edit a checklist task that's either shared
+// (TEAM visibility) or specifically handed to them — never an Owner-only
+// task, and never someone else's assignment, no matter what the client
+// sends. Delete, category changes, bulk-add and creating new tasks stay
+// behind requireOwnerAccess() above (ADMIN only) and need no change here.
+async function requireChecklistTaskEditAccess(taskId: string) {
+  const session = await getSession();
+  if (!session) throw new Error("Not authorized");
+  if (session.role === "ADMIN") return session;
+  if (session.role !== "OFFICE_ASSISTANT") throw new Error("Not authorized");
+
+  const access = await getAreaAccessForUser(session.sub, "ASSIGNED_TASKS");
+  if (!access.canEdit) throw new Error("Not authorized");
+
+  const task = await prisma.checklistTask.findUnique({ where: { id: taskId }, select: { visibility: true, assigneeId: true } });
+  if (!task) throw new Error("Task not found");
+  if (task.visibility !== "TEAM" && task.assigneeId !== session.sub) throw new Error("Not authorized");
+
   return session;
 }
 
@@ -298,22 +321,30 @@ export async function setChecklistTaskCategoryAction(taskId: string, category: C
   revalidatePath("/");
 }
 
-// ADMIN only — edit a task's notes (shown when the task row is expanded).
+// ADMIN, or Office Assistant on their own shared/assigned task — edit a
+// task's notes (shown when the task row is expanded).
 export async function updateChecklistTaskNotesAction(taskId: string, notes: string) {
-  await requireOwnerAccess();
+  const session = await requireChecklistTaskEditAccess(taskId);
   await prisma.checklistTask.update({ where: { id: taskId }, data: { notes: notes.trim() || null } });
+  if (session.role === "OFFICE_ASSISTANT") {
+    await logAudit({ actorId: session.sub, action: "CHECKLIST_NOTES_UPDATED", recordType: "ChecklistTask", recordId: taskId });
+  }
   revalidatePath("/financials");
   revalidatePath("/todo");
   revalidatePath("/");
 }
 
-// ADMIN only — set, change, or clear (pass null) a task's due date.
+// ADMIN, or Office Assistant on their own shared/assigned task — set,
+// change, or clear (pass null) a task's due date.
 export async function updateChecklistTaskTargetDateAction(taskId: string, targetDate: string | null) {
-  await requireOwnerAccess();
+  const session = await requireChecklistTaskEditAccess(taskId);
   await prisma.checklistTask.update({
     where: { id: taskId },
     data: { targetDate: targetDate ? new Date(targetDate) : null },
   });
+  if (session.role === "OFFICE_ASSISTANT") {
+    await logAudit({ actorId: session.sub, action: "CHECKLIST_TARGET_DATE_UPDATED", recordType: "ChecklistTask", recordId: taskId });
+  }
   revalidatePath("/financials");
   revalidatePath("/todo");
   revalidatePath("/");
@@ -327,16 +358,25 @@ export async function deleteChecklistTaskAction(taskId: string) {
   revalidatePath("/");
 }
 
-// SERVICE_MANAGER may only toggle TEAM-visibility tasks; ADMIN may toggle any.
+// SERVICE_MANAGER may only toggle TEAM-visibility tasks; Office Assistant
+// may only toggle a TEAM-visibility task or one assigned specifically to
+// them; ADMIN may toggle any.
 export async function toggleChecklistTaskStatusAction(taskId: string, newStatus: ChecklistTaskStatus) {
   const session = await getSession();
-  if (!session || (session.role !== "ADMIN" && session.role !== "SERVICE_MANAGER")) {
+  if (!session || (session.role !== "ADMIN" && session.role !== "SERVICE_MANAGER" && session.role !== "OFFICE_ASSISTANT")) {
     throw new Error("Not authorized");
+  }
+  if (session.role === "OFFICE_ASSISTANT") {
+    const access = await getAreaAccessForUser(session.sub, "ASSIGNED_TASKS");
+    if (!access.canEdit) throw new Error("Not authorized");
   }
 
   const task = await prisma.checklistTask.findUnique({ where: { id: taskId } });
   if (!task) throw new Error("Task not found");
-  if (session.role !== "ADMIN" && task.visibility !== "TEAM") {
+  if (session.role === "SERVICE_MANAGER" && task.visibility !== "TEAM") {
+    throw new Error("Not authorized");
+  }
+  if (session.role === "OFFICE_ASSISTANT" && task.visibility !== "TEAM" && task.assigneeId !== session.sub) {
     throw new Error("Not authorized");
   }
 
@@ -344,6 +384,16 @@ export async function toggleChecklistTaskStatusAction(taskId: string, newStatus:
     where: { id: taskId },
     data: { status: newStatus, completedAt: newStatus === "DONE" ? new Date() : null },
   });
+
+  if (session.role === "OFFICE_ASSISTANT") {
+    await logAudit({
+      actorId: session.sub,
+      action: "CHECKLIST_STATUS_TOGGLED",
+      recordType: "ChecklistTask",
+      recordId: taskId,
+      changedFields: { status: { to: newStatus } },
+    });
+  }
 
   revalidatePath("/financials");
   revalidatePath("/todo");
