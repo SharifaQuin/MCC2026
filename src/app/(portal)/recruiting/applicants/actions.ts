@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
+import { getAreaAccessForUser } from "@/lib/officeAssistant";
 import { sendEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
 import {
@@ -541,7 +542,16 @@ export async function toggleOnboardingChecklistItemAction(
   itemKey: string,
   completed: boolean
 ) {
-  const { session, canEdit } = await requireRecruitingAccess();
+  const { session, canEdit: recruitingCanEdit } = await requireRecruitingAccess();
+  // Onboarding has its own owner-configurable area, distinct from Recruiting
+  // (the Permissions screen shows them as separate rows) — Office
+  // Assistant's edit right here comes from the ONBOARDING grant, not from
+  // RECRUITING edit, even though reaching this applicant at all still needs
+  // RECRUITING view.
+  const canEdit =
+    session.role === "OFFICE_ASSISTANT"
+      ? (await getAreaAccessForUser(session.sub, "ONBOARDING")).canEdit
+      : recruitingCanEdit;
   requireEdit(canEdit);
   if (session.role === "OFFICE_ASSISTANT" && OFFICE_ASSISTANT_BLOCKED_ONBOARDING_ITEMS.has(itemKey)) {
     throw new Error("This onboarding item needs the authorized manager.");
