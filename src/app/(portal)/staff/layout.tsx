@@ -1,7 +1,11 @@
 import Link from "next/link";
+import { getSession } from "@/lib/session";
 import StaffTabs from "@/components/StaffTabs";
 
-export default function StaffLayout({ children }: { children: React.ReactNode }) {
+export default async function StaffLayout({ children }: { children: React.ReactNode }) {
+  const session = await getSession();
+  const showPayrollTab = session?.role === "ADMIN" || session?.role === "SERVICE_MANAGER";
+
   return (
     <div className="space-y-6">
       <div>
@@ -11,7 +15,7 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
         <h1 className="mt-1 text-2xl font-semibold">Staff</h1>
       </div>
 
-      <StaffTabs />
+      <StaffTabs showPayrollTab={showPayrollTab} />
 
       {children}
     </div>

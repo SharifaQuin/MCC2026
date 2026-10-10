@@ -65,6 +65,37 @@ export async function assertAreaAccess(
   return { session, canEdit: access.canEdit };
 }
 
+// Every area grant for one user in a single query — used by Nav/layout to
+// decide which links to show without a round trip per area.
+export async function getAllAreaAccessForUser(
+  userId: string
+): Promise<{ role: string | null; areas: Partial<Record<PermissionArea, AreaAccessResult>> }> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, active: true, areaAccess: { select: { area: true, canEdit: true } } },
+  });
+  if (!user || !user.active) return { role: null, areas: {} };
+  if (user.role !== "OFFICE_ASSISTANT") return { role: user.role, areas: {} };
+
+  const areas: Partial<Record<PermissionArea, AreaAccessResult>> = {};
+  for (const grant of user.areaAccess) {
+    areas[grant.area] = { canView: true, canEdit: grant.canEdit };
+  }
+  return { role: user.role, areas };
+}
+
+// Several staff/HR pages (payroll, departed roster, document templates,
+// etc.) only ever checked role at the middleware path-prefix level, which
+// was safe while only ADMIN/SERVICE_MANAGER could reach /staff at all.
+// Office Assistant is now also admitted past that gate (narrowly, for its
+// own bounded staff view), so pages carrying real payroll/disciplinary
+// data need their own explicit block for this role specifically — this
+// never touches ADMIN/SERVICE_MANAGER/any other role's existing access.
+export async function blockOfficeAssistant(): Promise<void> {
+  const session = await getSession();
+  if (session?.role === "OFFICE_ASSISTANT") redirect("/");
+}
+
 // Whether the *current* (live, DB-fetched) role is OFFICE_ASSISTANT — used
 // by shared pages/components (Home, To-Do, Staff) that need to branch
 // behavior for this role specifically, not just gate an area.

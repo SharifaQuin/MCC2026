@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPayPeriodDetail, getUnmatchedPayrollReports, getAttachableEmployees } from "@/lib/payroll";
+import { blockOfficeAssistant } from "@/lib/officeAssistant";
 import CsvImportForm from "./CsvImportForm";
 import PayrollRowsTable from "./PayrollRowsTable";
 import UnmatchedPayrollReports from "./UnmatchedPayrollReports";
 
 export default async function AdminPayPeriodPage({ params }: { params: { id: string } }) {
+  await blockOfficeAssistant();
   const detail = await getPayPeriodDetail(params.id);
   if (!detail) notFound();
 

@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { getPayPeriodsOverview } from "@/lib/payroll";
+import { blockOfficeAssistant } from "@/lib/officeAssistant";
 import NewPayPeriodForm from "./NewPayPeriodForm";
 
 export default async function AdminPayrollPage() {
+  await blockOfficeAssistant();
   const periods = await getPayPeriodsOverview();
 
   return (

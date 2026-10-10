@@ -3,18 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const TABS = [
+const ALL_TABS = [
   { href: "/staff", label: "Directory" },
   { href: "/staff/payroll", label: "Payroll" },
 ];
 
-export default function StaffTabs() {
+export default function StaffTabs({ showPayrollTab = true }: { showPayrollTab?: boolean }) {
   const pathname = usePathname();
   const onPayrollTab = pathname.startsWith("/staff/payroll");
+  const tabs = showPayrollTab ? ALL_TABS : ALL_TABS.filter((t) => t.href !== "/staff/payroll");
 
   return (
     <div className="flex flex-wrap gap-3">
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const active =
           tab.href === "/staff/payroll"
             ? onPayrollTab

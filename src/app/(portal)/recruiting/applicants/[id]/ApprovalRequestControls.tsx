@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import {
   submitApprovalRequestAction,
   withdrawApprovalRequestAction,
@@ -24,6 +25,10 @@ export interface ApprovalRequestRow {
   isMine: boolean;
   canDecide: boolean;
   canMarkExecuted: boolean;
+  // Only set on the cross-applicant manager queue (/recruiting/approvals),
+  // where each row needs to link back to its own applicant.
+  applicantId?: string;
+  applicantName?: string;
 }
 
 const ACTION_LABELS: Record<ApprovalRequestRow["actionType"], string> = {
@@ -40,7 +45,7 @@ const STATUS_STYLES: Record<ApprovalRequestRow["status"], string> = {
   NEEDS_RESUBMISSION: "bg-orange-100 text-orange-700",
 };
 
-function RequestRow({ row }: { row: ApprovalRequestRow }) {
+export function RequestRow({ row }: { row: ApprovalRequestRow }) {
   const [pending, startTransition] = useTransition();
   const [decisionNote, setDecisionNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +79,18 @@ function RequestRow({ row }: { row: ApprovalRequestRow }) {
     <div className="rounded-md border border-neutral-200 p-3">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-sm font-medium text-neutral-900">{ACTION_LABELS[row.actionType]}</p>
+          <p className="text-sm font-medium text-neutral-900">
+            {ACTION_LABELS[row.actionType]}
+            {row.applicantId && row.applicantName && (
+              <>
+                {" "}
+                for{" "}
+                <Link href={`/recruiting/applicants/${row.applicantId}`} className="text-brand-700 hover:underline">
+                  {row.applicantName}
+                </Link>
+              </>
+            )}
+          </p>
           <p className="text-xs text-neutral-500">
             {row.requesterName} → {row.managerName}
           </p>

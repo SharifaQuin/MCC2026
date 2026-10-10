@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getSession, clearSessionCookie } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { resolveUserDepartments } from "@/lib/departments";
+import { getAllAreaAccessForUser } from "@/lib/officeAssistant";
 import { getImpersonationState, ROLE_LABELS } from "@/lib/impersonation";
 import { getTrainingExperienceVersion } from "@/lib/rookieJourney";
 import Nav from "@/components/Nav";
@@ -30,6 +31,13 @@ export default async function PortalLayout({ children }: { children: React.React
   const hideModulesNavLink =
     session.role === "TRAINEE" && (await getTrainingExperienceVersion()) === "rookie";
 
+  const officeAssistantAreas =
+    session.role === "OFFICE_ASSISTANT" ? (await getAllAreaAccessForUser(session.sub)).areas : undefined;
+  const pendingApprovalCount =
+    session.role === "ADMIN" || session.role === "SERVICE_MANAGER"
+      ? await prisma.approvalRequest.count({ where: { managerId: session.sub, status: "PENDING" } })
+      : 0;
+
   return (
     <div className="min-h-screen">
       <div className="sticky top-0 z-20 print:static">
@@ -40,7 +48,13 @@ export default async function PortalLayout({ children }: { children: React.React
             ownerName={impersonation.ownerName ?? "Owner"}
           />
         )}
-        <Nav session={session} departments={departments} hideModulesLink={hideModulesNavLink} />
+        <Nav
+          session={session}
+          departments={departments}
+          hideModulesLink={hideModulesNavLink}
+          officeAssistantAreas={officeAssistantAreas}
+          pendingApprovalCount={pendingApprovalCount}
+        />
         <GoalProgressBar session={session} departments={departments} />
       </div>
       <main className="mx-auto max-w-7xl px-4 py-8">{children}</main>
