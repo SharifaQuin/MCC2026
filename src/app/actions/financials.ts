@@ -46,9 +46,15 @@ async function requireChecklistTaskEditAccess(taskId: string) {
     if (!access.canEdit) throw new Error("Not authorized");
   }
 
-  const task = await prisma.checklistTask.findUnique({ where: { id: taskId }, select: { visibility: true, assigneeId: true } });
+  const task = await prisma.checklistTask.findUnique({ where: { id: taskId }, select: { visibility: true } });
   if (!task) throw new Error("Task not found");
-  if (task.visibility !== "TEAM" && task.assigneeId !== session.sub) throw new Error("Not authorized");
+  // Visibility is the hard gate for every non-admin role, full stop — an
+  // Owner-only task is never editable by anyone but the owner, even if it
+  // was also (mistakenly) given an assigneeId. There are only two
+  // visibility values, so "assigned to me" never needs its own check here:
+  // it only ever matters at TEAM visibility, where every team member
+  // (assignee or not) can already edit it.
+  if (task.visibility !== "TEAM") throw new Error("Not authorized");
 
   return session;
 }
