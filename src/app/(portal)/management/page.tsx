@@ -54,6 +54,12 @@ export default async function ManagementPage() {
           >
             Slot Capacity Feed →
           </Link>
+          <Link
+            href="/management/business-hours"
+            className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Business Hours →
+          </Link>
         </div>
       </div>
       <WeeklyUpdateManager updates={rows} canEdit={canEdit} defaultWeekOf={toDateKey(nextMondayFrom())} />

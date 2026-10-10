@@ -101,6 +101,12 @@ export default async function RecruitingPage() {
             Message Templates
           </Link>
           <Link
+            href="/scheduled"
+            className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Scheduled Sends
+          </Link>
+          <Link
             href="/recruiting/settings"
             className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
           >

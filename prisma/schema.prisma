@@ -178,6 +178,7 @@ model User {
   departmentAccess            DepartmentAccess[]
   sentCommunications          CommunicationLog[]
   sentLeadCommunications      LeadCommunication[]
+  scheduledMessagesCreated    ScheduledMessage[]
   leadNotesWritten            LeadNote[]
   leadStageChangesMade        LeadStageChange[]
   assignedLeads               Lead[]                 @relation("LeadAssignedTo")
@@ -649,6 +650,7 @@ model Applicant {
   referenceChecks     ReferenceCheck[]
   onboardingChecklist OnboardingChecklistItem[]
   bookedSlot          InterviewAvailabilitySlot?
+  scheduledMessages   ScheduledMessage[]
 
   @@index([jobPostingId, stage])
 }
@@ -1598,6 +1600,11 @@ model Lead {
   lostReason       String?
   followUpDueAt    DateTime?
   firstContactedAt DateTime?
+  // Set the moment the after-hours auto-reply is attempted for this lead
+  // (success or failure) — claimed before the send so the same lead can
+  // never get a second one, regardless of how many times a caller might
+  // invoke maybeSendAfterHoursAutoReply for it.
+  autoReplySentAt  DateTime?
   // Snapshot of any custom lead-form-field answers at submission time —
   // [{label, value}], keyed by label rather than a live FK so relabeling or
   // deleting a LeadFormField later never corrupts a past lead's answers.
@@ -1607,10 +1614,11 @@ model Lead {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
-  communications LeadCommunication[]
-  notes          LeadNote[]
-  stageChanges   LeadStageChange[]
-  slotBookings   SlotBooking[]
+  communications    LeadCommunication[]
+  notes             LeadNote[]
+  stageChanges      LeadStageChange[]
+  slotBookings      SlotBooking[]
+  scheduledMessages ScheduledMessage[]
 
   @@index([stage])
   @@index([source])
@@ -1688,6 +1696,50 @@ model LeadCommunication {
   createdAt    DateTime      @default(now())
 
   @@index([leadId, createdAt])
+}
+
+enum ScheduledMessageStatus {
+  PENDING
+  // Transient claim set by the scheduler tick right before it calls
+  // sendEmail/sendSms — see runScheduledMessageSchedulerTick — so an
+  // overlapping tick (a slow send still in flight when the next one fires)
+  // can never pick up and send the same row twice.
+  SENDING
+  SENT
+  // Terminal — the scheduler never looks at FAILED rows again. A failed
+  // send is surfaced on the Scheduled list for a human to notice and
+  // decide whether to resend by hand; it is never retried automatically.
+  FAILED
+  CANCELLED
+}
+
+// A future-dated Lead or Applicant email/text, queued by scheduleMessageAction
+// and sent by runScheduledMessageSchedulerTick (src/lib/scheduledMessageScheduler.ts)
+// on the same 60s interval as the app's other schedulers. Exactly one of
+// leadId/applicantId is set (enforced by a CHECK constraint in the
+// migration) — mirrors LeadCommunication/CommunicationLog existing as two
+// separate models rather than one polymorphic one, same reasoning.
+model ScheduledMessage {
+  id           String                 @id @default(cuid())
+  channel      CommChannel
+  leadId       String?
+  lead         Lead?                  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  applicantId  String?
+  applicant    Applicant?             @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  subject      String?
+  body         String                 @db.Text
+  sendAt       DateTime
+  status       ScheduledMessageStatus @default(PENDING)
+  errorMessage String?                @db.Text
+  sentAt       DateTime?
+  createdById  String
+  createdBy    User                   @relation(fields: [createdById], references: [id])
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  @@index([status, sendAt])
+  @@index([leadId])
+  @@index([applicantId])
 }
 
 // Manual monthly ad-spend entry per source, for the Source ROI KPI (cost per

@@ -353,6 +353,19 @@ export default async function SalesPage() {
             Manage Templates
           </Link>
         </section>
+
+        <section className="rounded-lg border border-neutral-200 bg-white p-6">
+          <h2 className="text-lg font-medium text-neutral-900">Scheduled Sends</h2>
+          <p className="mt-1 text-sm text-neutral-500">
+            Emails and texts queued to go out later — edit, reschedule, or cancel before they send.
+          </p>
+          <Link
+            href="/scheduled"
+            className="mt-5 inline-block rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            View Scheduled Sends
+          </Link>
+        </section>
       </div>
     </div>
   );

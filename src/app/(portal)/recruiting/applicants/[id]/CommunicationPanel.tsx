@@ -7,6 +7,7 @@ import {
   logApplicantReplyAction,
 } from "../actions";
 import { applyTemplateTokens } from "@/lib/templateTokens";
+import ScheduleSendControls from "@/components/ScheduleSendControls";
 
 interface TemplateOption {
   id: string;
@@ -166,13 +167,27 @@ export default function CommunicationPanel({
             required
             className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
           />
-          <button
-            type="submit"
-            disabled={pending}
-            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
-          >
-            {pending ? "Sending..." : "Send Email"}
-          </button>
+          <div className="flex items-start gap-2">
+            <button
+              type="submit"
+              disabled={pending}
+              className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+            >
+              {pending ? "Sending..." : "Send Email"}
+            </button>
+            <ScheduleSendControls
+              recipientType="APPLICANT"
+              recipientId={applicantId}
+              channel="EMAIL"
+              getSubject={() => emailSubject}
+              getBody={() => emailBody}
+              onScheduled={() => {
+                setTab("none");
+                setEmailSubject("");
+                setEmailBody("");
+              }}
+            />
+          </div>
         </form>
       )}
 
@@ -212,13 +227,25 @@ export default function CommunicationPanel({
             required
             className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
           />
-          <button
-            type="submit"
-            disabled={pending}
-            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
-          >
-            {pending ? "Sending..." : "Send Text"}
-          </button>
+          <div className="flex items-start gap-2">
+            <button
+              type="submit"
+              disabled={pending}
+              className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+            >
+              {pending ? "Sending..." : "Send Text"}
+            </button>
+            <ScheduleSendControls
+              recipientType="APPLICANT"
+              recipientId={applicantId}
+              channel="SMS"
+              getBody={() => smsBody}
+              onScheduled={() => {
+                setTab("none");
+                setSmsBody("");
+              }}
+            />
+          </div>
         </form>
       )}
 
