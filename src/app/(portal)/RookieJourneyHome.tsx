@@ -6,6 +6,8 @@ import { getOnboardingDocumentsForUser } from "@/lib/onboarding";
 import { getSignedDocumentsForUser } from "@/lib/documentTemplates";
 import { getEmployeePayrollEntries } from "@/lib/payroll";
 import { prisma } from "@/lib/prisma";
+import { getChecklistTasksForRole } from "@/lib/financials";
+import AssignedChecklist from "@/components/AssignedChecklist";
 
 function RailDot({ stop }: { stop: RookieRailStop }) {
   const isMilestone = Number(stop.label) > 10;
@@ -30,7 +32,7 @@ export default async function RookieJourneyHome({ session }: { session: SessionP
   const isEs = session.language === "ES";
   const firstName = session.name.split(" ")[0];
 
-  const [user, training, onboardingDocs, personnelDocs, payrollEntries] = await Promise.all([
+  const [user, training, onboardingDocs, personnelDocs, payrollEntries, checklistTasks] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.sub },
       select: { certificationStatus: true },
@@ -39,7 +41,18 @@ export default async function RookieJourneyHome({ session }: { session: SessionP
     getOnboardingDocumentsForUser(session.sub),
     getSignedDocumentsForUser(session.sub),
     getEmployeePayrollEntries(session.sub),
+    getChecklistTasksForRole(session.role, session.sub),
   ]);
+
+  const checklistItems = checklistTasks.map((t) => ({
+    id: t.id,
+    task: t.task,
+    effectiveStatus: t.effectiveStatus,
+    notes: t.notes,
+    targetDate: t.targetDate ? t.targetDate.toISOString() : null,
+    dueFridayOfWeek: t.dueFridayOfWeek,
+    frequency: t.frequency,
+  }));
 
   const pendingDocsCount =
     onboardingDocs.filter((d) => !d.signedAt).length + personnelDocs.filter((d) => !d.signedAt).length;
@@ -220,6 +233,13 @@ export default async function RookieJourneyHome({ session }: { session: SessionP
               {isEs ? day.fieldGoalEs : day.fieldGoalEn}
             </p>
           )}
+        </section>
+      )}
+
+      {checklistItems.length > 0 && (
+        <section className="mb-6 rounded-lg border border-neutral-200 bg-white p-5">
+          <h2 className="mb-2 text-lg font-medium text-neutral-900">{isEs ? "Tus Tareas" : "Your Tasks"}</h2>
+          <AssignedChecklist tasks={checklistItems} canEdit={true} />
         </section>
       )}
 

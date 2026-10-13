@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getAllDepartedEmployees } from "@/lib/staff";
+import { blockOfficeAssistant } from "@/lib/officeAssistant";
 
 const ROLE_LABELS: Record<string, string> = {
   TRAINEE: "Technician",
@@ -9,6 +10,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default async function DepartedEmployeesPage() {
+  await blockOfficeAssistant();
   const departed = await getAllDepartedEmployees();
 
   return (

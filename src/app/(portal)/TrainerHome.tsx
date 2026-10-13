@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { SessionPayload } from "@/lib/session";
 import { loadTrainerDashboard } from "@/lib/dashboard";
+import { getChecklistTasksForRole } from "@/lib/financials";
+import AssignedChecklist from "@/components/AssignedChecklist";
 
 function Stat({ label, value, href }: { label: string; value: number | string; href?: string }) {
   const content = (
@@ -25,7 +27,20 @@ function Stat({ label, value, href }: { label: string; value: number | string; h
 // a Trainer only has access to the people they're actually training, same
 // as /trainer/employees and /trainer/employees/[id].
 export default async function TrainerHome({ session }: { session: SessionPayload }) {
-  const training = await loadTrainerDashboard(session.sub);
+  const [training, checklistTasks] = await Promise.all([
+    loadTrainerDashboard(session.sub),
+    getChecklistTasksForRole(session.role, session.sub),
+  ]);
+
+  const checklistItems = checklistTasks.map((t) => ({
+    id: t.id,
+    task: t.task,
+    effectiveStatus: t.effectiveStatus,
+    notes: t.notes,
+    targetDate: t.targetDate ? t.targetDate.toISOString() : null,
+    dueFridayOfWeek: t.dueFridayOfWeek,
+    frequency: t.frequency,
+  }));
 
   return (
     <div>
@@ -108,6 +123,13 @@ export default async function TrainerHome({ session }: { session: SessionPayload
             </p>
           )}
         </section>
+
+        {checklistItems.length > 0 && (
+          <section className="rounded-lg border border-neutral-200 bg-white p-6">
+            <h2 className="mb-2 text-lg font-medium text-neutral-900">Your Tasks</h2>
+            <AssignedChecklist tasks={checklistItems} canEdit={true} />
+          </section>
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
+import { requireSalesLeadsAccess } from "@/lib/requireSalesLeadsAccess";
 import {
   LEAD_PIPELINE_COLUMNS,
   ARCHIVED_LEAD_STAGES,
@@ -9,6 +9,7 @@ import {
 } from "@/lib/leads";
 import LeadPipelineBoard from "./LeadPipelineBoard";
 import AddLeadPanel from "./AddLeadPanel";
+import OfficeAssistantLeadsList from "./OfficeAssistantLeadsList";
 import type { LeadSource } from "@prisma/client";
 
 const VALID_LEAD_SOURCES = new Set(Object.keys(LEAD_SOURCE_LABELS));
@@ -18,7 +19,38 @@ export default async function LeadsPage({
 }: {
   searchParams: { q?: string; source?: string; assigned?: string };
 }) {
-  const { session, canEdit } = await requireDepartmentAccess("SALES");
+  const { session, canEdit } = await requireSalesLeadsAccess();
+
+  if (session.role === "OFFICE_ASSISTANT") {
+    const leads = await prisma.lead.findMany({
+      where: { stage: { notIn: ARCHIVED_LEAD_STAGES } },
+      include: { assignedTo: { select: { name: true } } },
+      orderBy: { createdAt: "asc" },
+    });
+    return (
+      <div>
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-2xl font-semibold">Leads &amp; Callbacks</h1>
+          {canEdit && <AddLeadPanel />}
+        </div>
+        <OfficeAssistantLeadsList
+          leads={leads.map((l) => ({
+            id: l.id,
+            firstName: l.firstName,
+            lastName: l.lastName,
+            phone: l.phone,
+            source: l.source,
+            serviceInterest: l.serviceInterest,
+            stage: l.stage,
+            languageNote: l.languageNote,
+            followUpDueAt: l.followUpDueAt ? l.followUpDueAt.toISOString() : null,
+            createdAt: l.createdAt.toISOString(),
+            assignedToName: l.assignedTo?.name ?? null,
+          }))}
+        />
+      </div>
+    );
+  }
 
   const q = searchParams.q?.trim();
   const source = searchParams.source?.trim();

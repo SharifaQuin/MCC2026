@@ -5,6 +5,7 @@ import {
   addChecklistTaskAction,
   bulkAddChecklistTasksAction,
   deleteChecklistTaskAction,
+  setChecklistTaskAssigneeAction,
   setChecklistTaskCategoryAction,
   toggleChecklistTaskStatusAction,
   updateChecklistTaskNotesAction,
@@ -30,6 +31,13 @@ export interface ChecklistRow {
   notes: string | null;
   targetDate: string | null;
   dueFridayOfWeek: boolean;
+  assigneeId: string | null;
+  assigneeName: string | null;
+}
+
+export interface AssigneeOption {
+  id: string;
+  name: string;
 }
 
 const STATUS_CYCLE: ChecklistTaskStatus[] = ["NOT_STARTED", "IN_PROGRESS", "DONE"];
@@ -53,11 +61,13 @@ const DUE_BADGE_LABELS: Record<"OVERDUE" | "DUE_SOON", string> = {
   DUE_SOON: "Due soon",
 };
 
-function TaskRow({ task }: { task: ChecklistRow }) {
+function TaskRow({ task, assignees }: { task: ChecklistRow; assignees: AssigneeOption[] }) {
   const [pending, startTransition] = useTransition();
   const [expanded, setExpanded] = useState(false);
   const [notesDraft, setNotesDraft] = useState(task.notes ?? "");
   const [dateDraft, setDateDraft] = useState(task.targetDate ? task.targetDate.slice(0, 10) : "");
+  const [assigneeDraft, setAssigneeDraft] = useState(task.assigneeId ?? "");
+  const [assigneeMsg, setAssigneeMsg] = useState<string | null>(null);
   const dueStatus = getDueStatus(task);
 
   function advance(e: React.MouseEvent) {
@@ -88,6 +98,27 @@ function TaskRow({ task }: { task: ChecklistRow }) {
     });
   }
 
+  function changeAssignee(nextId: string) {
+    setAssigneeDraft(nextId);
+    setAssigneeMsg(null);
+    startTransition(async () => {
+      try {
+        await setChecklistTaskAssigneeAction(task.id, nextId);
+        const nextName = assignees.find((a) => a.id === nextId)?.name;
+        setAssigneeMsg(
+          nextId
+            ? `Reassigned — only ${nextName ?? "this person"} and you (the Owner) can see this now.`
+            : `Unassigned — this task is now visible per the Visible to setting above (${
+                task.visibility === "TEAM" ? "the whole team" : "you only"
+              }).`
+        );
+      } catch (err) {
+        setAssigneeDraft(task.assigneeId ?? "");
+        setAssigneeMsg(err instanceof Error ? err.message : "Couldn't update the assignee.");
+      }
+    });
+  }
+
   return (
     <div className="rounded-md border border-neutral-200 p-3">
       <div
@@ -110,7 +141,11 @@ function TaskRow({ task }: { task: ChecklistRow }) {
           </div>
           <p className="mt-0.5 text-xs text-neutral-500">
             {task.frequency.replace("_", "-")} · {task.owner === "TEAM" ? "Team" : "Owner"} ·{" "}
-            {task.visibility === "TEAM" ? "Visible to team" : "Owner only"}
+            {task.assigneeId
+              ? `Private to ${task.assigneeName ?? "the assignee"} + you`
+              : task.visibility === "TEAM"
+                ? "Visible to team"
+                : "Owner only"}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -135,6 +170,8 @@ function TaskRow({ task }: { task: ChecklistRow }) {
 
       {expanded && (
         <div className="mt-3 space-y-3 border-t border-neutral-100 pt-3">
+          <p className="text-sm font-medium text-neutral-900">{task.task}</p>
+
           <div>
             <label className="mb-1 block text-xs font-medium text-neutral-600">Category</label>
             <select
@@ -153,6 +190,35 @@ function TaskRow({ task }: { task: ChecklistRow }) {
               <option value="HR">HR</option>
               <option value="MANAGEMENT">Management/Admin</option>
             </select>
+          </div>
+
+          <div onClick={(e) => e.stopPropagation()}>
+            <label className="mb-1 block text-xs font-medium text-neutral-600">Assign to</label>
+            <select
+              value={assigneeDraft}
+              disabled={pending}
+              onChange={(e) => changeAssignee(e.target.value)}
+              className="w-full max-w-xs rounded-md border border-neutral-300 px-2 py-1.5 text-xs"
+            >
+              <option value="">Unassigned</option>
+              {assignees.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-neutral-400">
+              {assigneeDraft
+                ? `Private — only ${
+                    assignees.find((a) => a.id === assigneeDraft)?.name ?? "the assigned person"
+                  } and you (the Owner) can see or edit this, regardless of this task's Visible to setting (${
+                    task.visibility === "TEAM" ? "Team" : "Owner only"
+                  }). Reassigning hands it to the new person and removes it from the old one; unassigning returns it to that Visible to setting.`
+                : `Unassigned — visible per this task's Visible to setting (${
+                    task.visibility === "TEAM" ? "Team" : "Owner only"
+                  }). Assigning someone makes it private to just them and you instead.`}
+            </p>
+            {assigneeMsg && <p className="mt-1 text-[11px] font-medium text-brand-700">{assigneeMsg}</p>}
           </div>
 
           {task.dueFridayOfWeek ? (
@@ -224,7 +290,7 @@ function TaskRow({ task }: { task: ChecklistRow }) {
   );
 }
 
-function AddTaskForm() {
+function AddTaskForm({ assignees }: { assignees: AssigneeOption[] }) {
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -282,6 +348,21 @@ function AddTaskForm() {
           <option value="OWNER_ONLY">Owner only</option>
           <option value="TEAM">Team</option>
         </select>
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-neutral-600">Assign to (optional)</label>
+        <select name="assigneeId" className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm">
+          <option value="">Unassigned</option>
+          {assignees.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-[11px] text-neutral-400">
+          Assigning someone makes this task private to just them and you (the Owner), overriding Visible to above.
+          Leave unassigned to use Visible to as set above.
+        </p>
       </div>
       <div>
         <label className="mb-1 block text-xs font-medium text-neutral-600">Target date (optional)</label>
@@ -442,7 +523,13 @@ function BulkAddPanel({ onDone }: { onDone: () => void }) {
   );
 }
 
-export default function ChecklistManager({ tasks }: { tasks: ChecklistRow[] }) {
+export default function ChecklistManager({
+  tasks,
+  assignees,
+}: {
+  tasks: ChecklistRow[];
+  assignees: AssigneeOption[];
+}) {
   const [showAdd, setShowAdd] = useState(false);
   const [showBulkAdd, setShowBulkAdd] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -482,7 +569,7 @@ export default function ChecklistManager({ tasks }: { tasks: ChecklistRow[] }) {
 
       {showBulkAdd && <BulkAddPanel onDone={() => setShowBulkAdd(false)} />}
 
-      {showAdd && <AddTaskForm />}
+      {showAdd && <AddTaskForm assignees={assignees} />}
 
       {active.length === 0 ? (
         <p className="text-sm text-neutral-400">Nothing active right now.</p>
@@ -495,7 +582,7 @@ export default function ChecklistManager({ tasks }: { tasks: ChecklistRow[] }) {
               </p>
               <div className="space-y-2">
                 {group.tasks.map((t) => (
-                  <TaskRow key={t.id} task={t} />
+                  <TaskRow key={t.id} task={t} assignees={assignees} />
                 ))}
               </div>
             </div>
@@ -521,7 +608,7 @@ export default function ChecklistManager({ tasks }: { tasks: ChecklistRow[] }) {
                   </p>
                   <div className="space-y-2">
                     {group.tasks.map((t) => (
-                      <TaskRow key={t.id} task={t} />
+                      <TaskRow key={t.id} task={t} assignees={assignees} />
                     ))}
                   </div>
                 </div>

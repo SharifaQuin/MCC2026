@@ -1,6 +1,10 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getSession } from "@/lib/session";
 import { getStaffDashboardStats, getStaffDirectory, getTurnoverStats, yearsOfService } from "@/lib/staff";
+import { getAreaAccessForUser } from "@/lib/officeAssistant";
 import AddEmployeePanel from "@/components/AddEmployeePanel";
+import OfficeAssistantStaffDirectory from "@/components/OfficeAssistantStaffDirectory";
 
 function Stat({
   label,
@@ -28,6 +32,19 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default async function StaffDashboardPage() {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  if (session.role === "OFFICE_ASSISTANT") {
+    const access = await getAreaAccessForUser(session.sub, "STAFF_DIRECTORY");
+    if (!access.canView) redirect("/");
+    return (
+      <div>
+        <h1 className="mb-6 text-2xl font-semibold">Staff Directory</h1>
+        <OfficeAssistantStaffDirectory />
+      </div>
+    );
+  }
+
   const [stats, directory, turnover] = await Promise.all([
     getStaffDashboardStats(),
     getStaffDirectory(),

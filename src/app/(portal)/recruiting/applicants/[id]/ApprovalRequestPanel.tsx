@@ -1,0 +1,74 @@
+import { prisma } from "@/lib/prisma";
+import type { SessionPayload } from "@/lib/session";
+import { getAreaAccessForUser } from "@/lib/officeAssistant";
+import ApprovalRequestControls, { type ApprovalRequestRow } from "./ApprovalRequestControls";
+
+// Shown to two different audiences on the same applicant page: an Office
+// Assistant who can submit a request here (if they have RECRUITING edit),
+// and the applicant's own routed manager, who can decide a pending one.
+// Each only ever sees their own side of a request — a requester never sees
+// another requester's rows, and a non-manager viewer sees nothing here at
+// all besides their own submitted history.
+export default async function ApprovalRequestPanel({
+  applicantId,
+  session,
+}: {
+  applicantId: string;
+  session: SessionPayload;
+}) {
+  const canSubmit =
+    session.role === "OFFICE_ASSISTANT" &&
+    (await getAreaAccessForUser(session.sub, "RECRUITING")).canEdit;
+
+  const isAdmin = session.role === "ADMIN";
+  const canDecideAsManager = session.role === "ADMIN" || session.role === "SERVICE_MANAGER";
+
+  if (!canSubmit && !canDecideAsManager) return null;
+
+  const requests = await prisma.approvalRequest.findMany({
+    where: {
+      applicantId,
+      OR: [
+        ...(isAdmin ? [{}] : []),
+        { requesterId: session.sub },
+        ...(canDecideAsManager ? [{ managerId: session.sub }] : []),
+      ],
+    },
+    include: {
+      requester: { select: { name: true } },
+      manager: { select: { name: true } },
+      decidedBy: { select: { name: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const rows: ApprovalRequestRow[] = requests.map((r) => ({
+    id: r.id,
+    requesterName: r.requester.name,
+    managerName: r.manager.name,
+    actionType: r.actionType,
+    rationale: r.rationale,
+    proposedOutcome: r.proposedOutcome,
+    recipientEmail: r.recipientEmail,
+    messageText: r.messageText,
+    status: r.status,
+    decisionNote: r.decisionNote,
+    decidedByName: r.decidedBy?.name ?? null,
+    executedAt: r.executedAt ? r.executedAt.toISOString() : null,
+    isMine: r.requesterId === session.sub,
+    canDecide: canDecideAsManager && r.managerId === session.sub && r.requesterId !== session.sub,
+    canMarkExecuted: r.decidedById === session.sub,
+  }));
+
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-white p-4">
+      <h2 className="mb-3 font-medium text-neutral-900">Approval Requests</h2>
+      <p className="mb-3 text-xs text-neutral-500">
+        A request here never changes this applicant's stage, sends anything, or hires anyone by
+        itself — approving one only records a decision. The blocked action still needs the
+        manager's own separate, manual step.
+      </p>
+      <ApprovalRequestControls applicantId={applicantId} canSubmit={canSubmit} rows={rows} />
+    </div>
+  );
+}

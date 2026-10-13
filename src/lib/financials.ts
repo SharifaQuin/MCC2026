@@ -90,16 +90,42 @@ export type ChecklistTaskWithEffectiveStatus = ChecklistTask & {
   effectiveStatus: ChecklistTaskStatus;
 };
 
-// Role-scoped checklist read: ADMIN sees every task; everyone else (in
-// practice SERVICE_MANAGER, the only other role that reaches the home page)
-// only ever sees rows with visibility = TEAM.
+// Role-scoped checklist read: ADMIN (the Owner) sees every task. For
+// everyone else, assignment is a hard privacy boundary, not just a label:
+// once a task has an assigneeId, it's visible to exactly that one person
+// (plus the Owner) — the stored visibility (Owner-only/Team) is irrelevant
+// and never widens who else can see it. An unassigned task keeps the
+// existing visibility rule (Team-visible to everyone who can reach this
+// query; Owner-only to no one but the Owner).
 export async function getChecklistTasksForRole(
-  role: Role
+  role: Role,
+  userId?: string
 ): Promise<ChecklistTaskWithEffectiveStatus[]> {
   const tasks = await prisma.checklistTask.findMany({
-    where: role === "ADMIN" ? undefined : { visibility: "TEAM" },
+    where:
+      role === "ADMIN"
+        ? undefined
+        : userId
+          ? { OR: [{ assigneeId: null, visibility: "TEAM" }, { assigneeId: userId }] }
+          : { assigneeId: null, visibility: "TEAM" },
     orderBy: [{ order: "asc" }, { createdAt: "asc" }],
   });
   const now = new Date();
   return tasks.map((t) => ({ ...t, effectiveStatus: effectiveChecklistStatus(t, now) }));
+}
+
+// Every active, real (non-test) staff member who can be handed a checklist
+// task — every role except ADMIN (the owner does the assigning, not the
+// other way around). Broader than lib/staff.ts's STAFF_ROLES, which
+// excludes Office Assistant.
+export async function getChecklistAssigneeCandidates() {
+  return prisma.user.findMany({
+    where: {
+      role: { in: ["TRAINEE", "TRAINER", "SERVICE_MANAGER", "OFFICE_ASSISTANT"] },
+      active: true,
+      isTestAccount: false,
+    },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
 }

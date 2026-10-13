@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
+import { requireSalesLeadsAccess } from "@/lib/requireSalesLeadsAccess";
 import {
   LEAD_SOURCE_LABELS,
   LEAD_STAGE_LABELS,
@@ -15,9 +15,51 @@ import LeadCommunicationPanel from "./LeadCommunicationPanel";
 import LeadDealDetailsForm from "./LeadDealDetailsForm";
 import LeadActivityFeed from "./LeadActivityFeed";
 import AssignLeadForm from "./AssignLeadForm";
+import OfficeAssistantLeadDetail from "../OfficeAssistantLeadDetail";
 
 export default async function LeadDetailPage({ params }: { params: { id: string } }) {
-  const { canEdit } = await requireDepartmentAccess("SALES");
+  const { session, canEdit } = await requireSalesLeadsAccess();
+
+  if (session.role === "OFFICE_ASSISTANT") {
+    const lead = await prisma.lead.findUnique({
+      where: { id: params.id },
+      include: {
+        notes: { orderBy: { createdAt: "desc" }, include: { author: { select: { name: true } } } },
+        stageChanges: { orderBy: { createdAt: "desc" }, include: { changedBy: { select: { name: true } } } },
+        assignedTo: { select: { name: true } },
+      },
+    });
+    if (!lead) return <p className="text-neutral-500">Lead not found.</p>;
+    return (
+      <OfficeAssistantLeadDetail
+        lead={{
+          id: lead.id,
+          firstName: lead.firstName,
+          lastName: lead.lastName,
+          email: lead.email,
+          phone: lead.phone,
+          address: lead.address,
+          serviceInterest: lead.serviceInterest,
+          squareFootage: lead.squareFootage,
+          frequency: lead.frequency,
+          message: lead.message,
+          source: lead.source,
+          stage: lead.stage,
+          languageNote: lead.languageNote,
+          followUpDueAt: lead.followUpDueAt ? lead.followUpDueAt.toISOString() : null,
+          createdAt: lead.createdAt.toISOString(),
+          assignedToName: lead.assignedTo?.name ?? null,
+          notes: lead.notes.map((n) => ({
+            id: n.id,
+            body: n.body,
+            authorName: n.author?.name ?? null,
+            createdAt: n.createdAt.toISOString(),
+          })),
+        }}
+        canEdit={canEdit}
+      />
+    );
+  }
 
   const [lead, teamMembers, messageTemplates] = await Promise.all([
     prisma.lead.findUnique({

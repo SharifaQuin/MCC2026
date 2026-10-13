@@ -4,19 +4,47 @@ import { t } from "@/lib/i18n";
 import { setLanguageAction } from "@/app/actions/language";
 import Logo from "@/components/Logo";
 import { DEPARTMENT_INFO, type AccessibleDepartment } from "@/lib/departments";
+import type { PermissionArea } from "@prisma/client";
+
+interface AreaAccessResult {
+  canView: boolean;
+  canEdit: boolean;
+}
+
+const OFFICE_ASSISTANT_NAV_LINKS: Array<{ area: PermissionArea; href: string; label: string }> = [
+  { area: "HR_SUMMARY", href: "/hr", label: "HR Summary" },
+  { area: "RECRUITING", href: "/recruiting", label: "Recruiting" },
+  { area: "STAFF_DIRECTORY", href: "/staff", label: "Staff" },
+  { area: "SALES_LEADS", href: "/sales/leads", label: "Leads" },
+  { area: "CALLBACK_QUEUE", href: "/sales/leads", label: "Callbacks" },
+  { area: "OPERATIONAL_STATUS", href: "/operations", label: "Operations" },
+  { area: "ASSIGNED_TASKS", href: "/todo", label: "To-Do" },
+];
 
 export default function Nav({
   session,
   departments,
   hideModulesLink,
+  officeAssistantAreas,
+  pendingApprovalCount,
 }: {
   session: SessionPayload;
   departments: AccessibleDepartment[];
   hideModulesLink?: boolean;
+  officeAssistantAreas?: Partial<Record<PermissionArea, AreaAccessResult>>;
+  pendingApprovalCount?: number;
 }) {
   const labels = t(session.language);
 
   const staffOnly = session.role === "TRAINER" || session.role === "SERVICE_MANAGER";
+  const canDecideApprovals = session.role === "ADMIN" || session.role === "SERVICE_MANAGER";
+  // De-duplicate hrefs (Leads/Callbacks both point at /sales/leads today)
+  // while still gating each on its own area grant.
+  const officeAssistantLinks = officeAssistantAreas
+    ? OFFICE_ASSISTANT_NAV_LINKS.filter((link) => officeAssistantAreas[link.area]?.canView).filter(
+        (link, i, arr) => arr.findIndex((l) => l.href === link.href) === i
+      )
+    : [];
 
   return (
     <header className="border-b-2 border-gold-500 bg-white print:hidden">
@@ -90,6 +118,22 @@ export default function Nav({
                   {labels.testAccounts}
                 </Link>
               </>
+            )}
+            {session.role === "OFFICE_ASSISTANT" &&
+              officeAssistantLinks.map((link) => (
+                <Link key={link.href} href={link.href} className="hover:underline">
+                  {link.label}
+                </Link>
+              ))}
+            {canDecideApprovals && (
+              <Link href="/recruiting/approvals" className="hover:underline">
+                Pending Approvals
+                {!!pendingApprovalCount && (
+                  <span className="ml-1 inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-xs font-semibold text-white">
+                    {pendingApprovalCount}
+                  </span>
+                )}
+              </Link>
             )}
           </nav>
         </div>
