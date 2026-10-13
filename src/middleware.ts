@@ -58,6 +58,9 @@ export async function middleware(req: NextRequest) {
       pathname.startsWith("/admin/permissions") ||
       pathname.startsWith("/admin/documents") ||
       pathname.startsWith("/admin/rookie-journey") ||
+      // "My owner dashboard" — deliberately ADMIN-only, not Service Manager
+      // too, since a report might be about a Service Manager.
+      pathname.startsWith("/owner/problem-reports") ||
       pathname.startsWith("/staff/document-templates") ||
       pathname.startsWith("/financials") ||
       pathname.startsWith("/assistant") ||

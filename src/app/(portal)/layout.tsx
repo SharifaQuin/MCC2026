@@ -5,7 +5,9 @@ import { resolveUserDepartments } from "@/lib/departments";
 import { getAllAreaAccessForUser } from "@/lib/officeAssistant";
 import { getImpersonationState, ROLE_LABELS } from "@/lib/impersonation";
 import { getTrainingExperienceVersion } from "@/lib/rookieJourney";
-import Nav from "@/components/Nav";
+import { buildNavGroups } from "@/lib/navigation";
+import Sidebar from "@/components/nav/Sidebar";
+import MobileNav from "@/components/nav/MobileNav";
 import GoalProgressBar from "@/components/GoalProgressBar";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 
@@ -38,26 +40,47 @@ export default async function PortalLayout({ children }: { children: React.React
       ? await prisma.approvalRequest.count({ where: { managerId: session.sub, status: "PENDING" } })
       : 0;
 
+  // Trainer/Service Manager-facing screens have no Spanish content, so the
+  // language toggle (wherever it now lives — the gear dropdown) stays
+  // hidden for them, matching the old header's behavior exactly.
+  const showLanguageToggle = session.role !== "TRAINER" && session.role !== "SERVICE_MANAGER";
+
+  const navGroups = buildNavGroups({
+    role: session.role,
+    language: session.language,
+    departments,
+    hideModulesLink: hideModulesNavLink,
+    officeAssistantAreas,
+    pendingApprovalCount,
+  });
+
   return (
-    <div className="min-h-screen">
-      <div className="sticky top-0 z-20 print:static">
-        {impersonation.isImpersonating && (
-          <ImpersonationBanner
-            viewingAsName={session.name}
-            viewingAsRoleLabel={ROLE_LABELS[session.role]}
-            ownerName={impersonation.ownerName ?? "Owner"}
+    <div className="flex min-h-screen">
+      <Sidebar
+        name={session.name}
+        language={session.language}
+        showLanguageToggle={showLanguageToggle}
+        groups={navGroups}
+      />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="sticky top-0 z-20 print:static">
+          <MobileNav
+            name={session.name}
+            language={session.language}
+            showLanguageToggle={showLanguageToggle}
+            groups={navGroups}
           />
-        )}
-        <Nav
-          session={session}
-          departments={departments}
-          hideModulesLink={hideModulesNavLink}
-          officeAssistantAreas={officeAssistantAreas}
-          pendingApprovalCount={pendingApprovalCount}
-        />
-        <GoalProgressBar session={session} departments={departments} />
+          {impersonation.isImpersonating && (
+            <ImpersonationBanner
+              viewingAsName={session.name}
+              viewingAsRoleLabel={ROLE_LABELS[session.role]}
+              ownerName={impersonation.ownerName ?? "Owner"}
+            />
+          )}
+          <GoalProgressBar session={session} departments={departments} />
+        </div>
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8">{children}</main>
       </div>
-      <main className="mx-auto max-w-7xl px-4 py-8">{children}</main>
     </div>
   );
 }
