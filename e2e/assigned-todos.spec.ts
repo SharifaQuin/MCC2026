@@ -3,20 +3,23 @@ import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/lib/password";
 
 // Coverage for "assigned to-dos": the owner assigning a checklist task to a
-// specific named team member (any staff role, not just Office Assistant),
-// that person seeing it on their own To-Do list and Home, marking it done
-// and adding a note, and the owner seeing the result. Server-side
-// enforcement: an assignee only ever sees tasks assigned to them or shared
-// with the team, never Owner-only ones (even if directly assigned — that
-// combination is treated as a mistake, not an exception), and cannot
-// reassign or delete even via a replayed/forged request using the real
-// Next.js Server Action protocol. Fixtures only, tagged with a unique run
-// id and removed in afterAll.
+// specific named team member (any staff role, not just Office Assistant).
+// Assignment is a hard privacy boundary — an assigned task is visible/
+// editable to exactly that person and the Owner, never any other team
+// member or management role, regardless of the task's stored Owner-only/
+// Team visibility (which only still matters while a task is unassigned).
+// Server-side enforcement is checked both via real page navigation and via
+// forged requests that replay the real Next.js Server Action protocol
+// (captured via network interception during a legitimate click, then
+// replayed with unauthorized arguments/sessions) rather than mocking
+// anything. Fixtures only, tagged with a unique run id and removed in
+// afterAll.
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "shar@mamascleaningcrew.com";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "change-this-immediately";
 const RUN_ID = Date.now().toString();
 const ASSIGNEE_EMAIL = `assignee-e2e-${RUN_ID}@example.com`;
 const BYSTANDER_EMAIL = `bystander-e2e-${RUN_ID}@example.com`;
+const MANAGER_EMAIL = `manager-e2e-${RUN_ID}@example.com`;
 const PASSWORD = "Test-Password-123!";
 
 const prisma = new PrismaClient();
@@ -57,10 +60,12 @@ async function forgeAction(page: Page, actionId: string, args: unknown[]) {
 test.describe.serial("Assigned to-dos", () => {
   let assigneeId: string;
   let bystanderId: string;
+  let managerId: string;
   let teamTaskId: string;
   let assignedTaskId: string;
   let ownerOnlyUnassignedTaskId: string;
-  let ownerOnlyButAssignedTaskId: string;
+  let assignedDespiteOwnerOnlyId: string;
+  let reassignTaskId: string;
 
   test.beforeAll(async () => {
     const assignee = await prisma.user.create({
@@ -87,6 +92,20 @@ test.describe.serial("Assigned to-dos", () => {
     });
     bystanderId = bystander.id;
 
+    // A "management role" distinct from ADMIN — must be just as blocked
+    // from someone else's assigned task as any other team member.
+    const manager = await prisma.user.create({
+      data: {
+        email: MANAGER_EMAIL,
+        name: `Manager E2E ${RUN_ID}`,
+        role: "SERVICE_MANAGER",
+        passwordHash: await hashPassword(PASSWORD),
+        mustSetPassword: false,
+        active: true,
+      },
+    });
+    managerId = manager.id;
+
     const teamTask = await prisma.checklistTask.create({
       data: { frequency: "ONE_TIME", task: `Team task ${RUN_ID}`, owner: "TEAM", visibility: "TEAM" },
     });
@@ -108,27 +127,48 @@ test.describe.serial("Assigned to-dos", () => {
     });
     ownerOnlyUnassignedTaskId = ownerOnlyUnassigned.id;
 
-    // The deliberate edge case: assigned to someone, but still Owner-only.
-    // The assignee must never see this — visibility wins over assignment.
-    const ownerOnlyButAssigned = await prisma.checklistTask.create({
+    // Assignment overrides visibility entirely: even stored as Owner-only,
+    // the assignee (and only the assignee) sees this.
+    const assignedDespiteOwnerOnly = await prisma.checklistTask.create({
       data: {
         frequency: "ONE_TIME",
-        task: `Owner-only but assigned task ${RUN_ID}`,
+        task: `Assigned despite owner-only task ${RUN_ID}`,
         owner: "OWNER",
         visibility: "OWNER_ONLY",
         assigneeId,
       },
     });
-    ownerOnlyButAssignedTaskId = ownerOnlyButAssigned.id;
+    assignedDespiteOwnerOnlyId = assignedDespiteOwnerOnly.id;
+
+    const reassignTask = await prisma.checklistTask.create({
+      data: {
+        frequency: "ONE_TIME",
+        task: `Reassign-flow task ${RUN_ID}`,
+        owner: "TEAM",
+        visibility: "TEAM",
+        assigneeId,
+      },
+    });
+    reassignTaskId = reassignTask.id;
   });
 
   test.afterAll(async () => {
-    await prisma.auditLogEntry.deleteMany({ where: { actorId: { in: [assigneeId, bystanderId] } } });
+    await prisma.auditLogEntry.deleteMany({ where: { actorId: { in: [assigneeId, bystanderId, managerId] } } });
     await prisma.checklistTask.deleteMany({
-      where: { id: { in: [teamTaskId, assignedTaskId, ownerOnlyUnassignedTaskId, ownerOnlyButAssignedTaskId] } },
+      where: {
+        id: {
+          in: [
+            teamTaskId,
+            assignedTaskId,
+            ownerOnlyUnassignedTaskId,
+            assignedDespiteOwnerOnlyId,
+            reassignTaskId,
+          ],
+        },
+      },
     });
     await prisma.checklistTask.deleteMany({ where: { task: { contains: `ACTION-ID-CAPTURE ${RUN_ID}` } } });
-    await prisma.user.deleteMany({ where: { id: { in: [assigneeId, bystanderId] } } });
+    await prisma.user.deleteMany({ where: { id: { in: [assigneeId, bystanderId, managerId] } } });
     await prisma.$disconnect();
   });
 
@@ -148,7 +188,17 @@ test.describe.serial("Assigned to-dos", () => {
     await prisma.checklistTask.delete({ where: { id: created.id } });
   });
 
-  test("The assignee sees shared and assigned tasks on /todo and Home, never Owner-only ones", async ({ page }) => {
+  test("The Owner sees every task, including both private ones", async ({ page }) => {
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto("/todo");
+    const html = await page.content();
+    expect(html).toContain(`Team task ${RUN_ID}`);
+    expect(html).toContain(`Assigned task ${RUN_ID}`);
+    expect(html).toContain(`Owner-only task ${RUN_ID}`);
+    expect(html).toContain(`Assigned despite owner-only task ${RUN_ID}`);
+  });
+
+  test("The assignee sees their own assigned tasks (even an Owner-only one) and shared tasks, never someone else's Owner-only task", async ({ page }) => {
     await loginAs(page, ASSIGNEE_EMAIL, PASSWORD);
 
     const todoRes = await page.goto("/todo");
@@ -156,29 +206,38 @@ test.describe.serial("Assigned to-dos", () => {
     const todoHtml = await page.content();
     expect(todoHtml).toContain(`Team task ${RUN_ID}`);
     expect(todoHtml).toContain(`Assigned task ${RUN_ID}`);
+    expect(todoHtml).toContain(`Assigned despite owner-only task ${RUN_ID}`);
     expect(todoHtml).not.toContain(`Owner-only task ${RUN_ID}`);
-    expect(todoHtml).not.toContain(`Owner-only but assigned task ${RUN_ID}`);
 
     const homeRes = await page.goto("/");
     expect(homeRes?.status()).toBe(200);
     const homeHtml = await page.content();
     expect(homeHtml).toContain(`Team task ${RUN_ID}`);
     expect(homeHtml).toContain(`Assigned task ${RUN_ID}`);
+    expect(homeHtml).toContain(`Assigned despite owner-only task ${RUN_ID}`);
     expect(homeHtml).not.toContain(`Owner-only task ${RUN_ID}`);
-    expect(homeHtml).not.toContain(`Owner-only but assigned task ${RUN_ID}`);
   });
 
-  test("A different team member (not the assignee) sees the shared task but not either Owner-only one", async ({ page }) => {
-    await loginAs(page, BYSTANDER_EMAIL, PASSWORD);
-    await page.goto("/todo");
-    const html = await page.content();
-    expect(html).toContain(`Team task ${RUN_ID}`);
-    // Team-visible, so the bystander sees it too even though it's assigned
-    // to someone else — that's TEAM visibility working as designed.
-    expect(html).toContain(`Assigned task ${RUN_ID}`);
-    expect(html).not.toContain(`Owner-only task ${RUN_ID}`);
-    expect(html).not.toContain(`Owner-only but assigned task ${RUN_ID}`);
-  });
+  for (const [label, email] of [
+    ["a different team member", BYSTANDER_EMAIL],
+    ["a management role (Service Manager)", MANAGER_EMAIL],
+  ] as const) {
+    test(`Neither ${label} sees a task assigned to someone else, even one that's nominally Team-visible`, async ({ page }) => {
+      await loginAs(page, email, PASSWORD);
+      await page.goto("/todo");
+      const html = await page.content();
+      expect(html).toContain(`Team task ${RUN_ID}`); // unassigned + Team-visible: everyone sees this
+      expect(html).not.toContain(`Assigned task ${RUN_ID}`);
+      expect(html).not.toContain(`Owner-only task ${RUN_ID}`);
+      expect(html).not.toContain(`Assigned despite owner-only task ${RUN_ID}`);
+
+      await page.goto("/");
+      const homeHtml = await page.content();
+      expect(homeHtml).toContain(`Team task ${RUN_ID}`);
+      expect(homeHtml).not.toContain(`Assigned task ${RUN_ID}`);
+      expect(homeHtml).not.toContain(`Assigned despite owner-only task ${RUN_ID}`);
+    });
+  }
 
   test("The assignee can mark their task done and add a note; the owner sees the result", async ({ page }) => {
     await loginAs(page, ASSIGNEE_EMAIL, PASSWORD);
@@ -210,13 +269,56 @@ test.describe.serial("Assigned to-dos", () => {
     await expect(adminRow.locator("textarea")).toHaveValue("Finished this up, no blockers.");
   });
 
-  test("Forged request: the assignee's own real toggle/notes actions fail against an unauthorized task id", async ({ page }) => {
+  test("Reassigning moves access from the old assignee to the new one; unassigning reverts to the stored visibility", async ({ page }) => {
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto("/todo");
+    const row = page.locator("div.rounded-md.border", { hasText: new RegExp(`^Reassign-flow task ${RUN_ID}`) }).first();
+    await row.click();
+    await row.locator("label:has-text('Assign to') + select").selectOption(bystanderId);
+    await page.waitForTimeout(800);
+    await expect(row).toContainText("Reassigned");
+
+    let after = await prisma.checklistTask.findUniqueOrThrow({ where: { id: reassignTaskId } });
+    expect(after.assigneeId).toBe(bystanderId);
+
+    // The old assignee lost access, the new one has it.
     await loginAs(page, ASSIGNEE_EMAIL, PASSWORD);
+    await page.goto("/todo");
+    expect(await page.content()).not.toContain(`Reassign-flow task ${RUN_ID}`);
+
+    await loginAs(page, BYSTANDER_EMAIL, PASSWORD);
+    await page.goto("/todo");
+    expect(await page.content()).toContain(`Reassign-flow task ${RUN_ID}`);
+
+    // Unassigning reverts it to its stored Team visibility — everyone sees
+    // it again (it was created with visibility: TEAM).
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto("/todo");
+    const row2 = page.locator("div.rounded-md.border", { hasText: new RegExp(`^Reassign-flow task ${RUN_ID}`) }).first();
+    await row2.click();
+    await row2.locator("label:has-text('Assign to') + select").selectOption("");
+    await page.waitForTimeout(800);
+    await expect(row2).toContainText("Unassigned");
+
+    after = await prisma.checklistTask.findUniqueOrThrow({ where: { id: reassignTaskId } });
+    expect(after.assigneeId).toBeNull();
+
+    await loginAs(page, ASSIGNEE_EMAIL, PASSWORD);
+    await page.goto("/todo");
+    expect(await page.content()).toContain(`Reassign-flow task ${RUN_ID}`);
+    await loginAs(page, MANAGER_EMAIL, PASSWORD);
+    await page.goto("/todo");
+    expect(await page.content()).toContain(`Reassign-flow task ${RUN_ID}`);
+  });
+
+  test("Forged request: a bystander's real toggle action fails against someone else's assigned task and an Owner-only task", async ({ page }) => {
+    await loginAs(page, BYSTANDER_EMAIL, PASSWORD);
     await page.goto("/todo");
 
     // Capture the real toggleChecklistTaskStatusAction id via a legitimate
-    // click on the assignee's own task, then replay it with the same
-    // session's cookies but targeting a task they aren't authorized for.
+    // click on the bystander's own visible (Team) task, then replay it with
+    // the same session's cookies but targeting tasks they aren't authorized
+    // for: an Owner-only task, and one privately assigned to someone else.
     const toggleActionId = await captureActionId(page, async () => {
       const row = page.locator("div.rounded-md.border", { hasText: `Team task ${RUN_ID}` }).first();
       await row.locator("button.rounded-full").click();
@@ -228,29 +330,11 @@ test.describe.serial("Assigned to-dos", () => {
     const afterOwnerOnly = await prisma.checklistTask.findUniqueOrThrow({ where: { id: ownerOnlyUnassignedTaskId } });
     expect(afterOwnerOnly.status).toBe(beforeOwnerOnly.status);
 
-    const beforeOwnerOnlyAssigned = await prisma.checklistTask.findUniqueOrThrow({
-      where: { id: ownerOnlyButAssignedTaskId },
-    });
-    await forgeAction(page, toggleActionId, [ownerOnlyButAssignedTaskId, "DONE"]);
+    const beforeAssigned = await prisma.checklistTask.findUniqueOrThrow({ where: { id: assignedTaskId } });
+    await forgeAction(page, toggleActionId, [assignedTaskId, "DONE"]);
     await page.waitForTimeout(500);
-    const afterOwnerOnlyAssigned = await prisma.checklistTask.findUniqueOrThrow({
-      where: { id: ownerOnlyButAssignedTaskId },
-    });
-    expect(afterOwnerOnlyAssigned.status).toBe(beforeOwnerOnlyAssigned.status);
-
-    // Same replay against the bystander's unrelated account's cookies would
-    // behave identically (any non-admin, non-owning session) — the gate is
-    // the task's own visibility/assigneeId, not who's asking.
-    const notesActionId = await captureActionId(page, async () => {
-      const row = page.locator("div.rounded-md.border", { hasText: `Team task ${RUN_ID}` }).first();
-      await row.click();
-      await row.locator("textarea").fill("legit note");
-      await row.getByRole("button", { name: "Save notes" }).click();
-    });
-    await forgeAction(page, notesActionId, [ownerOnlyButAssignedTaskId, "forged note"]);
-    await page.waitForTimeout(500);
-    const notesAfter = await prisma.checklistTask.findUniqueOrThrow({ where: { id: ownerOnlyButAssignedTaskId } });
-    expect(notesAfter.notes).not.toBe("forged note");
+    const afterAssigned = await prisma.checklistTask.findUniqueOrThrow({ where: { id: assignedTaskId } });
+    expect(afterAssigned.status).toBe(beforeAssigned.status);
   });
 
   test("Forged request: a non-admin cannot delete or reassign a task, even replaying the real admin action id", async ({ page }) => {
@@ -258,7 +342,7 @@ test.describe.serial("Assigned to-dos", () => {
     // real action ids as ADMIN (the only role whose UI exposes them), against
     // a disposable task, then replay both with the ASSIGNEE's session.
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    const captureTask = await prisma.checklistTask.create({
+    await prisma.checklistTask.create({
       data: { frequency: "ONE_TIME", task: `ACTION-ID-CAPTURE ${RUN_ID}`, owner: "TEAM", visibility: "TEAM" },
     });
     await page.goto("/todo");
