@@ -85,7 +85,8 @@ function Row({ item, canEdit }: { item: ChecklistItem; canEdit: boolean }) {
       </div>
       {expanded && (
         <div className="mt-1 rounded-md bg-neutral-50 px-2 py-1.5 text-xs text-neutral-500">
-          {item.notes ? <p>{item.notes}</p> : <p className="italic text-neutral-400">No notes yet.</p>}
+          <p className="font-medium text-neutral-800">{item.task}</p>
+          {item.notes ? <p className="mt-1">{item.notes}</p> : <p className="mt-1 italic text-neutral-400">No notes yet.</p>}
           {(() => {
             const due = getEffectiveTargetDate(item);
             return due ? <p className="mt-1 text-neutral-400">Target: {due.toLocaleDateString()}</p> : null;

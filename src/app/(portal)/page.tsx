@@ -128,7 +128,7 @@ export default async function HomePage() {
       <h1 className="mb-6 text-2xl font-semibold">Home</h1>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_300px] lg:items-start">
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <TodayCard
             data={todayCard}
             isAdmin={isAdmin}
@@ -333,7 +333,7 @@ export default async function HomePage() {
           )}
         </div>
 
-        <aside className="lg:sticky lg:top-28">
+        <aside className="min-w-0 lg:sticky lg:top-28">
           <ChecklistSidebar items={checklistItems} isAdmin={isAdmin} canEditTasks={assignedTasksAccess.canEdit} />
         </aside>
       </div>

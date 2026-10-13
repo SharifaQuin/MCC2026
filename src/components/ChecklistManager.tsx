@@ -170,6 +170,8 @@ function TaskRow({ task, assignees }: { task: ChecklistRow; assignees: AssigneeO
 
       {expanded && (
         <div className="mt-3 space-y-3 border-t border-neutral-100 pt-3">
+          <p className="text-sm font-medium text-neutral-900">{task.task}</p>
+
           <div>
             <label className="mb-1 block text-xs font-medium text-neutral-600">Category</label>
             <select

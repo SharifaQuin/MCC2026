@@ -75,6 +75,8 @@ function TaskRow({ task, canEdit }: { task: AssignedChecklistRow; canEdit: boole
 
       {expanded && (
         <div className="mt-3 space-y-3 border-t border-neutral-100 pt-3">
+          <p className="text-sm font-medium text-neutral-900">{task.task}</p>
+
           {task.dueFridayOfWeek ? (
             <p className="text-xs text-neutral-500">Due date: automatically this week&apos;s Friday.</p>
           ) : task.frequency === "MONTHLY" ? (
