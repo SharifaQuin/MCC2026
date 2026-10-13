@@ -75,6 +75,14 @@ export default async function HomePage() {
   // already open the full payroll page, so the Today card's payroll section
   // shouldn't be stricter than the page it links to.
   const canViewPayroll = isAdminOrServiceManager(session.role);
+  // Office Assistant's Home checklist must honor the same owner-configured
+  // ASSIGNED_TASKS grant /todo already enforces: None means the query is
+  // skipped outright (no task text/notes ever leave the server), View means
+  // read-only, Edit means the usual controls. No other role has this extra
+  // area-access layer, so they're always fully view+edit here.
+  const assignedTasksAccess = isOfficeAssistant
+    ? await getAreaAccessForUser(session.sub, "ASSIGNED_TASKS")
+    : { canView: true, canEdit: true };
 
   const [training, recruiting, sales, latestFinancials, teamGoals, checklistTasks, openLoans, todayCard] =
     await Promise.all([
@@ -86,7 +94,9 @@ export default async function HomePage() {
       // — the Goals section that uses it is already hidden outright for
       // Office Assistant, so skip the call entirely rather than let it throw.
       isOfficeAssistant ? Promise.resolve({} as Record<string, unknown>) : getTeamGoals(),
-      getChecklistTasksForRole(session.role, isAdmin ? undefined : session.sub),
+      assignedTasksAccess.canView
+        ? getChecklistTasksForRole(session.role, isAdmin ? undefined : session.sub)
+        : Promise.resolve([]),
       isAdmin ? getOpenLoans() : Promise.resolve([]),
       getTodayCardData({ isAdmin, hasSalesAccess, canViewPayroll }),
     ]);
@@ -324,7 +334,7 @@ export default async function HomePage() {
         </div>
 
         <aside className="lg:sticky lg:top-28">
-          <ChecklistSidebar items={checklistItems} isAdmin={isAdmin} />
+          <ChecklistSidebar items={checklistItems} isAdmin={isAdmin} canEditTasks={assignedTasksAccess.canEdit} />
         </aside>
       </div>
     </div>

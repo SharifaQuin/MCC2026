@@ -37,7 +37,7 @@ const DUE_BADGE_LABELS: Record<"OVERDUE" | "DUE_SOON", string> = {
   DUE_SOON: "Due soon",
 };
 
-function Row({ item }: { item: ChecklistItem }) {
+function Row({ item, canEdit }: { item: ChecklistItem; canEdit: boolean }) {
   const [pending, startTransition] = useTransition();
   const [expanded, setExpanded] = useState(false);
   const dueStatus = getDueStatus(item);
@@ -76,7 +76,7 @@ function Row({ item }: { item: ChecklistItem }) {
         </div>
         <button
           type="button"
-          disabled={pending}
+          disabled={pending || !canEdit}
           onClick={advance}
           className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium disabled:opacity-60 ${STATUS_STYLES[item.effectiveStatus]}`}
         >
@@ -174,7 +174,15 @@ function QuickAddForm() {
   );
 }
 
-export default function ChecklistSidebar({ items, isAdmin }: { items: ChecklistItem[]; isAdmin: boolean }) {
+export default function ChecklistSidebar({
+  items,
+  isAdmin,
+  canEditTasks = true,
+}: {
+  items: ChecklistItem[];
+  isAdmin: boolean;
+  canEditTasks?: boolean;
+}) {
   const [expanded, setExpanded] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
   const { active, archived } = splitChecklistTasks(items);
@@ -209,7 +217,7 @@ export default function ChecklistSidebar({ items, isAdmin }: { items: ChecklistI
                   </p>
                   <div className="divide-y divide-neutral-100">
                     {group.tasks.map((i) => (
-                      <Row key={i.id} item={i} />
+                      <Row key={i.id} item={i} canEdit={canEditTasks} />
                     ))}
                   </div>
                 </div>
@@ -235,7 +243,7 @@ export default function ChecklistSidebar({ items, isAdmin }: { items: ChecklistI
                       </p>
                       <div className="divide-y divide-neutral-100">
                         {group.tasks.map((i) => (
-                          <Row key={i.id} item={i} />
+                          <Row key={i.id} item={i} canEdit={canEditTasks} />
                         ))}
                       </div>
                     </div>

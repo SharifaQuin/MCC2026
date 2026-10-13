@@ -26,16 +26,38 @@ async function requireOwnerAccess() {
   return session;
 }
 
+// Never silently save an assignment the assignee can't actually see —
+// an inactive account can't log in at all, and an Office Assistant whose
+// ASSIGNED_TASKS area is set to None would have the task assigned to them
+// with no way to ever view it.
+async function assertAssigneeIsReachable(assigneeId: string): Promise<void> {
+  const target = await prisma.user.findUnique({ where: { id: assigneeId }, select: { active: true, role: true } });
+  if (!target || !target.active) {
+    throw new Error("That person's account isn't active.");
+  }
+  if (target.role === "OFFICE_ASSISTANT") {
+    const access = await getAreaAccessForUser(assigneeId, "ASSIGNED_TASKS");
+    if (!access.canView) {
+      throw new Error(
+        "This person's Assigned Tasks permission is set to None — grant at least View access on the Permissions screen before assigning them a task."
+      );
+    }
+  }
+}
+
 // Any non-admin role may only edit a checklist task that's either shared
-// (TEAM visibility) or specifically assigned to them — never an Owner-only
-// task, and never someone else's assignment, no matter what the client
-// sends. Office Assistant additionally needs the owner-configured
-// ASSIGNED_TASKS area grant (the only role with that extra, revocable
-// layer); every other staff role (Trainee/Trainer/Service Manager) has no
-// such area-access concept and is gated purely on the ownership check.
-// Delete, category changes, reassignment, bulk-add and creating new tasks
-// stay behind requireOwnerAccess() above (ADMIN only) and need no change
-// here.
+// (unassigned, TEAM visibility) or assigned specifically to them — never an
+// Owner-only task, and never someone else's assignment, no matter what the
+// client sends. Assignment is a hard privacy boundary: once a task has an
+// assigneeId, nobody but that person (and the Owner) can edit it, even if
+// its stored visibility is TEAM — assigning it to one person is what makes
+// it private, not a label alongside the old whole-team visibility. Office
+// Assistant additionally needs the owner-configured ASSIGNED_TASKS area
+// grant (the only role with that extra, revocable layer); every other
+// staff role (Trainee/Trainer/Service Manager) has no such area-access
+// concept and is gated purely on the ownership check below. Delete,
+// category changes, reassignment, bulk-add and creating new tasks stay
+// behind requireOwnerAccess() above (ADMIN only) and need no change here.
 async function requireChecklistTaskEditAccess(taskId: string) {
   const session = await getSession();
   if (!session) throw new Error("Not authorized");
@@ -46,15 +68,11 @@ async function requireChecklistTaskEditAccess(taskId: string) {
     if (!access.canEdit) throw new Error("Not authorized");
   }
 
-  const task = await prisma.checklistTask.findUnique({ where: { id: taskId }, select: { visibility: true } });
+  const task = await prisma.checklistTask.findUnique({ where: { id: taskId }, select: { visibility: true, assigneeId: true } });
   if (!task) throw new Error("Task not found");
-  // Visibility is the hard gate for every non-admin role, full stop — an
-  // Owner-only task is never editable by anyone but the owner, even if it
-  // was also (mistakenly) given an assigneeId. There are only two
-  // visibility values, so "assigned to me" never needs its own check here:
-  // it only ever matters at TEAM visibility, where every team member
-  // (assignee or not) can already edit it.
-  if (task.visibility !== "TEAM") throw new Error("Not authorized");
+
+  const authorized = task.assigneeId ? task.assigneeId === session.sub : task.visibility === "TEAM";
+  if (!authorized) throw new Error("Not authorized");
 
   return session;
 }
@@ -270,6 +288,7 @@ export async function addChecklistTaskAction(formData: FormData) {
   const assigneeId = String(formData.get("assigneeId") ?? "").trim() || null;
 
   if (!task) throw new Error("Task text is required.");
+  if (assigneeId) await assertAssigneeIsReachable(assigneeId);
 
   const count = await prisma.checklistTask.count();
 
@@ -378,7 +397,9 @@ export async function deleteChecklistTaskAction(taskId: string) {
 // than just a missing button.
 export async function setChecklistTaskAssigneeAction(taskId: string, assigneeId: string) {
   await requireOwnerAccess();
-  await prisma.checklistTask.update({ where: { id: taskId }, data: { assigneeId: assigneeId || null } });
+  const cleanId = assigneeId.trim() || null;
+  if (cleanId) await assertAssigneeIsReachable(cleanId);
+  await prisma.checklistTask.update({ where: { id: taskId }, data: { assigneeId: cleanId } });
   revalidatePath("/financials");
   revalidatePath("/todo");
   revalidatePath("/");

@@ -90,15 +90,13 @@ export type ChecklistTaskWithEffectiveStatus = ChecklistTask & {
   effectiveStatus: ChecklistTaskStatus;
 };
 
-// Role-scoped checklist read: ADMIN sees every task; everyone else (in
-// practice SERVICE_MANAGER and OFFICE_ASSISTANT) only ever sees rows with
-// visibility = TEAM — Owner-only tasks (which is also where every private
-// finance task lives today) stay out of the query entirely, not just
-// hidden in the UI. Passing userId additionally surfaces that person's own
-// assigned tasks even if not TEAM-visible would otherwise... but a task
-// assigned to someone is always TEAM visibility in practice; this is a
-// defensive OR, not an expected path, since assigneeId never applies to an
-// Owner-only task.
+// Role-scoped checklist read: ADMIN (the Owner) sees every task. For
+// everyone else, assignment is a hard privacy boundary, not just a label:
+// once a task has an assigneeId, it's visible to exactly that one person
+// (plus the Owner) — the stored visibility (Owner-only/Team) is irrelevant
+// and never widens who else can see it. An unassigned task keeps the
+// existing visibility rule (Team-visible to everyone who can reach this
+// query; Owner-only to no one but the Owner).
 export async function getChecklistTasksForRole(
   role: Role,
   userId?: string
@@ -108,8 +106,8 @@ export async function getChecklistTasksForRole(
       role === "ADMIN"
         ? undefined
         : userId
-          ? { OR: [{ visibility: "TEAM" }, { assigneeId: userId, visibility: { not: "OWNER_ONLY" } }] }
-          : { visibility: "TEAM" },
+          ? { OR: [{ assigneeId: null, visibility: "TEAM" }, { assigneeId: userId }] }
+          : { assigneeId: null, visibility: "TEAM" },
     orderBy: [{ order: "asc" }, { createdAt: "asc" }],
   });
   const now = new Date();
