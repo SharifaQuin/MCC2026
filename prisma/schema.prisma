@@ -305,6 +305,8 @@ model User {
   approvalRequestsExecuted ApprovalRequest[] @relation("ApprovalExecutedBy")
   auditLogEntries          AuditLogEntry[]
   assignedChecklistTasks   ChecklistTask[]   @relation("ChecklistTaskAssignee")
+  policyDocumentsAdded     PolicyDocument[]
+  problemReportsFiled      ProblemReport[]
 
   @@index([role])
 }
@@ -2626,4 +2628,52 @@ model ApprovalRequest {
   @@index([managerId, status])
   @@index([requesterId, status])
   @@index([applicantId])
+}
+
+// The Help / Policies & Processes shell — deliberately empty of real content
+// for now (the owner is still choosing which files go here and hasn't
+// uploaded/imported anything). visibleToRoles is the access control: an
+// empty array means nobody sees it, not "everyone" — documents must be
+// explicitly opened up to a role (e.g. just TRAINEE for a cleaning-technician
+// SOP) rather than auto-shared the moment they're added. No admin UI writes
+// to this model yet; it exists so the page has a real (currently empty)
+// data source instead of a hardcoded empty list.
+model PolicyDocument {
+  id              String   @id @default(cuid())
+  title           String
+  filename        String
+  visibleToRoles  Role[]   @default([])
+  addedById       String?
+  addedBy         User?    @relation(fields: [addedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+}
+
+enum ProblemReportCategory {
+  BUG_OR_ERROR
+  ACCOUNT_OR_ACCESS
+  DATA_LOOKS_WRONG
+  OTHER
+}
+
+enum ProblemReportStatus {
+  OPEN
+  RESOLVED
+}
+
+// A short, private note from any staff member straight to the owner — no
+// outbound email/SMS, no third-party support desk. reporterName/reporterRole
+// are a snapshot at submission time (not a live join) so the queue still
+// reads correctly even if the reporter's name or role later changes.
+model ProblemReport {
+  id           String                 @id @default(cuid())
+  reporterId   String
+  reporter     User                   @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+  reporterName String
+  reporterRole Role
+  category     ProblemReportCategory
+  description  String                 @db.Text
+  status       ProblemReportStatus    @default(OPEN)
+  createdAt    DateTime               @default(now())
+
+  @@index([status, createdAt])
 }
