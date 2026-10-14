@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { autoDetectPdfFields } from "@/lib/pdfFieldDetect";
+import { backfillDefaultDocumentToTrainees } from "@/lib/onboarding";
 
 async function requireAdmin() {
   const session = await getSession();
@@ -80,17 +81,10 @@ export async function createOnboardingDocumentAction(formData: FormData) {
     },
   });
 
-  // Backfill: if this document is meant to apply to everyone by default,
-  // assign it to every existing employee too, not just future invites.
-  if (assignByDefault) {
-    const users = await prisma.user.findMany({ where: { role: "TRAINEE" }, select: { id: true } });
-    if (users.length) {
-      await prisma.onboardingAssignment.createMany({
-        data: users.map((u) => ({ documentId: doc.id, userId: u.id })),
-        skipDuplicates: true,
-      });
-    }
-  }
+  // Backfill: if this document is meant to apply to every Trainee by
+  // default, assign it to every existing Trainee too, not just future
+  // invites.
+  if (assignByDefault) await backfillDefaultDocumentToTrainees(doc.id);
 
   revalidatePath("/admin/documents");
 }
@@ -124,16 +118,8 @@ export async function createOnboardingDocumentFromDraftAction(item: BulkOnboardi
   });
 
   // Same backfill as the single-document path: assigning by default applies
-  // to every current employee immediately, not just future invites.
-  if (doc.assignByDefault) {
-    const users = await prisma.user.findMany({ where: { role: "TRAINEE" }, select: { id: true } });
-    if (users.length) {
-      await prisma.onboardingAssignment.createMany({
-        data: users.map((u) => ({ documentId: doc.id, userId: u.id })),
-        skipDuplicates: true,
-      });
-    }
-  }
+  // to every current Trainee immediately, not just future invites.
+  if (doc.assignByDefault) await backfillDefaultDocumentToTrainees(doc.id);
 
   revalidatePath("/admin/documents");
 }
