@@ -17,6 +17,14 @@ export interface SessionPayload {
   role: Role;
   language: Language;
   name: string;
+  // Present only while an Owner is viewing/acting as this user (see
+  // src/lib/impersonation.ts). sub/role/language/name above are always the
+  // user being acted as — that's what makes every existing permission check
+  // and data-scoping query in the app correctly apply the target's own
+  // access with no changes needed elsewhere. This field is the one place
+  // the real actor survives alongside that, so a mutation can still
+  // attribute itself to the Owner rather than the employee.
+  actingAs?: { ownerId: string; ownerName: string } | undefined;
   [key: string]: unknown;
 }
 

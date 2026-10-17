@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { assertAreaAccess } from "@/lib/officeAssistant";
 import { logAudit } from "@/lib/auditLog";
+import { getTrueActorId } from "@/lib/impersonation";
 import type { ApprovalActionType } from "@prisma/client";
 
 // Limited to recruiting decisions/offers and their messages for this first
@@ -73,7 +74,7 @@ export async function submitApprovalRequestAction(formData: FormData): Promise<A
     });
 
     await logAudit({
-      actorId: session.sub,
+      actorId: getTrueActorId(session),
       action: "APPROVAL_SUBMITTED",
       recordType: "ApprovalRequest",
       recordId: request.id,
@@ -103,7 +104,12 @@ export async function withdrawApprovalRequestAction(requestId: string): Promise<
   });
   if (updated.count === 0) return { ok: false, error: "Nothing to withdraw — it may already be decided." };
 
-  await logAudit({ actorId: session.sub, action: "APPROVAL_WITHDRAWN", recordType: "ApprovalRequest", recordId: requestId });
+  await logAudit({
+    actorId: getTrueActorId(session),
+    action: "APPROVAL_WITHDRAWN",
+    recordType: "ApprovalRequest",
+    recordId: requestId,
+  });
   revalidatePath("/recruiting/approvals");
   return { ok: true };
 }
@@ -152,7 +158,7 @@ export async function decideApprovalRequestAction(
       data: { status: "NEEDS_RESUBMISSION" },
     });
     await logAudit({
-      actorId: session.sub,
+      actorId: getTrueActorId(session),
       action: "APPROVAL_STALE",
       recordType: "ApprovalRequest",
       recordId: requestId,
@@ -173,7 +179,7 @@ export async function decideApprovalRequestAction(
   }
 
   await logAudit({
-    actorId: session.sub,
+    actorId: getTrueActorId(session),
     action: "APPROVAL_DECIDED",
     recordType: "ApprovalRequest",
     recordId: requestId,
@@ -203,7 +209,12 @@ export async function markApprovalExecutedAction(requestId: string): Promise<App
   });
   if (updated.count === 0) return { ok: false, error: "Already marked done." };
 
-  await logAudit({ actorId: session.sub, action: "APPROVAL_EXECUTED", recordType: "ApprovalRequest", recordId: requestId });
+  await logAudit({
+    actorId: getTrueActorId(session),
+    action: "APPROVAL_EXECUTED",
+    recordType: "ApprovalRequest",
+    recordId: requestId,
+  });
   revalidatePath("/recruiting/approvals");
   revalidatePath(`/recruiting/applicants/${request.applicantId}`);
   return { ok: true };
