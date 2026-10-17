@@ -297,6 +297,9 @@ export default async function ApplicantDetailPage({
           templates={messageTemplates}
           firstName={applicant.firstName}
           positionTitle={applicant.jobPosting.titleEn}
+          scheduledAtLabel={
+            applicant.scheduledAt ? `${formatInBusinessTimezone(applicant.scheduledAt)} PT` : null
+          }
         />
       ),
     },
