@@ -10,6 +10,7 @@ import { sendEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
 import { syncQuoteStatusForLead } from "@/lib/leads";
 import { logAudit } from "@/lib/auditLog";
+import { getTrueActorId } from "@/lib/impersonation";
 import type { LeadStage, LeadSource } from "@prisma/client";
 
 const VALID_LEAD_SOURCES = new Set(["PHONE_CALL", "WALK_IN", "REFERRAL", "OTHER"]);
@@ -176,7 +177,7 @@ export async function sendLeadEmailAction(leadId: string, formData: FormData) {
       body,
       status: result.ok ? "SENT" : "FAILED",
       errorMessage: result.ok ? null : result.error,
-      sentById: session.sub,
+      sentById: getTrueActorId(session),
     },
   });
 
@@ -201,7 +202,7 @@ export async function sendLeadTextAction(leadId: string, formData: FormData) {
       body,
       status: result.ok ? "SENT" : "FAILED",
       errorMessage: result.ok ? null : result.error,
-      sentById: session.sub,
+      sentById: getTrueActorId(session),
     },
   });
 
@@ -218,10 +219,15 @@ export async function logLeadReplyAction(leadId: string, channel: "EMAIL" | "SMS
   if (!body) return;
 
   await prisma.leadCommunication.create({
-    data: { leadId, channel, direction: "INBOUND", subject, body, sentById: session.sub },
+    data: { leadId, channel, direction: "INBOUND", subject, body, sentById: getTrueActorId(session) },
   });
   if (session.role === "OFFICE_ASSISTANT") {
-    await logAudit({ actorId: session.sub, action: "LEAD_REPLY_LOGGED", recordType: "Lead", recordId: leadId });
+    await logAudit({
+      actorId: getTrueActorId(session),
+      action: "LEAD_REPLY_LOGGED",
+      recordType: "Lead",
+      recordId: leadId,
+    });
   }
 
   revalidatePath(`/sales/leads/${leadId}`);

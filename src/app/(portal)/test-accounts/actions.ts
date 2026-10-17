@@ -1,14 +1,14 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { startImpersonation, stopImpersonation } from "@/lib/impersonation";
+import { startActingAs, stopActingAs } from "@/lib/impersonation";
 
 export async function viewAsAction(targetUserId: string) {
-  await startImpersonation(targetUserId);
+  await startActingAs(targetUserId);
   redirect("/");
 }
 
 export async function stopViewingAsAction() {
-  await stopImpersonation();
+  await stopActingAs();
   redirect("/");
 }

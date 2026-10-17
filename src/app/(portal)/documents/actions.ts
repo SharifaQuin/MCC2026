@@ -18,6 +18,15 @@ function getClientIp(headerList: ReturnType<typeof headers>): string | null {
 export async function signOnboardingDocumentAction(assignmentId: string, formData: FormData) {
   const session = await getSession();
   if (!session) redirect("/login");
+  // Honest signer attribution isn't supported yet while an Owner is viewing
+  // and acting as this employee — the signed PDF stamps the signer's own
+  // name, and there is no way, in that mode, to make that stamp accurate
+  // without either exposing the Owner's identity as the employee's own
+  // signature or vice versa. Refuse outright rather than silently sign as
+  // the employee.
+  if (session.actingAs) {
+    throw new Error("Document signing is unavailable while viewing and acting as another user.");
+  }
 
   const signedName = String(formData.get("signedName") ?? "").trim();
   const agreed = formData.get("agreed") === "on";

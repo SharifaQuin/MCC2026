@@ -18,6 +18,7 @@ import {
 import { generateInviteToken } from "@/lib/tokens";
 import { zonedTimeToUtc } from "@/lib/timezone";
 import { logAudit } from "@/lib/auditLog";
+import { getTrueActorId } from "@/lib/impersonation";
 import type {
   ApplicantStage,
   ApplicantSource,
@@ -130,7 +131,7 @@ export async function setApplicantStageAction(
   }
 
   if (stage === "HIRED") {
-    await createEmployeeAccountForHiredApplicant(applicant, session.sub);
+    await createEmployeeAccountForHiredApplicant(applicant, getTrueActorId(session));
   }
 
   // The automatic candidate-facing confirmation (both the Outlook calendar
@@ -151,14 +152,14 @@ export async function setApplicantStageAction(
       applicant.jobPosting.titleEn,
       stage,
       scheduledAtDate,
-      session.sub,
+      getTrueActorId(session),
       applicant.jobPosting.titleEs
     );
   }
 
   if (session.role === "OFFICE_ASSISTANT") {
     await logAudit({
-      actorId: session.sub,
+      actorId: getTrueActorId(session),
       action: "APPLICANT_STAGE_CHANGED",
       recordType: "Applicant",
       recordId: applicantId,
@@ -204,7 +205,7 @@ export async function rejectApplicantAction(applicantId: string, sendEmailToAppl
         body,
         status: result.ok ? "SENT" : "FAILED",
         errorMessage: result.ok ? null : result.error,
-        sentById: session.sub,
+        sentById: getTrueActorId(session),
       },
     });
   }
@@ -270,9 +271,14 @@ export async function addApplicantNoteAction(applicantId: string, formData: Form
   requireEdit(canEdit);
   const body = String(formData.get("body") ?? "").trim();
   if (!body) return;
-  await prisma.applicantNote.create({ data: { applicantId, authorId: session.sub, body } });
+  await prisma.applicantNote.create({ data: { applicantId, authorId: getTrueActorId(session), body } });
   if (session.role === "OFFICE_ASSISTANT") {
-    await logAudit({ actorId: session.sub, action: "APPLICANT_NOTE_ADDED", recordType: "Applicant", recordId: applicantId });
+    await logAudit({
+      actorId: getTrueActorId(session),
+      action: "APPLICANT_NOTE_ADDED",
+      recordType: "Applicant",
+      recordId: applicantId,
+    });
   }
   revalidatePath(`/recruiting/applicants/${applicantId}`);
 }
@@ -318,7 +324,7 @@ export async function savePhoneScreenAction(
       languageNote,
       outcome,
       redFlagsNotes,
-      completedById: session.sub,
+      completedById: getTrueActorId(session),
       completedAt: new Date(),
     },
     update: {
@@ -326,13 +332,18 @@ export async function savePhoneScreenAction(
       languageNote,
       outcome,
       redFlagsNotes,
-      completedById: session.sub,
+      completedById: getTrueActorId(session),
       completedAt: new Date(),
     },
   });
 
   if (session.role === "OFFICE_ASSISTANT") {
-    await logAudit({ actorId: session.sub, action: "PHONE_SCREEN_SAVED", recordType: "Applicant", recordId: applicantId });
+    await logAudit({
+      actorId: getTrueActorId(session),
+      action: "PHONE_SCREEN_SAVED",
+      recordType: "Applicant",
+      recordId: applicantId,
+    });
   }
 
   revalidatePath(`/recruiting/applicants/${applicantId}`);
@@ -391,7 +402,7 @@ export async function saveInterviewScorecardAction(
         data: { recommendation, rationale, concerns },
       })
     : await prisma.interviewScorecard.create({
-        data: { applicantId, evaluatorId: session.sub, recommendation, rationale, concerns },
+        data: { applicantId, evaluatorId: getTrueActorId(session), recommendation, rationale, concerns },
       });
 
   await Promise.all(
@@ -419,7 +430,12 @@ export async function saveInterviewScorecardAction(
   );
 
   if (session.role === "OFFICE_ASSISTANT") {
-    await logAudit({ actorId: session.sub, action: "INTERVIEW_SCORECARD_SAVED", recordType: "Applicant", recordId: applicantId });
+    await logAudit({
+      actorId: getTrueActorId(session),
+      action: "INTERVIEW_SCORECARD_SAVED",
+      recordType: "Applicant",
+      recordId: applicantId,
+    });
   }
 
   revalidatePath(`/recruiting/applicants/${applicantId}`);
@@ -484,7 +500,7 @@ export async function saveWorkingSessionAction(
     scheduledAt: scheduledAtRaw ? new Date(scheduledAtRaw) : null,
     housesToVisit,
     preSessionChecklist,
-    leadEvaluatorId: session.sub,
+    leadEvaluatorId: getTrueActorId(session),
     ...scoreData,
     honestAssessment: String(formData.get("honestAssessment") ?? "").trim() || null,
     concernsRaised: String(formData.get("concernsRaised") ?? "").trim() || null,
@@ -532,7 +548,7 @@ export async function addReferenceCheckAction(applicantId: string, formData: For
       anythingElse: String(formData.get("anythingElse") ?? "").trim() || null,
       verdict,
       redFlagsSurfaced: String(formData.get("redFlagsSurfaced") ?? "").trim() || null,
-      completedById: session.sub,
+      completedById: getTrueActorId(session),
     },
   });
 
@@ -568,10 +584,10 @@ export async function toggleOnboardingChecklistItemAction(
   if (session.role === "OFFICE_ASSISTANT" && OFFICE_ASSISTANT_BLOCKED_ONBOARDING_ITEMS.has(itemKey)) {
     throw new Error("This onboarding item needs the authorized manager.");
   }
-  await setOnboardingChecklistItem(applicantId, itemKey, completed, session.sub);
+  await setOnboardingChecklistItem(applicantId, itemKey, completed, getTrueActorId(session));
   if (session.role === "OFFICE_ASSISTANT") {
     await logAudit({
-      actorId: session.sub,
+      actorId: getTrueActorId(session),
       action: "ONBOARDING_CHECKLIST_TOGGLED",
       recordType: "Applicant",
       recordId: applicantId,
@@ -600,12 +616,17 @@ export async function sendApplicantEmailAction(applicantId: string, formData: Fo
       body,
       status: result.ok ? "SENT" : "FAILED",
       errorMessage: result.ok ? null : result.error,
-      sentById: session.sub,
+      sentById: getTrueActorId(session),
     },
   });
 
   if (session.role === "OFFICE_ASSISTANT") {
-    await logAudit({ actorId: session.sub, action: "APPLICANT_EMAIL_SENT", recordType: "Applicant", recordId: applicantId });
+    await logAudit({
+      actorId: getTrueActorId(session),
+      action: "APPLICANT_EMAIL_SENT",
+      recordType: "Applicant",
+      recordId: applicantId,
+    });
   }
 
   revalidatePath(`/recruiting/applicants/${applicantId}`);
@@ -632,7 +653,7 @@ export async function logApplicantReplyAction(
       direction: "INBOUND",
       subject,
       body,
-      sentById: session.sub,
+      sentById: getTrueActorId(session),
     },
   });
 
@@ -656,12 +677,17 @@ export async function sendApplicantTextAction(applicantId: string, formData: For
       body,
       status: result.ok ? "SENT" : "FAILED",
       errorMessage: result.ok ? null : result.error,
-      sentById: session.sub,
+      sentById: getTrueActorId(session),
     },
   });
 
   if (session.role === "OFFICE_ASSISTANT") {
-    await logAudit({ actorId: session.sub, action: "APPLICANT_TEXT_SENT", recordType: "Applicant", recordId: applicantId });
+    await logAudit({
+      actorId: getTrueActorId(session),
+      action: "APPLICANT_TEXT_SENT",
+      recordType: "Applicant",
+      recordId: applicantId,
+    });
   }
 
   revalidatePath(`/recruiting/applicants/${applicantId}`);

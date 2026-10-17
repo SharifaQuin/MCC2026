@@ -62,6 +62,12 @@ export default async function DocumentSignPage({
             </a>
           )}
         </div>
+      ) : session.actingAs ? (
+        <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          Document signing is unavailable while viewing and acting as another user — return to your
+          own Owner view to sign on their behalf isn't supported, and this must never be signed in
+          their name without them actually doing it.
+        </div>
       ) : (
         <form action={action} className="mt-6 rounded-lg border border-neutral-200 bg-white p-6">
           <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-neutral-500">
