@@ -36,9 +36,17 @@ export default async function SalesPricingToolPage({
         ← Back to Sales
       </Link>
 
-      {/* Breaks out of the portal's centered max-w-5xl column so the tool
-          gets the full browser width instead of looking boxed in. */}
-      <div className="relative mt-3 w-screen ml-[calc(-50vw+50%)]">
+      {/* Previously broke out to the full browser width via `w-screen
+          ml-[calc(-50vw+50%)]`, assuming the page's own column was centered
+          in the viewport. That stopped being true once the portal layout
+          added a persistent sidebar (src/app/(portal)/layout.tsx) — the
+          content column is no longer centered, so that fixed-viewport-width
+          box rendered partly underneath the sidebar and ran past the right
+          edge of the screen. Filling the normal content column instead
+          (same as any other page) keeps the tool fully on-screen with no
+          horizontal overflow, on both the desktop sidebar and the mobile
+          drawer layout. */}
+      <div className="relative mt-3">
         <iframe
           src={src}
           title="Pricing & Client Quotes"

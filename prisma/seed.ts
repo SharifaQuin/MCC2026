@@ -707,6 +707,18 @@ async function seedMessageTemplates() {
       name: "Reminder: Upcoming Interview",
       body: "Hi {{firstName}}, this is Mama's Cleaning Crew with a quick reminder about your upcoming interview for the {{position}} position. See you soon!",
     },
+    // A starting point for the Zoom confirmation after an Office Assistant
+    // books a direct-entry interview — deliberately doesn't embed the real
+    // Zoom link/passcode (those live in env vars the UI never shows staff).
+    // Shar fills both bracketed placeholders from her own Zoom room before
+    // sending from the Communication tab, same as any other template here.
+    {
+      scope: "RECRUITING",
+      channel: "EMAIL",
+      name: "Zoom Interview Confirmation",
+      subject: "Your interview with Mama's Cleaning Crew",
+      body: "Hi {{firstName}},\n\nWe're so excited to see you for your phone interview for the {{position}} position!\n\nWhen: [agreed date/time — see the applicant's profile]\n\nJoin Zoom: [paste Zoom link]\nPasscode: [paste passcode]\n\nSee you soon!\n\nMama's Cleaning Crew",
+    },
   ];
 
   let created = 0;

@@ -154,7 +154,11 @@ test.describe.serial("Recruiting 2.0 acceptance", () => {
     await page.goto("/recruiting/inbox");
     const card = page.locator("div", { has: page.locator("p.text-lg.font-bold", { hasText: "E2E Candidate" }) }).first();
     await expect(card).toBeVisible();
-    await card.locator('button:has-text("Invite to Interview")').click();
+    // "Invite to Interview" is now the secondary self-schedule option — the
+    // primary action on this card is "Schedule Zoom Interview" (direct
+    // booking), added for Office Assistant use. This test still exercises
+    // the original self-schedule invite flow end to end.
+    await card.locator('button:has-text("Or send a self-schedule invite instead")').click();
     await expect(card).not.toBeVisible({ timeout: 10_000 });
 
     const applicant = await prisma.applicant.findFirst({ where: { email: APPLICANT_EMAIL } });

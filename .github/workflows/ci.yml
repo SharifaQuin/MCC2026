@@ -31,6 +31,10 @@ jobs:
       ADMIN_NAME: Shar
       ADMIN_PASSWORD: change-this-immediately
       NEXT_PUBLIC_APP_URL: http://localhost:3000
+      # A fake PMI so bookZoomInterviewAction's "Zoom is configured" check
+      # passes in CI — matches the dev .env.example placeholder value, never
+      # a real Zoom room.
+      RECRUITING_ZOOM_PMI: "123 456 7890"
 
     steps:
       - uses: actions/checkout@v4
