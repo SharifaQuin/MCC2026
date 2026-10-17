@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Button from "@/components/ds/Button";
 import type { QualificationChecklistItem, ApplicationResponseItem } from "@/lib/recruiting";
 
@@ -54,23 +55,59 @@ function ResponseCard({ item }: { item: ApplicationResponseItem }) {
 // The single highest-priority screen in Recruiting 2.0 — Shar needs to
 // understand a candidate in ~10-20 seconds from her phone, mid-shift, in
 // the candidate's own words (never an AI summary or a hidden score).
-// Invite, Full Profile, and Pass stay full-width and always visible —
-// never behind an overflow menu.
+// Schedule Zoom Interview, Full Profile, and Pass stay full-width and
+// always visible — never behind an overflow menu. The self-schedule invite
+// (the only way to reach this applicant before Office Assistant direct
+// booking existed) stays one tap away as a clearly labeled secondary link,
+// not a fourth equal-weight button.
 export default function ApplicantQuickCard({
   applicant,
+  onBook,
   onInvite,
   onPass,
 }: {
   applicant: ApplicantQuickCardData;
+  onBook: (applicantId: string, scheduledAtLocal: string) => Promise<{ scheduledAt: string }>;
   onInvite: (applicantId: string) => Promise<void>;
   onPass: (applicantId: string) => Promise<void>;
 }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [action, setAction] = useState<"invite" | "pass" | null>(null);
+  const [action, setAction] = useState<"invite" | "pass" | "book" | null>(null);
+  const [scheduling, setScheduling] = useState(false);
+  const [bookError, setBookError] = useState<string | null>(null);
   const failedRequired = applicant.requirements.filter((r) => !r.met).length;
 
+  function handleBookSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const date = String(formData.get("date") ?? "");
+    const time = String(formData.get("time") ?? "");
+    if (!date || !time) return;
+    setBookError(null);
+    setAction("book");
+    startTransition(async () => {
+      try {
+        await onBook(applicant.id, `${date}T${time}`);
+        // The card is about to disappear from this list the moment the
+        // booking revalidates it (the applicant is no longer
+        // PRESCREEN_PASSED), so there's no good way to show a confirmation
+        // in place here — send Pedro straight to the profile instead, where
+        // the existing "Phone/Zoom Interview Scheduled: ... PT" banner
+        // already confirms the booked date/time, and the Communication tab
+        // is one click away for Shar to send the Zoom confirmation from.
+        router.push(`/recruiting/applicants/${applicant.id}?tab=comms`);
+      } catch (err) {
+        setBookError(err instanceof Error ? err.message : "Couldn't book the interview.");
+      }
+    });
+  }
+
   return (
-    <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm sm:p-5">
+    <div
+      data-testid={`applicant-quick-card-${applicant.id}`}
+      className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm sm:p-5"
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-lg font-bold text-brand-800">{applicant.name}</p>
@@ -135,18 +172,55 @@ export default function ApplicantQuickCard({
         </div>
       )}
 
+      {scheduling && (
+        <form
+          onSubmit={handleBookSubmit}
+          className="mt-4 rounded-lg border border-brand-200 bg-brand-50 p-3"
+        >
+          <label className="mb-1 block text-xs font-medium text-brand-800">
+            Agreed date/time for the Zoom interview{" "}
+            <span className="font-normal text-neutral-500">(Pacific Time)</span>
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="date"
+              name="date"
+              required
+              className="rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            />
+            <input
+              type="time"
+              name="time"
+              required
+              className="rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            />
+            <Button type="submit" size="md" disabled={pending}>
+              {pending && action === "book" ? "Booking…" : "Book"}
+            </Button>
+            <button
+              type="button"
+              onClick={() => {
+                setScheduling(false);
+                setBookError(null);
+              }}
+              className="rounded-md border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+            >
+              Cancel
+            </button>
+          </div>
+          {bookError && <p className="mt-2 text-xs font-medium text-red-700">{bookError}</p>}
+        </form>
+      )}
+
       <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
         <Button
           variant="primary"
           size="lg"
           className="w-full"
           disabled={pending}
-          onClick={() => {
-            setAction("invite");
-            startTransition(() => onInvite(applicant.id));
-          }}
+          onClick={() => setScheduling((s) => !s)}
         >
-          {pending && action === "invite" ? "Sending…" : "Invite to Interview"}
+          Schedule Zoom Interview
         </Button>
         <Link
           href={`/recruiting/applicants/${applicant.id}`}
@@ -167,6 +241,20 @@ export default function ApplicantQuickCard({
           {pending && action === "pass" ? "Passing…" : "Pass"}
         </Button>
       </div>
+
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => {
+          setAction("invite");
+          startTransition(() => onInvite(applicant.id));
+        }}
+        className="mt-2 w-full text-center text-xs font-medium text-neutral-500 underline hover:text-neutral-700 disabled:opacity-60"
+      >
+        {pending && action === "invite"
+          ? "Sending…"
+          : "Or send a self-schedule invite instead (candidate picks their own time)"}
+      </button>
     </div>
   );
 }

@@ -10,7 +10,7 @@ import PageHeader from "@/components/ds/PageHeader";
 import Card from "@/components/ds/Card";
 import { EmptyState } from "@/components/ds/EmptyState";
 import ApplicantQuickCard from "@/components/recruiting-v2/ApplicantQuickCard";
-import { inviteToInterviewAction, passApplicantAction } from "./actions";
+import { bookZoomInterviewAction, inviteToInterviewAction, passApplicantAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -116,7 +116,13 @@ export default async function RecruitingInboxPage() {
           />
         ) : (
           cards.map((c) => (
-            <ApplicantQuickCard key={c.id} applicant={c} onInvite={inviteToInterviewAction} onPass={passApplicantAction} />
+            <ApplicantQuickCard
+              key={c.id}
+              applicant={c}
+              onBook={bookZoomInterviewAction}
+              onInvite={inviteToInterviewAction}
+              onPass={passApplicantAction}
+            />
           ))
         )}
       </div>

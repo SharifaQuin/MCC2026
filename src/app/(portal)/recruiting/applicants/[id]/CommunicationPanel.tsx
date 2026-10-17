@@ -66,12 +66,19 @@ export default function CommunicationPanel({
   templates = [],
   firstName,
   positionTitle,
+  scheduledAtLabel,
 }: {
   applicantId: string;
   history: CommEntry[];
   templates?: TemplateOption[];
   firstName: string;
   positionTitle: string;
+  // Already formatted in the business timezone (e.g. "10/17/2026, 2:00 PM
+  // PT") by the server component, which can import the same Intl-only
+  // timezone helpers used to render the "Phone/Zoom Interview Scheduled"
+  // banner elsewhere on this page — keeps this client component from needing
+  // its own date-parsing/formatting logic. Null when no interview is booked.
+  scheduledAtLabel?: string | null;
 }) {
   const [tab, setTab] = useState<PanelTab>("none");
   const [pending, startTransition] = useTransition();
@@ -83,7 +90,11 @@ export default function CommunicationPanel({
   const smsHistory = history.filter((entry) => entry.channel === "SMS");
   const emailTemplates = templates.filter((t) => t.channel === "EMAIL");
   const smsTemplates = templates.filter((t) => t.channel === "SMS");
-  const tokens = { firstName, position: positionTitle };
+  const tokens = {
+    firstName,
+    position: positionTitle,
+    scheduledAt: scheduledAtLabel ?? "[not yet scheduled — check the applicant's profile]",
+  };
 
   const toggle = (next: PanelTab) => setTab(tab === next ? "none" : next);
 
@@ -136,6 +147,7 @@ export default function CommunicationPanel({
         >
           {emailTemplates.length > 0 && (
             <select
+              data-testid="email-template-select"
               onChange={(e) => applyEmailTemplate(e.target.value)}
               defaultValue=""
               className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"

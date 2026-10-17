@@ -133,7 +133,18 @@ export async function setApplicantStageAction(
     await createEmployeeAccountForHiredApplicant(applicant, session.sub);
   }
 
-  if (scheduledAtDate) {
+  // The automatic candidate-facing confirmation (both the Outlook calendar
+  // invite and the email) embeds Shar's real Zoom passcode for a phone
+  // interview (see RECRUITING_ZOOM_PASSCODE in scheduleInterviewCalendarEvent
+  // / sendInterviewConfirmationEmail). An Office Assistant booking a Zoom
+  // interview sets a real stage/date — that part is fine — but must never
+  // trigger that automatic send: it would hand out her private passcode to
+  // a candidate with no review step. Holding it back here, rather than only
+  // in the newer "Schedule Zoom interview" action, also closes the same gap
+  // on this exact form for an Office Assistant who reaches it directly.
+  // An in-person booking has no passcode to leak, so it's unaffected.
+  const suppressAutoSendForOfficeAssistant = session.role === "OFFICE_ASSISTANT" && stage === "PHONE_INTERVIEW_SCHEDULED";
+  if (scheduledAtDate && !suppressAutoSendForOfficeAssistant) {
     await scheduleInterviewCalendarEvent(applicant, applicant.jobPosting.titleEn, stage, scheduledAtDate);
     await sendInterviewConfirmationEmail(
       applicant,
@@ -158,6 +169,7 @@ export async function setApplicantStageAction(
   revalidatePath(`/recruiting/applicants/${applicantId}`);
   revalidatePath("/recruiting/applicants");
   revalidatePath("/recruiting");
+  revalidatePath("/recruiting/inbox");
 }
 
 // Rejecting is the one stage move that optionally sends the candidate an

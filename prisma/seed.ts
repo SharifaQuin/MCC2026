@@ -707,6 +707,20 @@ async function seedMessageTemplates() {
       name: "Reminder: Upcoming Interview",
       body: "Hi {{firstName}}, this is Mama's Cleaning Crew with a quick reminder about your upcoming interview for the {{position}} position. See you soon!",
     },
+    // A starting point for the Zoom confirmation after an Office Assistant
+    // books a direct-entry interview — deliberately doesn't embed the real
+    // Zoom link/passcode (those live in env vars the UI never shows staff).
+    // {{scheduledAt}} is filled in automatically from the applicant's own
+    // booked date/time (Pacific) by CommunicationPanel when this template is
+    // picked, same as {{firstName}}/{{position}}. Shar still fills the Zoom
+    // link/passcode placeholders from her own Zoom room before sending.
+    {
+      scope: "RECRUITING",
+      channel: "EMAIL",
+      name: "Zoom Interview Confirmation",
+      subject: "Your interview with Mama's Cleaning Crew",
+      body: "Hi {{firstName}},\n\nWe're so excited to see you for your phone/Zoom interview for the {{position}} position!\n\nWhen: {{scheduledAt}}\n\nJoin Zoom: [paste Zoom link]\nPasscode: [paste passcode]\n\nSee you soon!\n\nMama's Cleaning Crew",
+    },
   ];
 
   let created = 0;
@@ -721,6 +735,32 @@ async function seedMessageTemplates() {
     created++;
   }
   console.log(`Seeded ${created} starter message template(s) (${starters.length} total defined).`);
+
+  await fixZoomInterviewConfirmationBody();
+}
+
+// The "Zoom Interview Confirmation" starter template originally shipped with
+// a manual "[agreed date/time — see the applicant's profile]" placeholder
+// and said "phone interview" instead of "phone/Zoom interview". Any
+// installation that already ran the seed before this fix has that exact
+// original body stored in its database, and re-running the loop above won't
+// touch it (it only creates templates that don't exist yet). Correct it here,
+// idempotently, but ONLY when the stored body still matches the original
+// starter text verbatim — if Shar has since edited this template, that edit
+// is left alone rather than overwritten.
+async function fixZoomInterviewConfirmationBody() {
+  const ORIGINAL_BODY =
+    "Hi {{firstName}},\n\nWe're so excited to see you for your phone interview for the {{position}} position!\n\nWhen: [agreed date/time — see the applicant's profile]\n\nJoin Zoom: [paste Zoom link]\nPasscode: [paste passcode]\n\nSee you soon!\n\nMama's Cleaning Crew";
+  const CORRECTED_BODY =
+    "Hi {{firstName}},\n\nWe're so excited to see you for your phone/Zoom interview for the {{position}} position!\n\nWhen: {{scheduledAt}}\n\nJoin Zoom: [paste Zoom link]\nPasscode: [paste passcode]\n\nSee you soon!\n\nMama's Cleaning Crew";
+
+  const { count } = await prisma.messageTemplate.updateMany({
+    where: { scope: "RECRUITING", channel: "EMAIL", name: "Zoom Interview Confirmation", body: ORIGINAL_BODY },
+    data: { body: CORRECTED_BODY },
+  });
+  if (count > 0) {
+    console.log(`Corrected ${count} existing "Zoom Interview Confirmation" template(s) to auto-fill the date/time.`);
+  }
 }
 
 // Recruiting 2.0 — the real Cleaning Technician posting and its full
