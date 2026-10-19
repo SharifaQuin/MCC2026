@@ -71,6 +71,13 @@ export default async function HomePage() {
   const canViewHrSummary = isOfficeAssistant
     ? (await getAreaAccessForUser(session.sub, "HR_SUMMARY")).canView
     : true;
+  // The Training card's own button is gated by the Training area grant
+  // specifically, independent of HR_SUMMARY above — an Office Assistant can
+  // have HR Summary access without Training access, or vice versa, and the
+  // button here must only ever offer what that specific grant allows.
+  const canViewTrainingModules = isOfficeAssistant
+    ? (await getAreaAccessForUser(session.sub, "TRAINING")).canView
+    : true;
   // Matches middleware.ts's own /staff/payroll gate — a SERVICE_MANAGER can
   // already open the full payroll page, so the Today card's payroll section
   // shouldn't be stricter than the page it links to.
@@ -299,12 +306,23 @@ export default async function HomePage() {
                   href={isOfficeAssistant ? undefined : "/admin/employees?status=PENDING_CERT"}
                 />
               </div>
-              <Link
-                href={isOfficeAssistant ? "/hr" : "/admin"}
-                className="mt-5 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-              >
-                View Training Dashboard
-              </Link>
+              {isOfficeAssistant ? (
+                canViewTrainingModules && (
+                  <Link
+                    href="/modules"
+                    className="mt-5 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+                  >
+                    View Training Modules
+                  </Link>
+                )
+              ) : (
+                <Link
+                  href="/admin"
+                  className="mt-5 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+                >
+                  View Training Dashboard
+                </Link>
+              )}
             </section>
 
             <section className="rounded-lg border border-neutral-200 bg-white p-6">
