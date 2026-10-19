@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getTrueActorId } from "@/lib/impersonation";
 import type { DocumentFieldType } from "@prisma/client";
 
 export interface DocumentTemplateState {
@@ -86,7 +87,7 @@ export async function createDocumentTemplateAction(
       title,
       description,
       bodyText,
-      createdById: session.sub,
+      createdById: getTrueActorId(session),
       fields: {
         create: fields.map((f, i) => ({ key: f.key, label: f.label, fieldType: f.fieldType, required: f.required, order: i })),
       },

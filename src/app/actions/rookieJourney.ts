@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getTrueActorId } from "@/lib/impersonation";
 import {
   recordFieldCheckoff,
   markRookieContentComplete,
@@ -335,7 +336,7 @@ export async function recordFieldCheckoffAction(
   const session = await requireTrainerOrAdmin();
   await recordFieldCheckoff({
     traineeId,
-    trainerId: session.sub,
+    trainerId: getTrueActorId(session),
     rookieDayNumber,
     ratings,
     wentWellNotes: notes.wentWell,
@@ -354,8 +355,8 @@ export async function setDay3ReadinessAction(traineeId: string, decision: Rookie
   const session = await requireTrainerOrAdmin();
   await prisma.rookieDay3Readiness.upsert({
     where: { traineeId },
-    create: { traineeId, decision, notes: notes || null, decidedById: session.sub },
-    update: { decision, notes: notes || null, decidedById: session.sub, decidedAt: new Date() },
+    create: { traineeId, decision, notes: notes || null, decidedById: getTrueActorId(session) },
+    update: { decision, notes: notes || null, decidedById: getTrueActorId(session), decidedAt: new Date() },
   });
   revalidateEmployeeViews(traineeId);
 }
@@ -375,14 +376,14 @@ export async function setDay10ReviewAction(
       extensionReason: extra.extensionReason || null,
       skillsNeedingDevelopment: extra.skillsNeedingDevelopment || null,
       newReviewDate,
-      decidedById: session.sub,
+      decidedById: getTrueActorId(session),
     },
     update: {
       decision,
       extensionReason: extra.extensionReason || null,
       skillsNeedingDevelopment: extra.skillsNeedingDevelopment || null,
       newReviewDate,
-      decidedById: session.sub,
+      decidedById: getTrueActorId(session),
       decidedAt: new Date(),
     },
   });
@@ -406,7 +407,7 @@ export async function recordSealEvaluationAction(
       categoryScores: categoryScores as unknown as object,
       decision,
       notes: notes || null,
-      evaluatedById: session.sub,
+      evaluatedById: getTrueActorId(session),
     },
   });
   revalidateEmployeeViews(traineeId);

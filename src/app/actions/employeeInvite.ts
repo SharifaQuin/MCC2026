@@ -7,6 +7,7 @@ import { generateInviteToken } from "@/lib/tokens";
 import { isAdminOrServiceManager } from "@/lib/session";
 import { assignDefaultOnboardingDocuments } from "@/lib/onboarding";
 import { generateNextEmployeeId } from "@/lib/employeeId";
+import { getTrueActorId } from "@/lib/impersonation";
 
 export interface InviteState {
   error?: string;
@@ -60,7 +61,7 @@ export async function inviteAction(
       role,
       inviteToken,
       inviteExpiresAt: sendInviteNow ? new Date(Date.now() + 1000 * 60 * 60 * 24 * 7) : null,
-      invitedBy: session.sub,
+      invitedBy: getTrueActorId(session),
     },
   });
   if (role === "TRAINEE") await assignDefaultOnboardingDocuments(newUser.id);

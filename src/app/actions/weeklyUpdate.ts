@@ -7,6 +7,7 @@ import { hasDepartmentAccess } from "@/lib/departments";
 import { formatWeeklyUpdate, nextMondayFrom, WEEKLY_UPDATE_REMINDER_TASK_ID } from "@/lib/weeklyUpdate";
 import type { WeeklyUpdateFields } from "@/lib/weeklyUpdate";
 import { postToSlackTeamChannel } from "@/lib/slack";
+import { getTrueActorId } from "@/lib/impersonation";
 
 async function requireManagementEditAccess() {
   const session = await getSession();
@@ -75,7 +76,7 @@ export async function saveWeeklyUpdateDraftAction(formData: FormData) {
       ...fields,
       formattedMessage,
       status: "DRAFT",
-      createdById: session.sub,
+      createdById: getTrueActorId(session),
     },
     update: {
       ...fields,
@@ -84,7 +85,7 @@ export async function saveWeeklyUpdateDraftAction(formData: FormData) {
       approvedAt: null,
       approvedById: null,
       sentAt: null,
-      createdById: session.sub,
+      createdById: getTrueActorId(session),
     },
   });
 
@@ -103,7 +104,7 @@ export async function approveWeeklyUpdateAction(id: string) {
   const session = await requireManagementEditAccess();
   const result = await prisma.weeklyUpdate.updateMany({
     where: { id, status: "DRAFT" },
-    data: { status: "APPROVED", approvedAt: new Date(), approvedById: session.sub },
+    data: { status: "APPROVED", approvedAt: new Date(), approvedById: getTrueActorId(session) },
   });
   if (result.count === 0) throw new Error("Update not found or not in draft status.");
   revalidatePath("/management");

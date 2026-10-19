@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
+import { getTrueActorId } from "@/lib/impersonation";
 import type { MessageTemplateScope, CommChannel } from "@prisma/client";
 
 const VALID_CHANNELS = new Set(["EMAIL", "SMS"]);
@@ -33,7 +34,7 @@ export async function createMessageTemplateAction(scope: MessageTemplateScope, f
       name,
       subject: channel === "EMAIL" ? subject : null,
       body,
-      createdById: session.sub,
+      createdById: getTrueActorId(session),
     },
   });
 

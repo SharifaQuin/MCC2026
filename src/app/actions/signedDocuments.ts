@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getTrueActorId } from "@/lib/impersonation";
 import { parseFieldValuesFromFormData, renderTemplateBody, type TemplateFieldMeta, type FieldValues } from "@/lib/documentTemplates";
 import { renderSignedDocumentPdf } from "@/lib/documentPdf";
 
@@ -60,7 +61,7 @@ export async function createSignedDocumentAction(
       templateId,
       employeeId,
       fieldValues: values,
-      createdById: session.sub,
+      createdById: getTrueActorId(session),
     },
   });
 
@@ -90,6 +91,12 @@ export async function signDocumentAction(
 ): Promise<SignDocumentState> {
   const session = await getSession();
   if (!session) return { error: "Not authorized." };
+  // Same reasoning as signOnboardingDocumentAction/signPayrollEntryAction:
+  // this is the employee's own e-signature, and there's no honest way to
+  // stamp it while an Owner is viewing/acting as them.
+  if (session.actingAs) {
+    return { error: "Signing is unavailable while viewing and acting as another user." };
+  }
 
   const doc = await prisma.signedDocument.findUnique({
     where: { id: documentId },

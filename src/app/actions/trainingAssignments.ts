@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { getAreaAccessForUser } from "@/lib/officeAssistant";
 import { logAudit } from "@/lib/auditLog";
+import { getTrueActorId } from "@/lib/impersonation";
 
 export interface TrainingAssignmentState {
   error?: string;
@@ -79,13 +80,13 @@ export async function assignTrainerAction(
       data: { active: false, endDate: startDate },
     }),
     prisma.trainingAssignment.create({
-      data: { trainerId, traineeId, startDate, createdById: session.sub },
+      data: { trainerId, traineeId, startDate, createdById: getTrueActorId(session) },
     }),
   ]);
 
   if (session.role === "OFFICE_ASSISTANT") {
     await logAudit({
-      actorId: session.sub,
+      actorId: getTrueActorId(session),
       action: "TRAINING_ASSIGNMENT_SET",
       recordType: "User",
       recordId: traineeId,
@@ -110,7 +111,12 @@ export async function endTrainingAssignmentAction(
     data: { active: false, endDate: new Date() },
   });
   if (session.role === "OFFICE_ASSISTANT") {
-    await logAudit({ actorId: session.sub, action: "TRAINING_ASSIGNMENT_ENDED", recordType: "User", recordId: traineeId });
+    await logAudit({
+      actorId: getTrueActorId(session),
+      action: "TRAINING_ASSIGNMENT_ENDED",
+      recordType: "User",
+      recordId: traineeId,
+    });
   }
   revalidateEmployeeViews(traineeId, trainerId);
 }

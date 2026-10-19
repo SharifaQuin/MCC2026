@@ -29,6 +29,10 @@ export default async function PersonnelDocumentSignPage({ params }: { params: { 
             {new Date(doc.signedAt).toLocaleString()}.
           </p>
         </div>
+      ) : session.actingAs ? (
+        <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          Signing is unavailable while viewing and acting as another user.
+        </div>
       ) : (
         <SignDocumentForm documentId={doc.id} defaultName={session.name} />
       )}

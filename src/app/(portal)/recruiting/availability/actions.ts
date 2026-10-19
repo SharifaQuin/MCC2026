@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
 import { zonedTimeToUtc } from "@/lib/timezone";
+import { getTrueActorId } from "@/lib/impersonation";
 
 export interface CreateSlotState {
   error?: string;
@@ -35,7 +36,7 @@ export async function createAvailabilitySlotAction(
   if (existing) return { error: "A slot already exists at that exact time." };
 
   await prisma.interviewAvailabilitySlot.create({
-    data: { startsAt, durationMins, jobPostingId, createdById: session.sub },
+    data: { startsAt, durationMins, jobPostingId, createdById: getTrueActorId(session) },
   });
 
   revalidatePath("/recruiting/availability");

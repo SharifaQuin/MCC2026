@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getTrueActorId } from "@/lib/impersonation";
 import type { MilestoneCheckpoint } from "@prisma/client";
 
 export interface MilestoneReviewState {
@@ -59,13 +60,13 @@ export async function upsertMilestoneReviewAction(
       completedAt: completed ? new Date() : null,
       score,
       notes,
-      reviewedById: session.sub,
+      reviewedById: getTrueActorId(session),
     },
     update: {
       completedAt: completed ? new Date() : null,
       score,
       notes,
-      reviewedById: session.sub,
+      reviewedById: getTrueActorId(session),
     },
   });
 

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getTrueActorId } from "@/lib/impersonation";
 
 export interface DepartureState {
   error?: string;
@@ -60,7 +61,7 @@ export async function markEmployeeDepartedAction(
         active: false,
         lastDay,
         departureReason,
-        departureRecordedById: session.sub,
+        departureRecordedById: getTrueActorId(session),
         rehireEligible,
         exitInterviewNotes,
         exitInterviewCompletedAt: exitInterviewCompleted ? new Date() : null,
@@ -72,7 +73,7 @@ export async function markEmployeeDepartedAction(
         actionType: "TERMINATION",
         effectiveDate: lastDay,
         reason: departureReason ?? "Auto-generated when this employee was marked Departed.",
-        createdById: session.sub,
+        createdById: getTrueActorId(session),
       },
     }),
   ]);

@@ -14,6 +14,8 @@ import {
 } from "@/lib/payroll";
 import { renderPayrollEntryPdf } from "@/lib/payrollPdf";
 import { sendEmail } from "@/lib/email";
+import { getTrueActorId, getTrueActorName } from "@/lib/impersonation";
+import { logAudit } from "@/lib/auditLog";
 
 async function requireHrAccess() {
   const session = await getSession();
@@ -214,6 +216,13 @@ export async function resolveDisputeAction(
 export async function signPayrollEntryAction(entryId: string, formData: FormData) {
   const session = await getSession();
   if (!session) redirect("/login");
+  // Same reasoning as signOnboardingDocumentAction: this is the employee's
+  // own e-signature on their own hours, and there's no honest way to stamp
+  // that signature while an Owner is viewing/acting as them. Refuse outright
+  // rather than let the Owner silently sign as the employee.
+  if (session.actingAs) {
+    throw new Error("Signing payroll hours is unavailable while viewing and acting as another user.");
+  }
 
   const signedName = String(formData.get("signedName") ?? "").trim();
   const agreed = formData.get("agreed") === "on";
@@ -278,7 +287,7 @@ export async function overridePayrollEntrySignAction(
     ...entry,
     signedName,
     signedAt,
-    overrideRecordedBy: session.name,
+    overrideRecordedBy: getTrueActorName(session),
     overrideNote,
   });
 
@@ -290,7 +299,7 @@ export async function overridePayrollEntrySignAction(
       signedName,
       signedPdfDataUrl,
       signedViaOverride: true,
-      overriddenById: session.sub,
+      overriddenById: getTrueActorId(session),
       overrideNote,
       disputeNote: null,
       disputedAt: null,
@@ -321,6 +330,20 @@ export async function disputePayrollEntryAction(entryId: string, formData: FormD
     where: { id: entryId },
     data: { status: "DISPUTED", disputeNote, disputedAt: new Date() },
   });
+
+  // This reads to HR as the employee's own voice raising a question about
+  // their own hours — if an Owner is viewing/acting as them when it's sent,
+  // that needs a durable record of who actually drove it, alongside the
+  // (correct, target-attributed) payroll entry and email itself.
+  if (session.actingAs) {
+    await logAudit({
+      actorId: session.actingAs.ownerId,
+      action: "PAYROLL_DISPUTE_FILED_WHILE_ACTING_AS",
+      recordType: "PayrollEntry",
+      recordId: entryId,
+      changedFields: { actingAsUserId: { to: session.sub } },
+    });
+  }
 
   revalidatePath("/payroll");
   revalidatePath(`/payroll/${entryId}`);

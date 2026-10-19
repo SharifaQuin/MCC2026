@@ -7,6 +7,7 @@ import { generateInviteToken } from "@/lib/tokens";
 import { isAdminOrServiceManager } from "@/lib/session";
 import { assignDefaultOnboardingDocuments } from "@/lib/onboarding";
 import { generateNextEmployeeId } from "@/lib/employeeId";
+import { getTrueActorId } from "@/lib/impersonation";
 import type { EmploymentType } from "@prisma/client";
 
 export interface BulkInviteResult {
@@ -197,7 +198,7 @@ export async function bulkInviteAction(
           managerName,
           inviteToken,
           inviteExpiresAt: sendInviteNow ? new Date(Date.now() + 1000 * 60 * 60 * 24 * 7) : null,
-          invitedBy: session.sub,
+          invitedBy: getTrueActorId(session),
         },
       });
       if (role === "TRAINEE") await assignDefaultOnboardingDocuments(newUser.id);

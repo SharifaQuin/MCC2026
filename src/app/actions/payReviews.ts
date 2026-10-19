@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getTrueActorId } from "@/lib/impersonation";
 import type { PayReviewDecision } from "@prisma/client";
 
 export interface PayReviewAssessmentState {
@@ -72,7 +73,7 @@ export async function createPayReviewAssessmentAction(
       justification,
       decision,
       effectiveDate: decision === "APPROVED" ? effectiveDate : null,
-      reviewedById: session.sub,
+      reviewedById: getTrueActorId(session),
     },
   });
 
@@ -89,7 +90,7 @@ export async function createPayReviewAssessmentAction(
         newPay: recommendedPay,
         reason: `Auto-generated from an Approved decision on a Pay Review. ${justification}`,
         linkedPayReviewId: assessment.id,
-        createdById: session.sub,
+        createdById: getTrueActorId(session),
       },
     });
   }

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getTrueActorId } from "@/lib/impersonation";
 
 export interface AttendanceEventState {
   error?: string;
@@ -59,7 +60,7 @@ export async function createAttendanceEventAction(
   await prisma.attendanceEvent.create({
     data: {
       employeeId,
-      loggedById: session.sub,
+      loggedById: getTrueActorId(session),
       kind,
       reasonCategory: kind === "ABSENCE" ? reasonCategory : null,
       eventDate,

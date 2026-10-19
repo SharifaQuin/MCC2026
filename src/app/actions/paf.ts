@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getTrueActorId } from "@/lib/impersonation";
 import type { PafActionType } from "@prisma/client";
 
 export interface PafState {
@@ -67,7 +68,7 @@ export async function createPafAction(
       priorDepartment: str("priorDepartment"),
       newDepartment: str("newDepartment"),
       reason: str("reason"),
-      createdById: session.sub,
+      createdById: getTrueActorId(session),
     },
   });
 
@@ -79,7 +80,7 @@ export async function approvePafAction(pafId: string, employeeId: string) {
   const session = await requirePafAdminAccess();
   const result = await prisma.personnelActionForm.updateMany({
     where: { id: pafId, status: "DRAFT" },
-    data: { status: "APPROVED", approvedById: session.sub, approvedAt: new Date() },
+    data: { status: "APPROVED", approvedById: getTrueActorId(session), approvedAt: new Date() },
   });
   if (result.count === 0) throw new Error("PAF not found or not in draft status.");
   revalidateEmployeeViews(employeeId);

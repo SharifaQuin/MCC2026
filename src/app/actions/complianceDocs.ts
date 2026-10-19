@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getTrueActorId } from "@/lib/impersonation";
 import type { ComplianceDocType } from "@prisma/client";
 
 export interface ComplianceDocState {
@@ -63,7 +64,7 @@ export async function createComplianceDocumentAction(
       fileDataUrl,
       fileName,
       notes,
-      createdById: session.sub,
+      createdById: getTrueActorId(session),
     },
   });
 

@@ -114,31 +114,40 @@ export default async function PayrollEntryPage({ params }: { params: { entryId: 
 
       {entry.status === "PENDING" && (
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          <form action={signAction} className="rounded-lg border border-neutral-200 bg-white p-5">
-            <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-neutral-500">
-              Approve & Sign
-            </h2>
-            <label className="mb-1 block text-xs font-medium text-neutral-700">
-              Type your full legal name to sign
-            </label>
-            <input
-              type="text"
-              name="signedName"
-              defaultValue={session.name}
-              required
-              className="mb-3 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-            />
-            <label className="mb-4 flex items-start gap-2 text-sm text-neutral-700">
-              <input type="checkbox" name="agreed" required className="mt-1 h-4 w-4" />
-              <span>I confirm that the above hours are accurate to the best of my knowledge.</span>
-            </label>
-            <button
-              type="submit"
-              className="rounded-md bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700"
-            >
-              Approve & Sign
-            </button>
-          </form>
+          {session.actingAs ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
+              <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-amber-800">
+                Approve & Sign
+              </h2>
+              Signing payroll hours is unavailable while viewing and acting as another user.
+            </div>
+          ) : (
+            <form action={signAction} className="rounded-lg border border-neutral-200 bg-white p-5">
+              <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-neutral-500">
+                Approve & Sign
+              </h2>
+              <label className="mb-1 block text-xs font-medium text-neutral-700">
+                Type your full legal name to sign
+              </label>
+              <input
+                type="text"
+                name="signedName"
+                defaultValue={session.name}
+                required
+                className="mb-3 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+              />
+              <label className="mb-4 flex items-start gap-2 text-sm text-neutral-700">
+                <input type="checkbox" name="agreed" required className="mt-1 h-4 w-4" />
+                <span>I confirm that the above hours are accurate to the best of my knowledge.</span>
+              </label>
+              <button
+                type="submit"
+                className="rounded-md bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700"
+              >
+                Approve & Sign
+              </button>
+            </form>
+          )}
 
           <form action={disputeAction} className="rounded-lg border border-neutral-200 bg-white p-5">
             <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-neutral-500">
