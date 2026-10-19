@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
-import { getStaffDashboardStats, getStaffDirectory, getTurnoverStats, yearsOfService } from "@/lib/staff";
+import {
+  getStaffDashboardStats,
+  getStaffDirectory,
+  getOfficeAssistantAccounts,
+  getTurnoverStats,
+  yearsOfService,
+} from "@/lib/staff";
 import { getAreaAccessForUser } from "@/lib/officeAssistant";
 import { getActingAsCandidates, ROLE_LABELS as ACTING_AS_ROLE_LABELS } from "@/lib/impersonation";
 import { actAsStaffMemberAction } from "./actingAsActions";
@@ -47,9 +53,10 @@ export default async function StaffDashboardPage() {
     );
   }
 
-  const [stats, directory, turnover, actingAsCandidates] = await Promise.all([
+  const [stats, directory, officeAssistants, turnover, actingAsCandidates] = await Promise.all([
     getStaffDashboardStats(),
     getStaffDirectory(),
+    getOfficeAssistantAccounts(),
     getTurnoverStats(90),
     session.role === "ADMIN" ? getActingAsCandidates() : Promise.resolve([]),
   ]);
@@ -236,6 +243,54 @@ export default async function StaffDashboardPage() {
                 <tr>
                   <td colSpan={4} className="px-4 py-8 text-center text-neutral-500">
                     No staff yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <h2 className="mb-3 text-lg font-medium">Office Assistants</h2>
+        <p className="mb-3 text-sm text-neutral-500">
+          Dashboard-access accounts, not technician staff — not counted in the stats or tables
+          above. Manage what each one can see or do on the Permissions screen.
+        </p>
+        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-neutral-200 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
+              <tr>
+                <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Employee ID</th>
+                <th className="px-4 py-3">Years of Service</th>
+                {session.role === "ADMIN" && <th className="px-4 py-3">Account Access</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {officeAssistants.map((oa) => (
+                <tr key={oa.id} className="border-b border-neutral-100 last:border-0">
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-neutral-900">{oa.name}</p>
+                    <p className="text-xs text-neutral-500">{oa.email}</p>
+                  </td>
+                  <td className="px-4 py-3 text-neutral-600">{oa.employeeId ?? "—"}</td>
+                  <td className="px-4 py-3 text-neutral-600">
+                    {oa.hireDate ? yearsOfService(new Date(oa.hireDate)) : "—"}
+                  </td>
+                  {session.role === "ADMIN" && (
+                    <td className="px-4 py-3">
+                      <Link href="/admin/permissions" className="font-medium text-brand-700 hover:underline">
+                        Manage Access →
+                      </Link>
+                    </td>
+                  )}
+                </tr>
+              ))}
+              {officeAssistants.length === 0 && (
+                <tr>
+                  <td colSpan={session.role === "ADMIN" ? 4 : 3} className="px-4 py-8 text-center text-neutral-500">
+                    No Office Assistant accounts yet.
                   </td>
                 </tr>
               )}

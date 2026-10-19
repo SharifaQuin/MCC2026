@@ -72,6 +72,27 @@ export async function getStaffDirectory() {
   }));
 }
 
+// Office Assistant accounts, shown to the Owner in their own Directory
+// section — deliberately a separate query, never folded into STAFF_ROLES.
+// STAFF_ROLES backs payroll, turnover, and the technician-focused Staff
+// Directory stats above; Office Assistant is a dashboard-access role, not a
+// technician headcount, so it must never silently affect those numbers.
+export async function getOfficeAssistantAccounts() {
+  const accounts = await prisma.user.findMany({
+    where: { role: "OFFICE_ASSISTANT", active: true, isTestAccount: false },
+    orderBy: { name: "asc" },
+    select: { id: true, employeeId: true, name: true, email: true, hireDate: true },
+  });
+
+  return accounts.map((a) => ({
+    id: a.id,
+    employeeId: a.employeeId,
+    name: a.name,
+    email: a.email,
+    hireDate: a.hireDate,
+  }));
+}
+
 // Departed employees are anyone with lastDay set (see Roster Status), not
 // limited to STAFF_ROLES — turnover should count anyone who left, including
 // a departed ADMIN/manager — but the headcount denominator stays STAFF_ROLES

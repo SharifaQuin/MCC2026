@@ -108,6 +108,25 @@ export function buildNavGroups({
     });
   }
 
+  // An Office Assistant can also be an active technician going through the
+  // same module/quiz/glossary content as a Trainee — their Training area
+  // grant (set on the Permissions screen, independent of every other area)
+  // is what decides whether they see this group at all, same as every other
+  // Office Assistant nav link below. No other role is affected: Trainees
+  // already get their own "My Training" group above, and every other role
+  // either has no need for it or reaches it a different way.
+  if (role === "OFFICE_ASSISTANT" && officeAssistantAreas?.TRAINING?.canView) {
+    groups.push({
+      key: "training",
+      label: labels.navMyTraining,
+      links: [
+        { href: "/modules", label: labels.training },
+        { href: "/progress", label: labels.progress },
+        { href: "/glossary", label: labels.glossary },
+      ],
+    });
+  }
+
   if (role === "OFFICE_ASSISTANT" && officeAssistantAreas) {
     const links = OFFICE_ASSISTANT_NAV_LINKS.filter((link) => officeAssistantAreas[link.area]?.canView).filter(
       (link, i, arr) => arr.findIndex((l) => l.href === link.href) === i
