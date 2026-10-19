@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getTrueActorId } from "@/lib/impersonation";
 import { FIELD_EVAL_CATEGORIES } from "@/lib/fieldEval";
 
 export interface FieldEvalState {
@@ -63,7 +64,7 @@ export async function createFieldEvaluationAction(
   await prisma.fieldEvaluation.create({
     data: {
       traineeId,
-      gradedById: session.sub,
+      gradedById: getTrueActorId(session),
       fieldDate,
       generalNotes,
       categories: {

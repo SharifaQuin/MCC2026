@@ -15,6 +15,13 @@ export async function changeOwnPasswordAction(
 ): Promise<ChangePasswordState> {
   const session = await getSession();
   if (!session) return { error: "Not logged in." };
+  // This changes the target's own real login credential — never while an
+  // Owner is viewing/acting as them. Letting it through would either lock
+  // the employee out of their own account or hand the Owner's acting-as
+  // session a standing way back in after they've returned to their own view.
+  if (session.actingAs) {
+    return { error: "Changing a password is unavailable while viewing and acting as another user." };
+  }
 
   const currentPassword = String(formData.get("currentPassword") ?? "");
   const newPassword = String(formData.get("newPassword") ?? "");

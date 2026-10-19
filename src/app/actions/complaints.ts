@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getTrueActorId } from "@/lib/impersonation";
 
 export interface ComplaintState {
   error?: string;
@@ -46,7 +47,7 @@ export async function createComplaintAction(
   await prisma.complaint.create({
     data: {
       employeeId,
-      loggedById: session.sub,
+      loggedById: getTrueActorId(session),
       clientName,
       description,
       incidentDate,

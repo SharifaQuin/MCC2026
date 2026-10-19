@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireSalesApiAccess } from "@/lib/requireSalesApiAccess";
 import { syncLeadFromQuote } from "@/lib/leads";
+import { getTrueActorId } from "@/lib/impersonation";
 
 // Backs the pricing/quotes tool's window.storage abstraction (get/set/
 // delete/list by key) with the shared Postgres database instead of browser
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
           // pipeline/dashboard — see syncLeadFromQuote for why this runs in
           // the opposite direction from the web-form flow (quote first,
           // lead second).
-          await syncLeadFromQuote(quoteId, quoteData, session.sub);
+          await syncLeadFromQuote(quoteId, quoteData, getTrueActorId(session));
 
           if (quoteData.status === "won" || quoteData.status === "lost") {
             const lead = await prisma.lead.findFirst({ where: { quoteKey: quoteId } });
@@ -84,7 +85,7 @@ export async function POST(request: Request) {
                 },
               });
               await prisma.leadStageChange.create({
-                data: { leadId: lead.id, fromStage: lead.stage, toStage, changedById: session.sub },
+                data: { leadId: lead.id, fromStage: lead.stage, toStage, changedById: getTrueActorId(session) },
               });
             }
           }

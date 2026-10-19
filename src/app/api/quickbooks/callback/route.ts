@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSession } from "@/lib/session";
 import { connectQuickBooks, QBO_OAUTH_STATE_COOKIE } from "@/lib/quickbooks";
+import { getTrueActorId } from "@/lib/impersonation";
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    await connectQuickBooks({ code, realmId, connectedById: session.sub });
+    await connectQuickBooks({ code, realmId, connectedById: getTrueActorId(session) });
   } catch (error) {
     console.error("QuickBooks connect failed:", error);
     return NextResponse.redirect(new URL("/financials?quickbooks=error", req.url));

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { getAreaAccessForUser } from "@/lib/officeAssistant";
 import { logAudit } from "@/lib/auditLog";
+import { getTrueActorId } from "@/lib/impersonation";
 import type { ChecklistCategory, ChecklistOwner, ChecklistTaskStatus, ChecklistVisibility } from "@prisma/client";
 import {
   disconnectQuickBooks,
@@ -360,7 +361,12 @@ export async function updateChecklistTaskNotesAction(taskId: string, notes: stri
   const session = await requireChecklistTaskEditAccess(taskId);
   await prisma.checklistTask.update({ where: { id: taskId }, data: { notes: notes.trim() || null } });
   if (session.role !== "ADMIN") {
-    await logAudit({ actorId: session.sub, action: "CHECKLIST_NOTES_UPDATED", recordType: "ChecklistTask", recordId: taskId });
+    await logAudit({
+      actorId: getTrueActorId(session),
+      action: "CHECKLIST_NOTES_UPDATED",
+      recordType: "ChecklistTask",
+      recordId: taskId,
+    });
   }
   revalidatePath("/financials");
   revalidatePath("/todo");
@@ -376,7 +382,12 @@ export async function updateChecklistTaskTargetDateAction(taskId: string, target
     data: { targetDate: targetDate ? new Date(targetDate) : null },
   });
   if (session.role !== "ADMIN") {
-    await logAudit({ actorId: session.sub, action: "CHECKLIST_TARGET_DATE_UPDATED", recordType: "ChecklistTask", recordId: taskId });
+    await logAudit({
+      actorId: getTrueActorId(session),
+      action: "CHECKLIST_TARGET_DATE_UPDATED",
+      recordType: "ChecklistTask",
+      recordId: taskId,
+    });
   }
   revalidatePath("/financials");
   revalidatePath("/todo");
@@ -419,7 +430,7 @@ export async function toggleChecklistTaskStatusAction(taskId: string, newStatus:
 
   if (session.role !== "ADMIN") {
     await logAudit({
-      actorId: session.sub,
+      actorId: getTrueActorId(session),
       action: "CHECKLIST_STATUS_TOGGLED",
       recordType: "ChecklistTask",
       recordId: taskId,

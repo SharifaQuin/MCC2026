@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getTrueActorId } from "@/lib/impersonation";
 
 export interface CertActionState {
   error?: string;
@@ -56,7 +57,7 @@ export async function recommendForCertificationAction(
     data: {
       certificationStatus: "PENDING",
       certRecommendedAt: new Date(),
-      certRecommendedById: session.sub,
+      certRecommendedById: getTrueActorId(session),
       certNotes: notes,
       certDecidedAt: null,
       certDecidedById: null,
@@ -68,8 +69,9 @@ export async function recommendForCertificationAction(
 }
 
 export async function certifyAction(traineeId: string): Promise<CertActionState> {
+  let session;
   try {
-    await requireDecisionMaker();
+    session = await requireDecisionMaker();
   } catch {
     return { error: "Not authorized." };
   }
@@ -79,7 +81,7 @@ export async function certifyAction(traineeId: string): Promise<CertActionState>
     data: {
       certificationStatus: "CERTIFIED",
       certDecidedAt: new Date(),
-      certDecidedById: (await getSession())!.sub,
+      certDecidedById: getTrueActorId(session),
     },
   });
 
@@ -109,7 +111,7 @@ export async function declineAction(
     data: {
       certificationStatus: "DECLINED",
       certDecidedAt: new Date(),
-      certDecidedById: session.sub,
+      certDecidedById: getTrueActorId(session),
       certNotes: notes,
     },
   });

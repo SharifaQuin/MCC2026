@@ -38,12 +38,12 @@ export async function setLeadStageAction(leadId: string, stage: LeadStage) {
     },
   });
   await prisma.leadStageChange.create({
-    data: { leadId, fromStage: current.stage, toStage: stage, changedById: session.sub },
+    data: { leadId, fromStage: current.stage, toStage: stage, changedById: getTrueActorId(session) },
   });
   if (stage === "WON") await syncQuoteStatusForLead(current.quoteKey, "won");
   if (session.role === "OFFICE_ASSISTANT") {
     await logAudit({
-      actorId: session.sub,
+      actorId: getTrueActorId(session),
       action: "LEAD_STAGE_CHANGED",
       recordType: "Lead",
       recordId: leadId,
@@ -70,7 +70,7 @@ export async function markLeadLostAction(leadId: string, lostReason: string) {
     data: { stage: "LOST", lostReason: lostReason.trim() || null },
   });
   await prisma.leadStageChange.create({
-    data: { leadId, fromStage: current.stage, toStage: "LOST", changedById: session.sub },
+    data: { leadId, fromStage: current.stage, toStage: "LOST", changedById: getTrueActorId(session) },
   });
   await syncQuoteStatusForLead(current.quoteKey, "lost");
   revalidatePath(`/sales/leads/${leadId}`);
@@ -98,10 +98,15 @@ export async function createManualLeadAction(formData: FormData) {
     data: { firstName, lastName, email, phone, serviceInterest, source, stage: "NEW_INQUIRY" },
   });
   if (notes) {
-    await prisma.leadNote.create({ data: { leadId: lead.id, authorId: session.sub, body: notes } });
+    await prisma.leadNote.create({ data: { leadId: lead.id, authorId: getTrueActorId(session), body: notes } });
   }
   if (session.role === "OFFICE_ASSISTANT") {
-    await logAudit({ actorId: session.sub, action: "LEAD_CREATED", recordType: "Lead", recordId: lead.id });
+    await logAudit({
+      actorId: getTrueActorId(session),
+      action: "LEAD_CREATED",
+      recordType: "Lead",
+      recordId: lead.id,
+    });
   }
 
   revalidatePath("/sales/leads");
@@ -114,9 +119,14 @@ export async function addLeadNoteAction(leadId: string, formData: FormData) {
   const session = await assertSalesLeadsEditAccess();
   const body = String(formData.get("body") ?? "").trim();
   if (!body) return;
-  await prisma.leadNote.create({ data: { leadId, authorId: session.sub, body } });
+  await prisma.leadNote.create({ data: { leadId, authorId: getTrueActorId(session), body } });
   if (session.role === "OFFICE_ASSISTANT") {
-    await logAudit({ actorId: session.sub, action: "LEAD_NOTE_ADDED", recordType: "Lead", recordId: leadId });
+    await logAudit({
+      actorId: getTrueActorId(session),
+      action: "LEAD_NOTE_ADDED",
+      recordType: "Lead",
+      recordId: leadId,
+    });
   }
   revalidatePath(`/sales/leads/${leadId}`);
 }
@@ -132,7 +142,12 @@ export async function setLeadDealDetailsAction(leadId: string, formData: FormDat
 
   if (session.role === "OFFICE_ASSISTANT") {
     await prisma.lead.update({ where: { id: leadId }, data: { followUpDueAt } });
-    await logAudit({ actorId: session.sub, action: "LEAD_FOLLOWUP_SET", recordType: "Lead", recordId: leadId });
+    await logAudit({
+      actorId: getTrueActorId(session),
+      action: "LEAD_FOLLOWUP_SET",
+      recordType: "Lead",
+      recordId: leadId,
+    });
     revalidatePath(`/sales/leads/${leadId}`);
     revalidatePath("/sales/leads");
     return;
@@ -242,7 +257,12 @@ export async function setLeadLanguageNoteAction(leadId: string, languageNote: st
   const session = await assertSalesLeadsEditAccess();
   await prisma.lead.update({ where: { id: leadId }, data: { languageNote: languageNote.trim() || null } });
   if (session.role === "OFFICE_ASSISTANT") {
-    await logAudit({ actorId: session.sub, action: "LEAD_LANGUAGE_NOTE_SET", recordType: "Lead", recordId: leadId });
+    await logAudit({
+      actorId: getTrueActorId(session),
+      action: "LEAD_LANGUAGE_NOTE_SET",
+      recordType: "Lead",
+      recordId: leadId,
+    });
   }
   revalidatePath(`/sales/leads/${leadId}`);
   revalidatePath("/sales/leads");

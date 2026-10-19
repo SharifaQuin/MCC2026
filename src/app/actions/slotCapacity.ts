@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { hasDepartmentAccess } from "@/lib/departments";
 import { parseAndValidateFeed, importFeed, type ParsedFeedSummary } from "@/lib/slotFeedImport";
 import { holdSlot, cityFromAddress } from "@/lib/slotRecommender";
+import { getTrueActorId } from "@/lib/impersonation";
 
 async function requireManagementEdit() {
   const session = await getSession();
@@ -42,7 +43,7 @@ export async function importSlotFeedAction(
   try {
     const text = await (file as File).text();
     const { data, summary } = await parseAndValidateFeed(text);
-    await importFeed(data, session.sub);
+    await importFeed(data, getTrueActorId(session));
     revalidatePath("/management/slot-capacity");
     return { imported: summary };
   } catch (e) {
@@ -126,7 +127,7 @@ export async function manualBookSlotAction(
     price,
     frequency,
     clientName,
-    repId: session.sub,
+    repId: getTrueActorId(session),
   });
   if (!result.ok) return { error: result.reason };
 

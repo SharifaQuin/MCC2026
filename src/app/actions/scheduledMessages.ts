@@ -6,6 +6,7 @@ import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
 import { zonedTimeToUtc } from "@/lib/timezone";
 import { isSmsQuietHours } from "@/lib/scheduledMessages";
+import { getTrueActorId } from "@/lib/impersonation";
 import type { CommChannel } from "@prisma/client";
 
 export type RecipientType = "LEAD" | "APPLICANT";
@@ -30,13 +31,13 @@ async function authorizeRecipient(
     if (!canEdit) return { ok: false, error: "Not authorized." };
     const lead = await prisma.lead.findUnique({ where: { id: recipientId }, select: { id: true } });
     if (!lead) return { ok: false, error: "Lead not found." };
-    return { ok: true, createdById: session.sub };
+    return { ok: true, createdById: getTrueActorId(session) };
   }
   if (recipientType === "APPLICANT") {
     const { session } = await requireRecruitingAccess();
     const applicant = await prisma.applicant.findUnique({ where: { id: recipientId }, select: { id: true } });
     if (!applicant) return { ok: false, error: "Applicant not found." };
-    return { ok: true, createdById: session.sub };
+    return { ok: true, createdById: getTrueActorId(session) };
   }
   return { ok: false, error: "Invalid recipient type." };
 }

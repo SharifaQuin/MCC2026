@@ -62,8 +62,10 @@ export default async function StaffDashboardPage() {
           <p className="mb-4 text-sm text-neutral-500">
             See and use the dashboard exactly as one of these real employees would, with their own
             effective permissions — not read-only. A banner stays on screen with a one-click way
-            back to your own owner view. Every action you take still records you, the Owner, as who
-            actually did it.
+            back to your own owner view. Most actions you take record you, the Owner, not the
+            employee — a few are blocked outright instead: signing a document, signing payroll
+            hours, and changing a password, since those can only honestly be the employee&apos;s own
+            act.
           </p>
           <div className="space-y-2">
             {actingAsCandidates.map((candidate) => (

@@ -7,6 +7,7 @@ import type { Role } from "@/lib/session";
 import type { Department, PermissionArea } from "@prisma/client";
 import { PERMISSION_AREAS } from "@/lib/officeAssistant";
 import { logAudit } from "@/lib/auditLog";
+import { getTrueActorId } from "@/lib/impersonation";
 
 async function requireAdmin() {
   const session = await getSession();
@@ -24,7 +25,7 @@ export async function updateUserRoleAction(userId: string, role: string) {
   const before = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
   await prisma.user.update({ where: { id: userId }, data: { role: role as Role } });
   await logAudit({
-    actorId: session.sub,
+    actorId: getTrueActorId(session),
     action: "ROLE_CHANGED",
     recordType: "User",
     recordId: userId,
@@ -58,7 +59,7 @@ export async function updateDepartmentAccessAction(
     });
   }
   await logAudit({
-    actorId: session.sub,
+    actorId: getTrueActorId(session),
     action: "DEPARTMENT_ACCESS_CHANGED",
     recordType: "User",
     recordId: userId,
@@ -88,7 +89,7 @@ export async function updateAreaAccessAction(userId: string, area: string, level
     });
   }
   await logAudit({
-    actorId: session.sub,
+    actorId: getTrueActorId(session),
     action: "AREA_ACCESS_CHANGED",
     recordType: "User",
     recordId: userId,
@@ -116,7 +117,7 @@ export async function updateApprovalManagerAction(userId: string, managerId: str
     data: { approvalManagerId: trimmed || null },
   });
   await logAudit({
-    actorId: session.sub,
+    actorId: getTrueActorId(session),
     action: "APPROVAL_MANAGER_CHANGED",
     recordType: "User",
     recordId: userId,

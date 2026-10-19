@@ -1,5 +1,6 @@
 import { requireSalesApiAccess } from "@/lib/requireSalesApiAccess";
 import { holdSlot } from "@/lib/slotRecommender";
+import { getTrueActorId } from "@/lib/impersonation";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  const result = await holdSlot({ ...body, repId: session.sub });
+  const result = await holdSlot({ ...body, repId: getTrueActorId(session) });
   if (!result.ok) {
     return Response.json({ ok: false, reason: result.reason }, { status: 409 });
   }

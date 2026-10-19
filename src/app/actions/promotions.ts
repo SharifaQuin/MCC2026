@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getTrueActorId } from "@/lib/impersonation";
 import { TARGET_ROLE_LABELS } from "@/lib/promotions";
 import type { PromotionTargetRole, PromotionDecision } from "@prisma/client";
 
@@ -86,7 +87,7 @@ export async function createPromotionAssessmentAction(
       developmentPlan: decision === "DEVELOP" ? developmentPlan : null,
       reassessmentDate: decision === "DEVELOP" ? reassessmentDate : null,
       payDifferential,
-      assessedById: session.sub,
+      assessedById: getTrueActorId(session),
     },
   });
 
@@ -106,7 +107,7 @@ export async function createPromotionAssessmentAction(
           `Auto-generated from a Promote decision on a Promotion Assessment.` +
           (payDifferential !== null ? ` Approved pay differential: +$${payDifferential.toFixed(2)}/hr.` : ""),
         linkedAssessmentId: assessment.id,
-        createdById: session.sub,
+        createdById: getTrueActorId(session),
       },
     });
   }

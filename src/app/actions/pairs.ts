@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getTrueActorId } from "@/lib/impersonation";
 
 export interface PairState {
   error?: string;
@@ -74,7 +75,7 @@ export async function createPairAction(
       data: { active: false, endDate: startDate },
     }),
     prisma.pair.create({
-      data: { leadId, assistantId, startDate, createdById: session.sub },
+      data: { leadId, assistantId, startDate, createdById: getTrueActorId(session) },
     }),
   ]);
 

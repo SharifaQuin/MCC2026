@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getTrueActorId, getTrueActorName } from "@/lib/impersonation";
 import type { ProblemReportCategory } from "@prisma/client";
 
 async function requireOwnerAccess() {
@@ -18,11 +19,16 @@ export async function submitProblemReport(category: ProblemReportCategory, descr
   const trimmed = description.trim();
   if (!trimmed) throw new Error("Please describe what happened.");
 
+  // reporterName/reporterRole are a denormalized snapshot of who actually
+  // filed this, read back verbatim in the Owner's queue — while acting as
+  // someone, that has to be the real Owner throughout (id, name, and role
+  // together), never a mix of the Owner's id with the employee's own name,
+  // which would misrepresent whose voice this report is in.
   await prisma.problemReport.create({
     data: {
-      reporterId: session.sub,
-      reporterName: session.name,
-      reporterRole: session.role,
+      reporterId: getTrueActorId(session),
+      reporterName: getTrueActorName(session),
+      reporterRole: session.actingAs ? "ADMIN" : session.role,
       category,
       description: trimmed,
     },
