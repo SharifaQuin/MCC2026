@@ -48,6 +48,9 @@ function fakeFetch(url: string, init?: RequestInit): Promise<Response> {
   if (method === "PATCH" && url.includes("/events/evt-gone-404")) {
     return Promise.resolve(new Response("not found", { status: 404 }));
   }
+  if (method === "PATCH" && url.includes("/events/evt-new-123")) {
+    return Promise.resolve(new Response(JSON.stringify({ id: "evt-new-123" }), { status: 200 }));
+  }
   if (method === "DELETE") {
     return Promise.resolve(new Response(null, { status: 204 }));
   }
@@ -187,6 +190,87 @@ async function main() {
   );
   const inPersonPatch = calls.find((c) => c.method === "PATCH");
   check("in-person reschedule PATCHes a non-empty Location field too", Boolean(inPersonPatch?.body.location), true);
+
+  // 8-11. retryInterviewCalendarSync — the staff-facing "Retry calendar
+  // sync" recovery button (applicant dashboard). Needs real DB fixtures
+  // since, unlike the checks above, it reads/writes the applicant and its
+  // InterviewAvailabilitySlot itself rather than taking plain objects.
+  const { retryInterviewCalendarSync } = await import("../src/lib/recruiting");
+  const { PrismaClient } = await import("@prisma/client");
+  const prisma = new PrismaClient();
+
+  const jobPosting = await prisma.jobPosting.findFirstOrThrow({ select: { id: true, titleEn: true } });
+  const interviewer = await prisma.user.create({
+    data: {
+      email: `verify-calendarsync-interviewer-${Date.now()}@example.com`,
+      name: "Verify CalendarSync Interviewer",
+      role: "SERVICE_MANAGER",
+      passwordHash: "x",
+      mustSetPassword: false,
+      active: true,
+    },
+  });
+  const retryApplicant = await prisma.applicant.create({
+    data: {
+      jobPostingId: jobPosting.id,
+      firstName: "Verify",
+      lastName: `CalendarSync-${Date.now()}`,
+      email: `verify-calendarsync-${Date.now()}@example.com`,
+      phone: "5555550100",
+      stage: "PHONE_INTERVIEW_SCHEDULED",
+      interviewerId: interviewer.id,
+      interviewFormat: "ZOOM",
+      scheduledAt: new Date(Date.now() + 8 * 86_400_000),
+    },
+  });
+  const bookedSlot = await prisma.interviewAvailabilitySlot.create({
+    data: {
+      interviewerId: interviewer.id,
+      format: "ZOOM",
+      startsAt: retryApplicant.scheduledAt!,
+      durationMins: 30,
+      bookedById: retryApplicant.id,
+      createdById: interviewer.id,
+      calendarEventId: null,
+    },
+  });
+
+  calls.length = 0;
+  const firstRetry = await retryInterviewCalendarSync(retryApplicant.id);
+  check("retry with a missing event creates a fresh one (POST, not PATCH)", calls.map((c) => c.method), ["POST"]);
+  check("retry with a missing event reports success with the new event id", firstRetry, { ok: true, eventId: "evt-new-123" });
+  const slotAfterFirstRetry = await prisma.interviewAvailabilitySlot.findUniqueOrThrow({ where: { id: bookedSlot.id } });
+  check("retry persists the new event id onto the booked slot", slotAfterFirstRetry.calendarEventId, "evt-new-123");
+
+  calls.length = 0;
+  const secondRetry = await retryInterviewCalendarSync(retryApplicant.id);
+  check(
+    "retrying again now that an event exists PATCHes it, never a second POST (no duplicate invitation)",
+    calls.map((c) => c.method),
+    ["PATCH"]
+  );
+  check("the repeat retry reports success with the same event id", secondRetry, { ok: true, eventId: "evt-new-123" });
+
+  const mailboxBefore = process.env.RECRUITING_CALENDAR_MAILBOX;
+  delete process.env.RECRUITING_CALENDAR_MAILBOX;
+  const unconfiguredRetry = await retryInterviewCalendarSync(retryApplicant.id);
+  check(
+    "retry refuses outright when the shared calendar isn't configured at all, rather than silently no-opping",
+    unconfiguredRetry.ok,
+    false
+  );
+  process.env.RECRUITING_CALENDAR_MAILBOX = mailboxBefore;
+
+  const noInterviewRetry = await retryInterviewCalendarSync("not-a-real-applicant-id");
+  check("retry against a nonexistent applicant reports a clear error, not a crash", noInterviewRetry, {
+    ok: false,
+    error: "Applicant not found.",
+  });
+
+  await prisma.interviewAvailabilitySlot.deleteMany({ where: { interviewerId: interviewer.id } });
+  await prisma.applicant.delete({ where: { id: retryApplicant.id } });
+  await prisma.user.delete({ where: { id: interviewer.id } });
+  await prisma.$disconnect();
 
   console.log(failures === 0 ? "\nAll calendar event-reuse checks passed." : `\n${failures} check(s) FAILED.`);
   process.exit(failures === 0 ? 0 : 1);

@@ -5,6 +5,9 @@ import { STAGE_LABELS, SCHEDULING_STAGES, INTERVIEW_SCORECARD_COMPETENCIES, DEFA
 import { getMessageTemplates } from "@/lib/messageTemplates";
 import { formatInBusinessTimezone } from "@/lib/timezone";
 import { formatPhone } from "@/lib/formatPhone";
+import { isCalendarConfigured } from "@/lib/calendar";
+import { getZoomJoinInfo } from "@/lib/recruitingZoom";
+import { retryInterviewCalendarSyncAction } from "../actions";
 import StageControls from "./StageControls";
 import InterviewDecisionPanel from "./InterviewDecisionPanel";
 import CommunicationPanel from "./CommunicationPanel";
@@ -61,6 +64,7 @@ export default async function ApplicantDetailPage({
         orderBy: { createdAt: "desc" },
         include: { completedBy: { select: { name: true } } },
       },
+      bookedSlot: { select: { id: true, calendarEventId: true } },
     },
   });
 
@@ -71,6 +75,14 @@ export default async function ApplicantDetailPage({
   const messageTemplates = await getMessageTemplates("RECRUITING");
   const onboardingChecklist =
     applicant.stage === "HIRED" ? await getOnboardingChecklist(applicant.id) : [];
+  const zoomJoinInfo = getZoomJoinInfo();
+  const calendarMissing =
+    applicant.scheduledAt &&
+    (SCHEDULING_STAGES as string[]).includes(applicant.stage) &&
+    !applicant.interviewCantMakeItAt &&
+    isCalendarConfigured() &&
+    applicant.bookedSlot &&
+    !applicant.bookedSlot.calendarEventId;
 
   // Stamp "viewed" once, the first time anyone opens this profile — a
   // persistent marker distinct from moving them through the pipeline.
@@ -428,6 +440,32 @@ export default async function ApplicantDetailPage({
           )}
         </div>
       )}
+
+      {calendarMissing && (
+        <div className="mt-2 flex items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <span>⚠ Calendar invite missing — the shared Outlook calendar never got this event, even though the candidate's own email/text confirmation went out.</span>
+          {canEdit && (
+            <form action={retryInterviewCalendarSyncAction.bind(null, applicant.id)}>
+              <button
+                type="submit"
+                className="whitespace-nowrap rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-800 hover:bg-red-100"
+              >
+                Retry calendar sync
+              </button>
+            </form>
+          )}
+        </div>
+      )}
+
+      {applicant.scheduledAt &&
+        (SCHEDULING_STAGES as string[]).includes(applicant.stage) &&
+        applicant.interviewFormat === "ZOOM" &&
+        zoomJoinInfo && (
+          <div className="mt-2 rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-700">
+            Shared Zoom room (same link sent to the candidate): {zoomJoinInfo.link}
+            {zoomJoinInfo.passcode ? ` · Passcode: ${zoomJoinInfo.passcode}` : ""}
+          </div>
+        )}
 
       <div className="mb-6 mt-2 flex items-start justify-between">
         <div>

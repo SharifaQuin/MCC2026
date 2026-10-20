@@ -4,11 +4,11 @@ import { sendEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
 import { generateInviteToken } from "@/lib/tokens";
 import { generateNextEmployeeId } from "@/lib/employeeId";
-import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from "@/lib/calendar";
-import { formatInBusinessTimezone } from "@/lib/timezone";
+import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, isCalendarConfigured } from "@/lib/calendar";
+import { formatInBusinessTimezone, businessDateKey } from "@/lib/timezone";
 import { postSlackDMToOwner } from "@/lib/slack";
 import { assignDefaultOnboardingDocuments } from "@/lib/onboarding";
-import { isZoomConfigured } from "@/lib/recruitingZoom";
+import { isZoomConfigured, getZoomJoinInfo } from "@/lib/recruitingZoom";
 import { computeAvailableSlots, getAvailabilityForInterviewer } from "@/lib/interviewerAvailability";
 
 // Categories whose answers count toward pass/fail. REQUIRED/QUALIFICATION
@@ -1083,14 +1083,10 @@ export async function scheduleInterviewCalendarEvent(
 
   let location: string | undefined;
   if (format === "ZOOM") {
-    const zoomPmi = process.env.RECRUITING_ZOOM_PMI;
-    const zoomLink = zoomPmi
-      ? `https://zoom.us/j/${zoomPmi.replace(/\D/g, "")}`
-      : process.env.RECRUITING_ZOOM_LINK;
-    if (zoomLink) {
-      bodyLines.push("", `Join Zoom: ${zoomLink}`);
-      const zoomPasscode = process.env.RECRUITING_ZOOM_PASSCODE;
-      if (zoomPasscode) bodyLines.push(`Passcode: ${zoomPasscode}`);
+    const zoomJoin = getZoomJoinInfo();
+    if (zoomJoin) {
+      bodyLines.push("", `Join Zoom: ${zoomJoin.link}`);
+      if (zoomJoin.passcode) bodyLines.push(`Passcode: ${zoomJoin.passcode}`);
     }
   } else {
     // In-person — the office address belongs on the event itself (the
@@ -1155,14 +1151,10 @@ export async function updateOrCreateInterviewCalendarEvent(
   ];
   let location: string | undefined;
   if (format === "ZOOM") {
-    const zoomPmi = process.env.RECRUITING_ZOOM_PMI;
-    const zoomLink = zoomPmi
-      ? `https://zoom.us/j/${zoomPmi.replace(/\D/g, "")}`
-      : process.env.RECRUITING_ZOOM_LINK;
-    if (zoomLink) {
-      bodyLines.push("", `Join Zoom: ${zoomLink}`);
-      const zoomPasscode = process.env.RECRUITING_ZOOM_PASSCODE;
-      if (zoomPasscode) bodyLines.push(`Passcode: ${zoomPasscode}`);
+    const zoomJoin = getZoomJoinInfo();
+    if (zoomJoin) {
+      bodyLines.push("", `Join Zoom: ${zoomJoin.link}`);
+      if (zoomJoin.passcode) bodyLines.push(`Passcode: ${zoomJoin.passcode}`);
     }
   } else {
     // Same in-person logistics as scheduleInterviewCalendarEvent — carried
@@ -1198,14 +1190,73 @@ export async function updateOrCreateInterviewCalendarEvent(
   return scheduleInterviewCalendarEvent(applicant, jobPostingTitle, stage, scheduledAt, format, durationMins);
 }
 
+// Staff-triggered recovery for the one thing every calendar call above does
+// silently: a create/update that fails (Graph error, the mailbox or app
+// registration misconfigured, a transient outage) just leaves
+// InterviewAvailabilitySlot.calendarEventId null forever — the stage move
+// and every email/SMS still went out, so nobody would otherwise know the
+// shared calendar itself never got the invite. This re-runs the exact same
+// updateOrCreateInterviewCalendarEvent a staffer clicking "Retry calendar
+// sync" (see the applicant dashboard banner) expects: existingEventId is
+// whatever's on file, so a slot that already has a live event gets PATCHed
+// in place and one that doesn't gets a single fresh event created — safe to
+// click as many times as needed, never produces a second invitation.
+export async function retryInterviewCalendarSync(
+  applicantId: string
+): Promise<{ ok: true; eventId: string | null } | { ok: false; error: string }> {
+  const applicant = await prisma.applicant.findUnique({
+    where: { id: applicantId },
+    include: { jobPosting: { select: { titleEn: true } }, bookedSlot: true },
+  });
+  if (!applicant) return { ok: false, error: "Applicant not found." };
+  if (
+    !applicant.scheduledAt ||
+    !applicant.interviewFormat ||
+    !(SCHEDULING_STAGES as string[]).includes(applicant.stage)
+  ) {
+    return { ok: false, error: "This applicant has no active scheduled interview to sync." };
+  }
+  if (!isCalendarConfigured()) {
+    return { ok: false, error: "The shared calendar isn't configured." };
+  }
+
+  const durationMins = applicant.bookedSlot?.durationMins ?? 30;
+  const eventId = await updateOrCreateInterviewCalendarEvent(
+    applicant,
+    applicant.jobPosting.titleEn,
+    applicant.stage,
+    applicant.scheduledAt,
+    applicant.interviewFormat,
+    durationMins,
+    applicant.bookedSlot?.calendarEventId ?? null
+  );
+  if (!eventId) {
+    return { ok: false, error: "The calendar still couldn't be reached — please try again shortly." };
+  }
+  if (applicant.bookedSlot) {
+    await prisma.interviewAvailabilitySlot.update({
+      where: { id: applicant.bookedSlot.id },
+      data: { calendarEventId: eventId },
+    });
+  }
+  return { ok: true, eventId };
+}
+
 // Emails the applicant a warm confirmation the moment an interview is
 // scheduled — separate from the Outlook calendar invite, and specifically
 // so it lands as a tracked entry in their communication thread, letting
 // staff see (and search) that this went out without having to check Outlook.
-// Best-effort: never blocks or throws, since an email failure shouldn't
-// undo the stage move.
+// For a Zoom interview, also fires an immediate text confirmation (same
+// joining details as the email, from the one shared getZoomJoinInfo source)
+// — whether the booking came from a staffer (setApplicantStageAction) or
+// the candidate's own self-service booking/reschedule page, since every one
+// of those paths calls this same function. In-person gets no text here
+// (address/arrival instructions don't fit well in an SMS and the email
+// already carries them); the day/hour reminders still text everyone.
+// Best-effort per channel: neither ever blocks or throws, since a
+// notification failure shouldn't undo the stage move.
 export async function sendInterviewConfirmationEmail(
-  applicant: { id: string; firstName: string; lastName: string; email: string },
+  applicant: { id: string; firstName: string; lastName: string; email: string; phone: string },
   jobPostingTitle: string,
   stage: ApplicantStage,
   scheduledAt: Date,
@@ -1221,6 +1272,7 @@ export async function sendInterviewConfirmationEmail(
 
   let subject: string;
   let body: string;
+  let smsBody: string | null = null;
 
   if (format === "ZOOM") {
     const bodyLines = [
@@ -1231,20 +1283,25 @@ export async function sendInterviewConfirmationEmail(
       `When: ${whenText}`,
     ];
 
-    const zoomPmi = process.env.RECRUITING_ZOOM_PMI;
-    const zoomLink = zoomPmi
-      ? `https://zoom.us/j/${zoomPmi.replace(/\D/g, "")}`
-      : process.env.RECRUITING_ZOOM_LINK;
-    if (zoomLink) {
-      bodyLines.push(`Zoom link: ${zoomLink}`);
-      const zoomPasscode = process.env.RECRUITING_ZOOM_PASSCODE;
-      if (zoomPasscode) bodyLines.push(`Passcode: ${zoomPasscode}`);
+    const zoomJoin = getZoomJoinInfo();
+    if (zoomJoin) {
+      bodyLines.push(`Zoom link: ${zoomJoin.link}`);
+      if (zoomJoin.passcode) bodyLines.push(`Passcode: ${zoomJoin.passcode}`);
     }
 
     bodyLines.push("", "See you soon!", "", "Mama's Cleaning Crew");
 
     subject = `Your interview with Mama's Cleaning Crew — ${whenText}`;
     body = bodyLines.join("\n");
+
+    const smsLines = [
+      `Mama's Cleaning Crew: you're booked! Your phone interview for ${jobPostingTitle} is confirmed for ${whenText}.`,
+    ];
+    if (zoomJoin) {
+      smsLines.push(`Join Zoom: ${zoomJoin.link}`);
+      if (zoomJoin.passcode) smsLines.push(`Passcode: ${zoomJoin.passcode}`);
+    }
+    smsBody = smsLines.join(" ");
   } else {
     // In-person invite — bilingual (English then Spanish) so it works
     // regardless of which language the applicant prefers, since there's no
@@ -1331,6 +1388,35 @@ export async function sendInterviewConfirmationEmail(
       },
     });
   }
+
+  if (smsBody) {
+    try {
+      const result = await sendSms({ to: applicant.phone, text: smsBody });
+      await prisma.communicationLog.create({
+        data: {
+          applicantId: applicant.id,
+          channel: "SMS",
+          direction: "OUTBOUND",
+          body: smsBody,
+          status: result.ok ? "SENT" : "FAILED",
+          errorMessage: result.ok ? null : result.error,
+          sentById: loggedById ?? null,
+        },
+      });
+    } catch (error) {
+      await prisma.communicationLog.create({
+        data: {
+          applicantId: applicant.id,
+          channel: "SMS",
+          direction: "OUTBOUND",
+          body: smsBody,
+          status: "FAILED",
+          errorMessage: error instanceof Error ? error.message : "Unknown error",
+          sentById: loggedById ?? null,
+        },
+      });
+    }
+  }
 }
 
 // Fired by interviewReminderScheduler one day before and again one hour
@@ -1356,15 +1442,26 @@ export async function sendInterviewReminder(
   jobPostingTitleEs?: string | null,
   // Explicit, authoritative format — see resolveInterviewFormat. Defaults
   // to the stage-based guess only for call sites that predate this field.
-  format: InterviewFormat = resolveInterviewFormat(stage, null)
+  format: InterviewFormat = resolveInterviewFormat(stage, null),
+  // The scheduler's own tick time — defaults to real "now" for every direct
+  // caller/test. The "day" tier fires any time scheduledAt is still within
+  // the next 24h (see interviewReminderScheduler), which very much includes
+  // an interview booked for later *today* — so "tomorrow" was wrong
+  // whenever the calendar day (Pacific) hadn't actually changed yet. The
+  // "hour" tier's "in about an hour" stays correct regardless of calendar
+  // day and is left alone.
+  now: Date = new Date()
 ) {
   const whenText = `${formatInBusinessTimezone(scheduledAt)} Pacific Time`;
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
   const confirmLink = applicant.interviewConfirmToken
     ? `${appUrl}/interview-confirm/${applicant.interviewConfirmToken}`
     : null;
-  const timeframeEn = reminderType === "day" ? "tomorrow" : "in about an hour";
-  const timeframeEs = reminderType === "day" ? "mañana" : "en aproximadamente una hora";
+  const isSameBusinessDay = businessDateKey(scheduledAt) === businessDateKey(now);
+  const timeframeEn =
+    reminderType === "hour" ? "in about an hour" : isSameBusinessDay ? "today" : "tomorrow";
+  const timeframeEs =
+    reminderType === "hour" ? "en aproximadamente una hora" : isSameBusinessDay ? "hoy" : "mañana";
 
   let subject: string;
   let emailBody: string;
@@ -1378,14 +1475,10 @@ export async function sendInterviewReminder(
       "",
       `When: ${whenText}`,
     ];
-    const zoomPmi = process.env.RECRUITING_ZOOM_PMI;
-    const zoomLink = zoomPmi
-      ? `https://zoom.us/j/${zoomPmi.replace(/\D/g, "")}`
-      : process.env.RECRUITING_ZOOM_LINK;
-    if (zoomLink) {
-      bodyLines.push(`Zoom link: ${zoomLink}`);
-      const zoomPasscode = process.env.RECRUITING_ZOOM_PASSCODE;
-      if (zoomPasscode) bodyLines.push(`Passcode: ${zoomPasscode}`);
+    const zoomJoin = getZoomJoinInfo();
+    if (zoomJoin) {
+      bodyLines.push(`Zoom link: ${zoomJoin.link}`);
+      if (zoomJoin.passcode) bodyLines.push(`Passcode: ${zoomJoin.passcode}`);
     }
     if (confirmLink) bodyLines.push("", `Please confirm you'll be joining: ${confirmLink}`);
     bodyLines.push("", "See you soon!", "", "Mama's Cleaning Crew");
@@ -1396,10 +1489,9 @@ export async function sendInterviewReminder(
     const smsLines = [
       `Mama's Cleaning Crew: reminder that your phone interview for ${jobPostingTitle} is ${timeframeEn} (${whenText}).`,
     ];
-    if (zoomLink) {
-      smsLines.push(`Join Zoom: ${zoomLink}`);
-      const zoomPasscode = process.env.RECRUITING_ZOOM_PASSCODE;
-      if (zoomPasscode) smsLines.push(`Passcode: ${zoomPasscode}`);
+    if (zoomJoin) {
+      smsLines.push(`Join Zoom: ${zoomJoin.link}`);
+      if (zoomJoin.passcode) smsLines.push(`Passcode: ${zoomJoin.passcode}`);
     }
     if (confirmLink) smsLines.push(`Please confirm: ${confirmLink}`);
     smsBody = smsLines.join(" ");

@@ -17,6 +17,7 @@ import {
   claimSlotAtomically,
   releaseBookedInterviewSlot,
   updateOrCreateInterviewCalendarEvent,
+  retryInterviewCalendarSync,
 } from "@/lib/recruiting";
 import { getAvailabilityForInterviewer } from "@/lib/interviewerAvailability";
 import { generateInviteToken } from "@/lib/tokens";
@@ -243,6 +244,21 @@ export async function setApplicantStageAction(
   revalidatePath("/recruiting/applicants");
   revalidatePath("/recruiting");
   revalidatePath("/recruiting/inbox");
+}
+
+// Thin wrapper around retryInterviewCalendarSync (see its own comment) —
+// this file's job is just the access check; the actual retry/no-duplicate
+// logic lives in recruiting.ts next to every other calendar call so it's
+// directly testable without a browser. Surfaced as the "Retry calendar
+// sync" button on the applicant dashboard's scheduled-interview banner.
+export async function retryInterviewCalendarSyncAction(applicantId: string) {
+  const { canEdit } = await requireRecruitingAccess();
+  requireEdit(canEdit);
+
+  const result = await retryInterviewCalendarSync(applicantId);
+  if (!result.ok) throw new Error(result.error);
+
+  revalidatePath(`/recruiting/applicants/${applicantId}`);
 }
 
 // Rejecting is the one stage move that optionally sends the candidate an

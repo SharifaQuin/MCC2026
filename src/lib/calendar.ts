@@ -1,5 +1,17 @@
 import { getGraphAccessToken } from "@/lib/msGraph";
 
+// Whether a mailbox is configured to put interviews on a real calendar at
+// all — distinct from a calendar *failure*. No mailbox configured means the
+// feature is intentionally off (every caller already no-ops in that case,
+// same as isZoomConfigured's reasoning); a configured mailbox whose create/
+// update call still fails is the actual problem worth surfacing to staff.
+// Parameterized (not inlined) so it's directly unit-testable.
+export function isCalendarConfigured(
+  mailbox: string | undefined = process.env.RECRUITING_CALENDAR_MAILBOX
+): boolean {
+  return Boolean(mailbox);
+}
+
 // Creates an event on a real (licensed, non-shared) mailbox's Outlook
 // calendar via Microsoft Graph, using the same app registration as email
 // sending — requires the app to also have the Calendars.ReadWrite

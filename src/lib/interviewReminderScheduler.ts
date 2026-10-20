@@ -30,7 +30,8 @@ export async function runInterviewReminderSchedulerTick(now: Date = new Date()):
       applicant.scheduledAt!,
       "day",
       applicant.jobPosting.titleEs,
-      resolveInterviewFormat(applicant.stage, applicant.interviewFormat)
+      resolveInterviewFormat(applicant.stage, applicant.interviewFormat),
+      now
     );
     await prisma.applicant.update({
       where: { id: applicant.id },
@@ -56,7 +57,8 @@ export async function runInterviewReminderSchedulerTick(now: Date = new Date()):
       applicant.scheduledAt!,
       "hour",
       applicant.jobPosting.titleEs,
-      resolveInterviewFormat(applicant.stage, applicant.interviewFormat)
+      resolveInterviewFormat(applicant.stage, applicant.interviewFormat),
+      now
     );
     await prisma.applicant.update({
       where: { id: applicant.id },
