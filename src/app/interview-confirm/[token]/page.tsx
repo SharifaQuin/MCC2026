@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { SCHEDULING_STAGES, STAGE_LABELS } from "@/lib/recruiting";
 import { formatInBusinessTimezone } from "@/lib/timezone";
@@ -9,6 +10,11 @@ export default async function InterviewConfirmPage({ params }: { params: { token
     where: { interviewConfirmToken: params.token },
     include: { jobPosting: { select: { titleEn: true } } },
   });
+  // Self-service reschedule is only offered for an appointment that
+  // actually carries an assigned interviewer + format — an older
+  // appointment booked before that existed keeps today's "contact us to
+  // reschedule" behavior unchanged.
+  const canSelfReschedule = Boolean(applicant?.interviewerId && applicant?.interviewFormat);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-brand-50 px-4">
@@ -41,6 +47,14 @@ export default async function InterviewConfirmPage({ params }: { params: { token
                 <p className="rounded-md bg-green-50 p-3 text-sm text-green-800">
                   You're all set, {applicant.firstName} — we've got you confirmed. See you then!
                 </p>
+                {canSelfReschedule && (
+                  <Link
+                    href={`/interview-reschedule/${params.token}`}
+                    className="mt-3 block w-full rounded-md border border-neutral-300 px-4 py-3 text-center text-sm font-medium text-neutral-600 hover:bg-neutral-50"
+                  >
+                    Need a different time?
+                  </Link>
+                )}
                 <form action={cantMakeInterviewAction.bind(null, params.token)} className="mt-4">
                   <button type="submit" className="text-xs text-neutral-400 underline hover:text-neutral-600">
                     Something come up? Let us know you can't make it
@@ -57,6 +71,14 @@ export default async function InterviewConfirmPage({ params }: { params: { token
                     Yes, I'll be there!
                   </button>
                 </form>
+                {canSelfReschedule && (
+                  <Link
+                    href={`/interview-reschedule/${params.token}`}
+                    className="block w-full rounded-md border border-neutral-300 px-4 py-3 text-center text-sm font-medium text-neutral-600 hover:bg-neutral-50"
+                  >
+                    Need a different time?
+                  </Link>
+                )}
                 <form action={cantMakeInterviewAction.bind(null, params.token)}>
                   <button
                     type="submit"

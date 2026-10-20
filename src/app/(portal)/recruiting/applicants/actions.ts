@@ -19,6 +19,8 @@ import { generateInviteToken } from "@/lib/tokens";
 import { zonedTimeToUtc } from "@/lib/timezone";
 import { logAudit } from "@/lib/auditLog";
 import { getTrueActorId } from "@/lib/impersonation";
+import { isZoomConfigured } from "@/lib/recruitingZoom";
+import type { InterviewFormat } from "@prisma/client";
 import type {
   ApplicantStage,
   ApplicantSource,
@@ -74,7 +76,12 @@ const STAGE_TIMESTAMP_FIELD: Partial<Record<ApplicantStage, "rejectedAt" | "benc
 export async function setApplicantStageAction(
   applicantId: string,
   stage: ApplicantStage,
-  scheduledAt?: string
+  scheduledAt?: string,
+  // Who's actually conducting the interview — defaults to whoever's booking
+  // it, which is the common case for direct/manual booking (the Office
+  // Assistant or manager scheduling it is usually the one conducting it
+  // too). Explicit override lets the UI name a different interviewer.
+  interviewerId?: string
 ) {
   const { session, canEdit } = await requireRecruitingAccess();
   requireEdit(canEdit);
@@ -82,6 +89,17 @@ export async function setApplicantStageAction(
   const timestampField = STAGE_TIMESTAMP_FIELD[stage];
   const scheduledAtDate =
     SCHEDULING_STAGES.includes(stage) && scheduledAt ? zonedTimeToUtc(scheduledAt) : undefined;
+  // Format is explicit and derived once, right here, from the stage the
+  // staffer deliberately picked — never re-inferred later downstream. Zoom
+  // config is validated up front: refusing outright beats silently sending
+  // a candidate confirmation with no way to actually join.
+  const format: InterviewFormat = stage === "PHONE_INTERVIEW_SCHEDULED" ? "ZOOM" : "IN_PERSON";
+  if (scheduledAtDate && format === "ZOOM" && !isZoomConfigured()) {
+    throw new Error(
+      "Zoom isn't set up yet — configure RECRUITING_ZOOM_PMI or RECRUITING_ZOOM_LINK before booking a Zoom interview."
+    );
+  }
+  const resolvedInterviewerId = scheduledAtDate ? interviewerId ?? getTrueActorId(session) : undefined;
 
   // Moving an applicant OFF of Hired (whether via the dedicated "Undo
   // Hire" button or the manual stage override) needs to walk back the one
@@ -115,6 +133,8 @@ export async function setApplicantStageAction(
       ...(scheduledAtDate
         ? {
             scheduledAt: scheduledAtDate,
+            interviewerId: resolvedInterviewerId,
+            interviewFormat: format,
             interviewConfirmToken: generateInviteToken(),
             interviewConfirmedAt: null,
             interviewCantMakeItAt: null,
@@ -134,26 +154,22 @@ export async function setApplicantStageAction(
     await createEmployeeAccountForHiredApplicant(applicant, getTrueActorId(session));
   }
 
-  // The automatic candidate-facing confirmation (both the Outlook calendar
-  // invite and the email) embeds Shar's real Zoom passcode for a phone
-  // interview (see RECRUITING_ZOOM_PASSCODE in scheduleInterviewCalendarEvent
-  // / sendInterviewConfirmationEmail). An Office Assistant booking a Zoom
-  // interview sets a real stage/date — that part is fine — but must never
-  // trigger that automatic send: it would hand out her private passcode to
-  // a candidate with no review step. Holding it back here, rather than only
-  // in the newer "Schedule Zoom interview" action, also closes the same gap
-  // on this exact form for an Office Assistant who reaches it directly.
-  // An in-person booking has no passcode to leak, so it's unaffected.
-  const suppressAutoSendForOfficeAssistant = session.role === "OFFICE_ASSISTANT" && stage === "PHONE_INTERVIEW_SCHEDULED";
-  if (scheduledAtDate && !suppressAutoSendForOfficeAssistant) {
-    await scheduleInterviewCalendarEvent(applicant, applicant.jobPosting.titleEn, stage, scheduledAtDate);
+  // Automatic candidate-facing confirmations (Outlook invite + email) now go
+  // out for every role, including an Office Assistant booking a Zoom
+  // interview — Sharifa has approved this for the existing shared Zoom
+  // room/passcode, replacing the manual-send-only workaround this used to
+  // require. The Zoom-config check above still refuses outright rather
+  // than ever sending a join link with no real way to connect.
+  if (scheduledAtDate) {
+    await scheduleInterviewCalendarEvent(applicant, applicant.jobPosting.titleEn, stage, scheduledAtDate, format);
     await sendInterviewConfirmationEmail(
       applicant,
       applicant.jobPosting.titleEn,
       stage,
       scheduledAtDate,
       getTrueActorId(session),
-      applicant.jobPosting.titleEs
+      applicant.jobPosting.titleEs,
+      format
     );
   }
 

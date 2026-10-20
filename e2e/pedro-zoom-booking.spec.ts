@@ -6,13 +6,16 @@ import { isZoomConfigured } from "../src/lib/recruitingZoom";
 // Direct Zoom-interview booking for Pedro (Office Assistant): a "Schedule
 // Zoom Interview" action wherever "Invite to Interview" used to be the only
 // option, reusing setApplicantStageAction for the stage/scheduledAt/
-// pipeline-count effects. The one thing that must never happen for an
-// Office Assistant's booking specifically is the automatic candidate email
-// that embeds Shar's real Zoom passcode with no review step — that's the
-// one behavior change in setApplicantStageAction itself, everything else
-// (stage data, OFFICE_ASSISTANT_BLOCKED_STAGES, the self-schedule invite)
-// is unchanged. Fixtures are fake local applicants only, tagged with a
-// unique run id and removed in afterAll — no real candidate is contacted.
+// pipeline-count effects. Sharifa has since approved automatic candidate
+// confirmations for this role too (the interview-scheduling-availability
+// brief), so an Office Assistant's Zoom booking now sends the same
+// automatic confirmation/calendar invite any other role's booking does —
+// the opposite of this suite's original assertion, which existed back when
+// that send was deliberately suppressed to avoid handing out Shar's real
+// Zoom passcode with no review step. OFFICE_ASSISTANT_BLOCKED_STAGES and
+// the self-schedule invite are unchanged. Fixtures are fake local
+// applicants only, tagged with a unique run id and removed in afterAll —
+// no real candidate is contacted.
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "shar@mamascleaningcrew.com";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "change-this-immediately";
 const RUN_ID = Date.now().toString();
@@ -104,7 +107,7 @@ test.describe.serial("Office Assistant direct Zoom interview booking", () => {
     ).toBeVisible();
   });
 
-  test("Booking sets the scheduled stage/date, never auto-sends the candidate, and updates the pipeline count", async ({
+  test("Booking sets the scheduled stage/date, sends the automatic candidate confirmation, and updates the pipeline count", async ({
     page,
   }) => {
     const applicant = await makeApplicant("booking");
@@ -123,9 +126,17 @@ test.describe.serial("Office Assistant direct Zoom interview booking", () => {
     const updated = await prisma.applicant.findUniqueOrThrow({ where: { id: applicant.id } });
     expect(updated.stage).toBe("PHONE_INTERVIEW_SCHEDULED");
     expect(updated.scheduledAt).not.toBeNull();
+    expect(updated.interviewFormat).toBe("ZOOM");
+    expect(updated.interviewerId).toBe(officeAssistantId);
 
+    // Sharifa has approved automatic Zoom confirmations for an Office
+    // Assistant's own booking, same as every other role — this used to be
+    // suppressed and is the core change this feature makes.
     const comms = await prisma.communicationLog.findMany({ where: { applicantId: applicant.id } });
-    expect(comms).toHaveLength(0);
+    expect(comms.length).toBeGreaterThan(0);
+    const emailComm = comms.find((c) => c.channel === "EMAIL");
+    expect(emailComm?.body).toContain("Zoom");
+    expect(emailComm?.body).not.toMatch(/Brookhollow|office|arrive/i);
 
     await expect(page.getByText(/Phone\/Zoom Interview Scheduled:.*PT/)).toBeVisible();
 

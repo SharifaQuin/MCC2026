@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
-import { bookInterviewSlotAction, type BookSlotState } from "./actions";
+import type { BookSlotState } from "./actions";
 import { SuccessState } from "@/components/ds/EmptyState";
 
 export interface BookableSlot {
@@ -10,7 +10,7 @@ export interface BookableSlot {
   label: string;
 }
 
-function SubmitButton({ disabled }: { disabled: boolean }) {
+function SubmitButton({ disabled, label, pendingLabel }: { disabled: boolean; label: string; pendingLabel: string }) {
   const { pending } = useFormStatus();
   return (
     <button
@@ -18,29 +18,41 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
       disabled={disabled || pending}
       className="w-full rounded-lg bg-brand-600 px-4 py-3.5 text-base font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-neutral-300"
     >
-      {pending ? "Booking…" : "Confirm This Time"}
+      {pending ? pendingLabel : label}
     </button>
   );
 }
 
-// Booking regenerates the applicant's confirm token server-side (a fresh
-// one is needed for the day-of confirm/decline flow), which means the
-// token this page was loaded with stops working the instant booking
-// succeeds. So success is shown entirely client-side from the action's
-// returned state — never by re-fetching the page with the now-stale token.
-export default function BookingForm({ token, slots }: { token: string; slots: BookableSlot[] }) {
+// Booking (and rescheduling) regenerates the applicant's confirm token
+// server-side (a fresh one is needed for the day-of confirm/decline flow),
+// which means the token this page was loaded with stops working the
+// instant it succeeds. So success is shown entirely client-side from the
+// action's returned state — never by re-fetching the page with the now-
+// stale token.
+export default function BookingForm({
+  token,
+  slots,
+  action,
+  submitLabel = "Confirm This Time",
+  submitPendingLabel = "Booking…",
+  successTitle = "You're booked!",
+  successDescription = "We've sent you a confirmation, and we'll remind you again as it gets closer. See you then!",
+}: {
+  token: string;
+  slots: BookableSlot[];
+  action: (token: string, prevState: BookSlotState, formData: FormData) => Promise<BookSlotState>;
+  submitLabel?: string;
+  submitPendingLabel?: string;
+  successTitle?: string;
+  successDescription?: string;
+}) {
   const [selected, setSelected] = useState<string | null>(null);
-  const boundAction = bookInterviewSlotAction.bind(null, token);
+  const boundAction = action.bind(null, token);
   const [state, formAction] = useFormState<BookSlotState, FormData>(boundAction, {});
   const formRef = useRef<HTMLFormElement>(null);
 
   if (state.success) {
-    return (
-      <SuccessState
-        title="You're booked!"
-        description="We've sent you a confirmation, and we'll remind you again as it gets closer. See you then!"
-      />
-    );
+    return <SuccessState title={successTitle} description={successDescription} />;
   }
 
   if (slots.length === 0) {
@@ -89,7 +101,7 @@ export default function BookingForm({ token, slots }: { token: string; slots: Bo
         ))}
       </div>
       {state.error && <p className="text-sm text-red-600">{state.error}</p>}
-      <SubmitButton disabled={!selected} />
+      <SubmitButton disabled={!selected} label={submitLabel} pendingLabel={submitPendingLabel} />
     </form>
   );
 }

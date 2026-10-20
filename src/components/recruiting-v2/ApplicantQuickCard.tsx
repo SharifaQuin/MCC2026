@@ -5,6 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Button from "@/components/ds/Button";
 import type { QualificationChecklistItem, ApplicationResponseItem } from "@/lib/recruiting";
+import type { InterviewFormat } from "@prisma/client";
+
+export interface EligibleInterviewerOption {
+  id: string;
+  name: string;
+  supportsZoom: boolean;
+  supportsInPerson: boolean;
+}
 
 export interface ApplicantQuickCardData {
   id: string;
@@ -62,13 +70,15 @@ function ResponseCard({ item }: { item: ApplicationResponseItem }) {
 // not a fourth equal-weight button.
 export default function ApplicantQuickCard({
   applicant,
+  interviewers,
   onBook,
   onInvite,
   onPass,
 }: {
   applicant: ApplicantQuickCardData;
+  interviewers: EligibleInterviewerOption[];
   onBook: (applicantId: string, scheduledAtLocal: string) => Promise<{ scheduledAt: string }>;
-  onInvite: (applicantId: string) => Promise<void>;
+  onInvite: (applicantId: string, interviewerId: string, format: InterviewFormat) => Promise<void>;
   onPass: (applicantId: string) => Promise<void>;
 }) {
   const router = useRouter();
@@ -76,7 +86,36 @@ export default function ApplicantQuickCard({
   const [action, setAction] = useState<"invite" | "pass" | "book" | null>(null);
   const [scheduling, setScheduling] = useState(false);
   const [bookError, setBookError] = useState<string | null>(null);
+  const [inviting, setInviting] = useState(false);
+  const [inviteInterviewerId, setInviteInterviewerId] = useState(interviewers[0]?.id ?? "");
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const selectedInterviewer = interviewers.find((i) => i.id === inviteInterviewerId);
+  const inviteFormatOptions: InterviewFormat[] = selectedInterviewer
+    ? [
+        ...(selectedInterviewer.supportsZoom ? (["ZOOM"] as const) : []),
+        ...(selectedInterviewer.supportsInPerson ? (["IN_PERSON"] as const) : []),
+      ]
+    : [];
+  const [inviteFormat, setInviteFormat] = useState<InterviewFormat | "">(inviteFormatOptions[0] ?? "");
   const failedRequired = applicant.requirements.filter((r) => !r.met).length;
+
+  function handleInviteSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!inviteInterviewerId || !inviteFormat) {
+      setInviteError("Please choose an interviewer and format.");
+      return;
+    }
+    setInviteError(null);
+    setAction("invite");
+    startTransition(async () => {
+      try {
+        await onInvite(applicant.id, inviteInterviewerId, inviteFormat as InterviewFormat);
+        setInviting(false);
+      } catch (err) {
+        setInviteError(err instanceof Error ? err.message : "Couldn't send the invite.");
+      }
+    });
+  }
 
   function handleBookSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -242,19 +281,75 @@ export default function ApplicantQuickCard({
         </Button>
       </div>
 
-      <button
-        type="button"
-        disabled={pending}
-        onClick={() => {
-          setAction("invite");
-          startTransition(() => onInvite(applicant.id));
-        }}
-        className="mt-2 w-full text-center text-xs font-medium text-neutral-500 underline hover:text-neutral-700 disabled:opacity-60"
-      >
-        {pending && action === "invite"
-          ? "Sending…"
-          : "Or send a self-schedule invite instead (candidate picks their own time)"}
-      </button>
+      {inviting ? (
+        <form
+          onSubmit={handleInviteSubmit}
+          className="mt-3 space-y-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3"
+        >
+          <p className="text-xs font-medium text-neutral-700">
+            Candidate picks their own time from this interviewer&apos;s open slots
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={inviteInterviewerId}
+              onChange={(e) => {
+                setInviteInterviewerId(e.target.value);
+                const next = interviewers.find((i) => i.id === e.target.value);
+                const nextFormats: InterviewFormat[] = next
+                  ? [
+                      ...(next.supportsZoom ? (["ZOOM"] as const) : []),
+                      ...(next.supportsInPerson ? (["IN_PERSON"] as const) : []),
+                    ]
+                  : [];
+                setInviteFormat(nextFormats[0] ?? "");
+              }}
+              className="rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+            >
+              {interviewers.length === 0 && <option value="">No interviewers configured yet</option>}
+              {interviewers.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name}
+                </option>
+              ))}
+            </select>
+            <select
+              value={inviteFormat}
+              onChange={(e) => setInviteFormat(e.target.value as InterviewFormat)}
+              className="rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+            >
+              {inviteFormatOptions.length === 0 && <option value="">—</option>}
+              {inviteFormatOptions.map((f) => (
+                <option key={f} value={f}>
+                  {f === "ZOOM" ? "Zoom" : "In-Person"}
+                </option>
+              ))}
+            </select>
+            <Button type="submit" size="md" disabled={pending || !inviteInterviewerId || !inviteFormat}>
+              {pending && action === "invite" ? "Sending…" : "Send Invite"}
+            </Button>
+            <button
+              type="button"
+              onClick={() => {
+                setInviting(false);
+                setInviteError(null);
+              }}
+              className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+            >
+              Cancel
+            </button>
+          </div>
+          {inviteError && <p className="text-xs font-medium text-red-700">{inviteError}</p>}
+        </form>
+      ) : (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => setInviting(true)}
+          className="mt-2 w-full text-center text-xs font-medium text-neutral-500 underline hover:text-neutral-700 disabled:opacity-60"
+        >
+          Or send a self-schedule invite instead (candidate picks their own time)
+        </button>
+      )}
     </div>
   );
 }

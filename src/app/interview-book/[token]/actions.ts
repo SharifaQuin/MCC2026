@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { bookInterviewSlot } from "@/lib/recruiting";
+import { bookInterviewSlot, bookAssignedInterviewSlot } from "@/lib/recruiting";
 
 export interface BookSlotState {
   error?: string;
@@ -11,7 +11,9 @@ export interface BookSlotState {
 // Public action — no session, no auth. The only thing standing in for
 // authorization here is the unguessable interviewConfirmToken already
 // embedded in the page, matching every other public applicant-facing
-// action (confirm/decline) in this app.
+// action (confirm/decline) in this app. Legacy path — only reached when the
+// applicant has no assigned interviewer (an invite sent before per-
+// interviewer availability existed).
 export async function bookInterviewSlotAction(
   token: string,
   _prevState: BookSlotState,
@@ -34,5 +36,25 @@ export async function bookInterviewSlotAction(
   // before the success state above ever gets to render, showing the
   // candidate a confusing "link no longer valid" message on a booking
   // that actually succeeded.
+  return { success: true };
+}
+
+// The interviewer-assigned counterpart — `slotId` here is actually the
+// slot's ISO startsAt (see listOpenSlotsForApplicant), since these slots
+// are generated on the fly rather than pre-existing rows to look up by id.
+export async function bookAssignedInterviewSlotAction(
+  token: string,
+  _prevState: BookSlotState,
+  formData: FormData
+): Promise<BookSlotState> {
+  const startsAtIso = String(formData.get("slotId") ?? "");
+  if (!startsAtIso) return { error: "Please choose a time." };
+
+  const applicant = await prisma.applicant.findUnique({ where: { interviewConfirmToken: token } });
+  if (!applicant) return { error: "This booking link is no longer valid." };
+
+  const result = await bookAssignedInterviewSlot(applicant.id, startsAtIso);
+  if (!result.ok) return { error: result.error };
+
   return { success: true };
 }

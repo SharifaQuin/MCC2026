@@ -2,16 +2,32 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
 import { formatInBusinessTimezone } from "@/lib/timezone";
+import { getAvailabilityForInterviewer } from "@/lib/interviewerAvailability";
 import PageHeader from "@/components/ds/PageHeader";
 import Card from "@/components/ds/Card";
 import { EmptyState } from "@/components/ds/EmptyState";
 import AvailabilitySlotForm from "./AvailabilitySlotForm";
 import DeleteSlotButton from "./DeleteSlotButton";
+import MyAvailabilityPanel from "./MyAvailabilityPanel";
 
 export const dynamic = "force-dynamic";
 
+// A reasonably complete, US-relevant subset rather than every IANA zone —
+// kept as a plain list (not Intl.supportedValuesOf, which pulls in several
+// hundred) so the picker stays usable.
+const TIMEZONE_OPTIONS = [
+  "America/Los_Angeles",
+  "America/Denver",
+  "America/Phoenix",
+  "America/Chicago",
+  "America/New_York",
+  "America/Anchorage",
+  "Pacific/Honolulu",
+];
+
 export default async function InterviewAvailabilityPage() {
-  await requireRecruitingAccess();
+  const { session } = await requireRecruitingAccess();
+  const myAvailability = await getAvailabilityForInterviewer(session.sub);
 
   const [openSlots, bookedSlots, postings] = await Promise.all([
     prisma.interviewAvailabilitySlot.findMany({
@@ -44,7 +60,38 @@ export default async function InterviewAvailabilityPage() {
         }
       />
 
+      <MyAvailabilityPanel
+        interviewerId={session.sub}
+        config={
+          myAvailability
+            ? {
+                timezone: myAvailability.timezone,
+                durationMins: myAvailability.durationMins,
+                bufferBeforeMins: myAvailability.bufferBeforeMins,
+                bufferAfterMins: myAvailability.bufferAfterMins,
+                supportsZoom: myAvailability.supportsZoom,
+                supportsInPerson: myAvailability.supportsInPerson,
+              }
+            : null
+        }
+        weeklyHours={myAvailability?.weeklyHours ?? []}
+        exceptions={
+          myAvailability?.exceptions.map((ex) => ({
+            id: ex.id,
+            date: ex.date.toISOString().slice(0, 10),
+            type: ex.type,
+            startMinute: ex.startMinute,
+            endMinute: ex.endMinute,
+            note: ex.note,
+          })) ?? []
+        }
+        timezoneOptions={TIMEZONE_OPTIONS}
+      />
+
       <Card>
+        <p className="mb-3 text-sm font-semibold text-brand-800">
+          General flat availability (legacy — predates per-interviewer scheduling)
+        </p>
         <AvailabilitySlotForm postings={postings} />
       </Card>
 

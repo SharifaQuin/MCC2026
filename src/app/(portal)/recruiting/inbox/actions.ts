@@ -5,11 +5,17 @@ import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
 import { sendInterviewInvite } from "@/lib/recruiting";
 import { rejectApplicantAction, setApplicantStageAction } from "../applicants/actions";
-import { isZoomConfigured } from "@/lib/recruitingZoom";
+import { getTrueActorId } from "@/lib/impersonation";
+import type { InterviewFormat } from "@prisma/client";
 
-export async function inviteToInterviewAction(applicantId: string) {
+export async function inviteToInterviewAction(
+  applicantId: string,
+  interviewerId: string,
+  format: InterviewFormat
+) {
   await requireRecruitingAccess();
-  await sendInterviewInvite(applicantId);
+  const result = await sendInterviewInvite(applicantId, interviewerId, format);
+  if (!result.ok) throw new Error(result.error);
   revalidatePath("/recruiting/inbox");
   revalidatePath(`/recruiting/applicants/${applicantId}`);
   revalidatePath("/recruiting");
@@ -19,23 +25,18 @@ export async function inviteToInterviewAction(applicantId: string) {
 // time" link — lets staff enter an already-agreed date/time themselves
 // instead of only being able to send a self-schedule invite. Reuses
 // setApplicantStageAction for the actual stage/scheduledAt/pipeline-count
-// effects (see its own comment for why an Office Assistant's booking never
-// triggers the automatic candidate email/calendar invite that would hand
-// out Shar's real Zoom passcode with no review).
+// effects, including its own Zoom-config validation and (for every role,
+// Office Assistant included) the automatic candidate confirmation.
 export async function bookZoomInterviewAction(applicantId: string, scheduledAtLocal: string) {
-  const { canEdit } = await requireRecruitingAccess();
+  const { session, canEdit } = await requireRecruitingAccess();
   if (!canEdit) throw new Error("Not authorized to make changes here.");
 
-  // Without a configured Zoom room there's nothing to give the candidate to
-  // join with — refuse the booking outright rather than schedule an
-  // interview with no way to attend it.
-  if (!isZoomConfigured()) {
-    throw new Error(
-      "Zoom isn't set up yet — ask Shar to configure the Zoom room (RECRUITING_ZOOM_PMI or RECRUITING_ZOOM_LINK) before booking interviews."
-    );
-  }
-
-  await setApplicantStageAction(applicantId, "PHONE_INTERVIEW_SCHEDULED", scheduledAtLocal);
+  await setApplicantStageAction(
+    applicantId,
+    "PHONE_INTERVIEW_SCHEDULED",
+    scheduledAtLocal,
+    getTrueActorId(session)
+  );
   revalidatePath("/recruiting/inbox");
 
   const applicant = await prisma.applicant.findUniqueOrThrow({

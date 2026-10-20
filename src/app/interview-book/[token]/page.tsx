@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { listOpenInterviewSlots } from "@/lib/recruiting";
+import { listOpenInterviewSlots, listOpenSlotsForApplicant } from "@/lib/recruiting";
 import { formatInBusinessTimezone } from "@/lib/timezone";
 import Logo from "@/components/Logo";
 import BookingForm from "./BookingForm";
+import { bookInterviewSlotAction, bookAssignedInterviewSlotAction } from "./actions";
 
 export default async function InterviewBookPage({ params }: { params: { token: string } }) {
   const applicant = await prisma.applicant.findUnique({
@@ -11,12 +12,18 @@ export default async function InterviewBookPage({ params }: { params: { token: s
   });
 
   const validState = applicant && applicant.stage === "INTERVIEW_INVITE_SENT";
-  const slots = validState
-    ? (await listOpenInterviewSlots(applicant!.jobPosting.id)).map((s) => ({
-        id: s.id,
-        label: formatInBusinessTimezone(new Date(s.startsAt)),
-      }))
-    : [];
+  const usesAssignedInterviewer = Boolean(applicant?.interviewerId && applicant?.interviewFormat);
+  const slots = !validState
+    ? []
+    : usesAssignedInterviewer
+      ? (await listOpenSlotsForApplicant(applicant!.interviewerId!, applicant!.interviewFormat!)).map((s) => ({
+          id: s.id,
+          label: formatInBusinessTimezone(new Date(s.startsAt)),
+        }))
+      : (await listOpenInterviewSlots(applicant!.jobPosting.id)).map((s) => ({
+          id: s.id,
+          label: formatInBusinessTimezone(new Date(s.startsAt)),
+        }));
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-brand-50 px-4 py-10">
@@ -36,7 +43,11 @@ export default async function InterviewBookPage({ params }: { params: { token: s
             <p className="mb-5 text-lg font-bold text-brand-800">
               Hi {applicant!.firstName}! Pick a time that works for you.
             </p>
-            <BookingForm token={params.token} slots={slots} />
+            <BookingForm
+              token={params.token}
+              slots={slots}
+              action={usesAssignedInterviewer ? bookAssignedInterviewSlotAction : bookInterviewSlotAction}
+            />
           </>
         )}
       </div>
