@@ -1017,6 +1017,22 @@ model InterviewAvailabilitySlot {
   // (see src/lib/calendar.ts) — lets a reschedule update the same event in
   // place instead of leaving a stale duplicate on the shared calendar.
   calendarEventId String?
+  // startsAt/durationMins padded by the booking interviewer's own buffer
+  // settings at the moment this row was claimed (see claimSlotAtomically in
+  // lib/recruiting.ts) — the range two database EXCLUDE constraints (added
+  // via raw SQL in this model's migration; not representable in this
+  // schema file, so `prisma migrate dev`/`db pull` will never see them —
+  // this app only ever runs `migrate deploy`, which applies migrations
+  // verbatim and never diffs/drops anything not in this file) actually
+  // enforce against overlap: one scoped to (interviewerId, same range) so
+  // the same interviewer's bookings can never overlap even at *different*
+  // start times once buffers are accounted for, and one scoped to (format
+  // = ZOOM, same range) across *every* interviewer, modeling the one
+  // shared Zoom room. A same-start unique key alone can't catch either
+  // case — two overlapping-but-different-start bookings would both still
+  // satisfy it.
+  bufferedStartsAt DateTime?
+  bufferedEndsAt   DateTime?
   createdById     String
   createdBy       User             @relation(fields: [createdById], references: [id])
   createdAt       DateTime         @default(now())
@@ -1025,7 +1041,10 @@ model InterviewAvailabilitySlot {
   // Hard backstop against the same interviewer ending up double-booked at
   // the exact same instant (e.g. a race between two concurrent booking
   // attempts) — NULL interviewerId rows (legacy flat slots) are exempt,
-  // same as Postgres already treats the jobPostingId unique above.
+  // same as Postgres already treats the jobPostingId unique above. The
+  // EXCLUDE constraints on bufferedStartsAt/bufferedEndsAt above are what
+  // catch an overlapping-but-different-start race; this unique key is kept
+  // as a second, independent backstop for the exact-instant case.
   @@unique([interviewerId, startsAt])
   @@index([jobPostingId, startsAt])
   @@index([interviewerId, startsAt])

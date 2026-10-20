@@ -10,11 +10,15 @@ import { sendSms } from "@/lib/sms";
 import {
   SCHEDULING_STAGES,
   createEmployeeAccountForHiredApplicant,
-  scheduleInterviewCalendarEvent,
   sendInterviewConfirmationEmail,
   rejectionEmailTemplate,
   setOnboardingChecklistItem,
+  recruitingReplyToEmail,
+  claimSlotAtomically,
+  releaseBookedInterviewSlot,
+  updateOrCreateInterviewCalendarEvent,
 } from "@/lib/recruiting";
+import { getAvailabilityForInterviewer } from "@/lib/interviewerAvailability";
 import { generateInviteToken } from "@/lib/tokens";
 import { zonedTimeToUtc } from "@/lib/timezone";
 import { logAudit } from "@/lib/auditLog";
@@ -109,7 +113,7 @@ export async function setApplicantStageAction(
   // using is real activity this can't silently erase.
   const previous = await prisma.applicant.findUnique({
     where: { id: applicantId },
-    select: { stage: true, hiredUserId: true },
+    select: { stage: true, hiredUserId: true, bookedSlot: true },
   });
   const leavingHired = previous?.stage === "HIRED" && stage !== "HIRED" && previous.hiredUserId;
   let clearHiredUser = false;
@@ -118,6 +122,39 @@ export async function setApplicantStageAction(
     if (hiredUser && !hiredUser.lastLoginAt && !hiredUser.passwordHash) {
       clearHiredUser = true;
     }
+  }
+
+  // A staff-driven booking/reschedule claims its slot exactly the same
+  // atomic way the self-service flows do (claimSlotAtomically — see its
+  // own comment), including this exact interviewer's buffer settings and
+  // the database-level overlap enforcement, so Pedro's direct-booking
+  // "Schedule Zoom Interview" button and any later staff reschedule are
+  // just as protected against a double-booking race as self-service ever
+  // was — a manually-typed date/time was never checked against anything
+  // before this. Any slot this applicant already holds is released in the
+  // very same transaction that claims the new one, so a staff reschedule
+  // keeps (and updates) the one existing calendar event instead of ever
+  // leaving a second, stale one behind.
+  let claimedSlotId: string | null = null;
+  let claimedDurationMins = 30;
+  const oldSlotId = previous?.bookedSlot?.id ?? null;
+  const oldEventId = previous?.bookedSlot?.calendarEventId ?? null;
+  if (scheduledAtDate) {
+    const interviewerAvailability = await getAvailabilityForInterviewer(resolvedInterviewerId!);
+    claimedDurationMins = interviewerAvailability?.durationMins ?? previous?.bookedSlot?.durationMins ?? 30;
+    const claim = await claimSlotAtomically({
+      applicantId,
+      interviewerId: resolvedInterviewerId!,
+      format,
+      startsAt: scheduledAtDate,
+      durationMins: claimedDurationMins,
+      bufferBeforeMins: interviewerAvailability?.bufferBeforeMins ?? 0,
+      bufferAfterMins: interviewerAvailability?.bufferAfterMins ?? 0,
+      createdById: getTrueActorId(session),
+      releaseSlotId: oldSlotId,
+    });
+    if (!claim.ok) throw new Error(claim.error);
+    claimedSlotId = claim.slotId;
   }
 
   const applicant = await prisma.applicant.update({
@@ -161,7 +198,18 @@ export async function setApplicantStageAction(
   // require. The Zoom-config check above still refuses outright rather
   // than ever sending a join link with no real way to connect.
   if (scheduledAtDate) {
-    await scheduleInterviewCalendarEvent(applicant, applicant.jobPosting.titleEn, stage, scheduledAtDate, format);
+    const eventId = await updateOrCreateInterviewCalendarEvent(
+      applicant,
+      applicant.jobPosting.titleEn,
+      stage,
+      scheduledAtDate,
+      format,
+      claimedDurationMins,
+      oldEventId
+    );
+    if (eventId && claimedSlotId) {
+      await prisma.interviewAvailabilitySlot.update({ where: { id: claimedSlotId }, data: { calendarEventId: eventId } });
+    }
     await sendInterviewConfirmationEmail(
       applicant,
       applicant.jobPosting.titleEn,
@@ -171,6 +219,14 @@ export async function setApplicantStageAction(
       applicant.jobPosting.titleEs,
       format
     );
+  } else if (SCHEDULING_STAGES.includes(previous?.stage as ApplicantStage) && previous?.bookedSlot) {
+    // Leaving a scheduling stage without providing a new time at all (a
+    // manual override straight to Rejected/Bench/Offer Sent, bypassing the
+    // dedicated reject/reschedule actions) means whatever was booked is
+    // being called off, not kept — release it the same way a reschedule
+    // or re-invite would, rather than leaving a stale slot/calendar event
+    // behind it forever.
+    await releaseBookedInterviewSlot(applicantId);
   }
 
   if (session.role === "OFFICE_ASSISTANT") {
@@ -207,10 +263,15 @@ export async function rejectApplicantAction(applicantId: string, sendEmailToAppl
     data: { stage: "REJECTED", rejectedAt: new Date() },
     include: { jobPosting: { select: { titleEn: true } } },
   });
+  // A future interview this applicant was still holding is being called
+  // off, not kept — release it (slot + calendar event) the same way a
+  // reschedule or re-invite would. A no-op if nothing's currently booked,
+  // or if the appointment is already in the past (left alone as history).
+  await releaseBookedInterviewSlot(applicantId);
 
   if (sendEmailToApplicant) {
     const { subject, body } = rejectionEmailTemplate(applicant.firstName, applicant.jobPosting.titleEn);
-    const result = await sendEmail({ to: applicant.email, subject, body });
+    const result = await sendEmail({ to: applicant.email, subject, body, replyTo: recruitingReplyToEmail() });
 
     await prisma.communicationLog.create({
       data: {
@@ -621,7 +682,7 @@ export async function sendApplicantEmailAction(applicantId: string, formData: Fo
   if (!subject || !body) return;
 
   const applicant = await prisma.applicant.findUniqueOrThrow({ where: { id: applicantId } });
-  const result = await sendEmail({ to: applicant.email, subject, body });
+  const result = await sendEmail({ to: applicant.email, subject, body, replyTo: recruitingReplyToEmail() });
 
   await prisma.communicationLog.create({
     data: {

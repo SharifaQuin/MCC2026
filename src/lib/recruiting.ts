@@ -4,7 +4,7 @@ import { sendEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
 import { generateInviteToken } from "@/lib/tokens";
 import { generateNextEmployeeId } from "@/lib/employeeId";
-import { createCalendarEvent, updateCalendarEvent } from "@/lib/calendar";
+import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from "@/lib/calendar";
 import { formatInBusinessTimezone } from "@/lib/timezone";
 import { postSlackDMToOwner } from "@/lib/slack";
 import { assignDefaultOnboardingDocuments } from "@/lib/onboarding";
@@ -918,7 +918,7 @@ export async function sendApplicantAcknowledgmentEmail(
   ].join("\n");
 
   try {
-    const result = await sendEmail({ to: applicant.email, subject, body });
+    const result = await sendEmail({ to: applicant.email, subject, body, replyTo: recruitingReplyToEmail() });
     await prisma.communicationLog.create({
       data: {
         applicantId: applicant.id,
@@ -984,11 +984,41 @@ export const SCHEDULING_STAGES: ApplicantStage[] = [
 // only for appointments booked before that field existed, so old records
 // keep behaving exactly as they did (Zoom stage → Zoom content, everything
 // else → in-person content).
+// LIMITATION (tracked, not fixed by this change): this fallback can only
+// ever guess from the *current* stage. A legacy record (interviewFormat
+// still null) whose stage was later hand-corrected, or whose original
+// booking predates both this field and today's stage conventions, has no
+// way to recover its *actual* original format from this alone — a
+// genuinely misclassified legacy row (e.g. an interview that was really
+// conducted over Zoom but is sitting on a stage this resolves to
+// IN_PERSON, or vice versa) will keep being misclassified by every
+// reminder/content choice this drives, including for Office Assistant
+// (Pedro) interviews booked before this PR. See
+// scripts/audit-legacy-interview-format.ts for a read-only audit that
+// cross-checks each such record's historical sent content (what was
+// actually emailed/texted) against what this function would compute for
+// it today, to find real mismatches — run it against production before
+// relying on self-service reschedule/reminders for any legacy record it
+// flags. This function never changes data and this PR never runs that
+// script against production; remediating a flagged record (if any) is a
+// manual, reviewed, separate step — never an automatic correction or an
+// unprompted candidate message.
 export function resolveInterviewFormat(
   stage: ApplicantStage,
   explicitFormat: InterviewFormat | null | undefined
 ): InterviewFormat {
   return explicitFormat ?? (stage === "PHONE_INTERVIEW_SCHEDULED" ? "ZOOM" : "IN_PERSON");
+}
+
+// Every applicant-facing email's Reply-To — a candidate's reply always
+// lands in the shared Info inbox, never whichever mailbox technically sent
+// it (MS_GRAPH_SENDER_EMAIL) and never a specific staffer. Falls back to
+// the sending mailbox only if RECRUITING_NOTIFY_EMAIL isn't set, same
+// fallback every other recruiting notification already uses — see
+// .env.example. Sales' own quote Reply-To/BCC (src/app/api/sales/
+// send-quote/route.ts) is entirely separate and untouched by this.
+export function recruitingReplyToEmail(): string | undefined {
+  return process.env.RECRUITING_NOTIFY_EMAIL || process.env.MS_GRAPH_SENDER_EMAIL || undefined;
 }
 
 export interface InterviewLogistics {
@@ -1238,7 +1268,7 @@ export async function sendInterviewConfirmationEmail(
   }
 
   try {
-    const result = await sendEmail({ to: applicant.email, subject, body });
+    const result = await sendEmail({ to: applicant.email, subject, body, replyTo: recruitingReplyToEmail() });
     await prisma.communicationLog.create({
       data: {
         applicantId: applicant.id,
@@ -1330,6 +1360,11 @@ export async function sendInterviewReminder(
     const smsLines = [
       `Mama's Cleaning Crew: reminder that your phone interview for ${jobPostingTitle} is ${timeframeEn} (${whenText}).`,
     ];
+    if (zoomLink) {
+      smsLines.push(`Join Zoom: ${zoomLink}`);
+      const zoomPasscode = process.env.RECRUITING_ZOOM_PASSCODE;
+      if (zoomPasscode) smsLines.push(`Passcode: ${zoomPasscode}`);
+    }
     if (confirmLink) smsLines.push(`Please confirm: ${confirmLink}`);
     smsBody = smsLines.join(" ");
   } else {
@@ -1382,7 +1417,7 @@ export async function sendInterviewReminder(
   }
 
   try {
-    const result = await sendEmail({ to: applicant.email, subject, body: emailBody });
+    const result = await sendEmail({ to: applicant.email, subject, body: emailBody, replyTo: recruitingReplyToEmail() });
     await prisma.communicationLog.create({
       data: {
         applicantId: applicant.id,
@@ -1561,6 +1596,106 @@ async function notifyStaffCandidateRescheduledInterview(
 // (see src/lib/interviewerAvailability.ts) and always carries an explicit
 // interviewer + format.
 
+// Releases (deletes) an applicant's currently booked interview slot, if
+// any, and best-effort cancels its calendar event — used whenever an
+// active interview is being superseded or called off before it happens
+// (a fresh invite replacing an old one, an applicant being rejected while
+// still holding a future appointment) so a stale slot never stays
+// permanently "taken" and an obsolete calendar invite never lingers on the
+// shared calendar. Looks the slot up fresh right before deleting, so a
+// second, racing call (a repeated click, or re-inviting someone who was
+// already released) finds nothing left to release and is a safe no-op —
+// it only ever acts on the one row still attached to this exact
+// applicantId via the bookedById relation, never a different applicant's
+// appointment. A slot whose time has already passed is left completely
+// alone: it can no longer block anything going forward (computeAvailableSlots
+// only ever looks at future bookings) and both its calendar event and its
+// row are the only remaining record that the interview actually happened —
+// deleting either would destroy real history, not clean up stale state.
+export async function releaseBookedInterviewSlot(applicantId: string): Promise<void> {
+  const slot = await prisma.interviewAvailabilitySlot.findUnique({ where: { bookedById: applicantId } });
+  if (!slot || slot.startsAt.getTime() <= Date.now()) return;
+
+  const calendarMailbox = process.env.RECRUITING_CALENDAR_MAILBOX;
+  if (slot.calendarEventId && calendarMailbox) {
+    try {
+      await deleteCalendarEvent({ mailbox: calendarMailbox, eventId: slot.calendarEventId });
+    } catch {
+      // Best-effort — a calendar failure shouldn't block releasing the slot.
+    }
+  }
+  try {
+    await prisma.interviewAvailabilitySlot.delete({ where: { id: slot.id } });
+  } catch {
+    // Already gone — a concurrent release/reschedule beat us to it. Fine.
+  }
+}
+
+// The one place every booking/reschedule path (self-service and staff-
+// driven alike) actually claims a time slot, so every path gets the same
+// atomicity guarantee. Computes the buffered range from the booking
+// interviewer's own buffer settings and stores it on the row — this is
+// what the two EXCLUDE constraints on InterviewAvailabilitySlot
+// (bufferedStartsAt/bufferedEndsAt; see the migration and the model
+// comment in schema.prisma) actually enforce against at the database
+// level: one scoped to this interviewer so their own bookings can never
+// overlap even at *different* start times once buffers are accounted for,
+// and one scoped to format=ZOOM across *every* interviewer, modeling the
+// one shared Zoom room. A same-start unique key or a read-before-insert
+// check alone can't catch either case — two different, merely overlapping
+// start times would both still satisfy a same-start check, no matter how
+// tight the race.
+//
+// `releaseSlotId`, when given, is deleted in the *same* transaction as the
+// new slot's creation — needed because bookedById is itself @unique, so a
+// new row claiming this applicant while the old one still holds that same
+// applicantId would always violate that constraint on its own, regardless
+// of whether the new time is actually free. Deleting first, inside the one
+// transaction, keeps this atomic with the create: if the create then fails
+// (a genuine collision on the new time, from either exclusion constraint
+// or the exact-instant unique key), the whole transaction rolls back and
+// the original booking is left completely untouched — never left
+// half-cancelled.
+export async function claimSlotAtomically(params: {
+  applicantId: string;
+  interviewerId: string;
+  format: InterviewFormat;
+  startsAt: Date;
+  durationMins: number;
+  bufferBeforeMins: number;
+  bufferAfterMins: number;
+  createdById: string;
+  releaseSlotId?: string | null;
+}): Promise<{ ok: true; slotId: string } | { ok: false; error: string }> {
+  const bufferedStartsAt = new Date(params.startsAt.getTime() - params.bufferBeforeMins * 60_000);
+  const bufferedEndsAt = new Date(
+    params.startsAt.getTime() + params.durationMins * 60_000 + params.bufferAfterMins * 60_000
+  );
+
+  try {
+    const slot = await prisma.$transaction(async (tx) => {
+      if (params.releaseSlotId) await tx.interviewAvailabilitySlot.delete({ where: { id: params.releaseSlotId } });
+      return tx.interviewAvailabilitySlot.create({
+        data: {
+          interviewerId: params.interviewerId,
+          format: params.format,
+          startsAt: params.startsAt,
+          durationMins: params.durationMins,
+          bufferedStartsAt,
+          bufferedEndsAt,
+          bookedById: params.applicantId,
+          createdById: params.createdById,
+        },
+      });
+    });
+    return { ok: true, slotId: slot.id };
+  } catch {
+    // Either EXCLUDE constraint, or the exact-instant unique key — all mean
+    // the same thing to the person booking: someone else got there first.
+    return { ok: false, error: "That time conflicts with another interview — please pick another." };
+  }
+}
+
 // Fired the moment staff taps "Invite to Interview" (or "self-schedule
 // invite") on a qualified applicant, now that an interviewer + format is
 // always picked up front — both are stored on the applicant and preserved
@@ -1589,12 +1724,24 @@ export async function sendInterviewInvite(
     };
   }
 
+  // A fresh invite supersedes whatever this applicant previously had booked
+  // (e.g. re-inviting after a reschedule fell through) — release that old
+  // appointment (slot + calendar event) first, so it never stays
+  // permanently "taken" and the old calendar invite never lingers once the
+  // candidate is being asked to pick a brand new time. Safe to call even
+  // when nothing is currently booked (the common case, a first invite).
+  await releaseBookedInterviewSlot(applicantId);
+
   const applicant = await prisma.applicant.update({
     where: { id: applicantId },
     data: {
       stage: "INTERVIEW_INVITE_SENT",
       interviewerId,
       interviewFormat: format,
+      // A superseded invite means no appointment is currently booked —
+      // never leave the previous, now-released time sitting on the
+      // record as if it still held.
+      scheduledAt: null,
       interviewConfirmToken: generateInviteToken(),
       interviewConfirmedAt: null,
       interviewCantMakeItAt: null,
@@ -1619,7 +1766,7 @@ export async function sendInterviewInvite(
     "Mama's Cleaning Crew",
   ].join("\n");
 
-  const emailResult = await sendEmail({ to: applicant.email, subject, body });
+  const emailResult = await sendEmail({ to: applicant.email, subject, body, replyTo: recruitingReplyToEmail() });
   await prisma.communicationLog.create({
     data: {
       applicantId: applicant.id,
@@ -1775,13 +1922,15 @@ export async function bookInterviewSlot(
 // The interviewer-assigned booking path: applicant.interviewerId/
 // interviewFormat were set when the invite went out (sendInterviewInvite)
 // and are reused here as-is — never re-picked or re-inferred. The slot
-// itself doesn't pre-exist; this *creates* the InterviewAvailabilitySlot
-// row, and that insert succeeding (backstopped by the
-// @@unique([interviewerId, startsAt]) constraint) is what atomically claims
-// the time. A pre-check against computeAvailableSlots catches the common
-// case (including the shared-Zoom-room cross-interviewer collision) before
-// ever attempting the insert; the unique constraint is the real guarantee
-// for the exact-instant race.
+// itself doesn't pre-exist; claimSlotAtomically *creates* it, and that
+// insert succeeding (backstopped by both EXCLUDE constraints — see its own
+// comment — and the @@unique([interviewerId, startsAt]) exact-instant key)
+// is what atomically claims the time. A pre-check against
+// computeAvailableSlots catches the common case (including the
+// shared-Zoom-room cross-interviewer collision) before ever attempting the
+// insert; the database constraints are the real guarantee against a
+// genuine concurrent race, including one between two *different* (but
+// overlapping, once buffers are counted) start times.
 export async function bookAssignedInterviewSlot(
   applicantId: string,
   startsAtIso: string
@@ -1813,23 +1962,18 @@ export async function bookAssignedInterviewSlot(
   const availability = await getAvailabilityForInterviewer(applicant.interviewerId);
   const durationMins = availability?.durationMins ?? 30;
 
-  let slotId: string;
-  try {
-    const slot = await prisma.interviewAvailabilitySlot.create({
-      data: {
-        interviewerId: applicant.interviewerId,
-        format: applicant.interviewFormat,
-        startsAt,
-        durationMins,
-        bookedById: applicantId,
-        createdById: applicant.interviewerId,
-      },
-    });
-    slotId = slot.id;
-  } catch {
-    // Unique constraint hit — someone else claimed this exact instant first.
-    return { ok: false, error: "That time was just taken — please pick another." };
-  }
+  const claim = await claimSlotAtomically({
+    applicantId,
+    interviewerId: applicant.interviewerId,
+    format: applicant.interviewFormat,
+    startsAt,
+    durationMins,
+    bufferBeforeMins: availability?.bufferBeforeMins ?? 0,
+    bufferAfterMins: availability?.bufferAfterMins ?? 0,
+    createdById: applicant.interviewerId,
+  });
+  if (!claim.ok) return claim;
+  const slotId = claim.slotId;
 
   const stage: ApplicantStage =
     applicant.interviewFormat === "ZOOM" ? "PHONE_INTERVIEW_SCHEDULED" : "IN_PERSON_SCHEDULED";
@@ -1921,32 +2065,19 @@ export async function rescheduleAssignedInterview(
   const oldSlotId = applicant.bookedSlot?.id ?? null;
   const oldEventId = applicant.bookedSlot?.calendarEventId ?? null;
 
-  let newSlotId: string;
-  try {
-    const result = await prisma.$transaction(async (tx) => {
-      // The old slot has to go first: bookedById is @unique, so a new row
-      // claiming the same applicant while the old one still holds that
-      // applicant's id would always violate the constraint, regardless of
-      // whether the new time is actually free. Deleting first is still
-      // atomic with the create — if the create below throws (a genuine
-      // collision on the new time), the whole transaction rolls back and
-      // the original booking is restored exactly as it was.
-      if (oldSlotId) await tx.interviewAvailabilitySlot.delete({ where: { id: oldSlotId } });
-      return tx.interviewAvailabilitySlot.create({
-        data: {
-          interviewerId: applicant.interviewerId!,
-          format: applicant.interviewFormat!,
-          startsAt: newStartsAt,
-          durationMins,
-          bookedById: applicantId,
-          createdById: applicant.interviewerId!,
-        },
-      });
-    });
-    newSlotId = result.id;
-  } catch {
-    return { ok: false, error: "That time was just taken — please pick another." };
-  }
+  const claim = await claimSlotAtomically({
+    applicantId,
+    interviewerId: applicant.interviewerId,
+    format: applicant.interviewFormat,
+    startsAt: newStartsAt,
+    durationMins,
+    bufferBeforeMins: availability?.bufferBeforeMins ?? 0,
+    bufferAfterMins: availability?.bufferAfterMins ?? 0,
+    createdById: applicant.interviewerId,
+    releaseSlotId: oldSlotId,
+  });
+  if (!claim.ok) return claim;
+  const newSlotId = claim.slotId;
 
   const stage: ApplicantStage =
     applicant.interviewFormat === "ZOOM" ? "PHONE_INTERVIEW_SCHEDULED" : "IN_PERSON_SCHEDULED";

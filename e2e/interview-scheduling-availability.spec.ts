@@ -134,8 +134,17 @@ test.describe.serial("Interview scheduling: per-interviewer availability + self-
 
   test.afterAll(async () => {
     await prisma.communicationLog.deleteMany({ where: { applicantId: { in: applicantIds } } });
+    // Covers both this file's own fixture interviewers AND any slot booked
+    // *by* one of this run's applicants through a different interviewer
+    // (e.g. the profile stage/reschedule test, which books through
+    // whichever admin account is logged in — a real InterviewAvailabilitySlot
+    // row now, see claimSlotAtomically in lib/recruiting.ts, not just an
+    // Applicant.scheduledAt value) — otherwise a hardcoded test date leaves
+    // a stale slot behind that collides with the same test on its next run.
     await prisma.interviewAvailabilitySlot.deleteMany({
-      where: { interviewerId: { in: [interviewerAId, interviewerBId] } },
+      where: {
+        OR: [{ interviewerId: { in: [interviewerAId, interviewerBId] } }, { bookedById: { in: applicantIds } }],
+      },
     });
     await prisma.applicant.deleteMany({ where: { id: { in: applicantIds } } });
     await prisma.availabilityDateException.deleteMany({

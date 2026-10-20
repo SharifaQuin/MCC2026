@@ -72,6 +72,19 @@ test.describe.serial("Office Assistant direct Zoom interview booking", () => {
 
   test.afterAll(async () => {
     await prisma.communicationLog.deleteMany({ where: { applicantId: { in: applicantIds } } });
+    // A direct Zoom booking now claims a real InterviewAvailabilitySlot row
+    // (see claimSlotAtomically in lib/recruiting.ts) instead of only
+    // setting Applicant.scheduledAt. Two cleanups needed: by bookedById
+    // (every fake applicant this run created, including the admin-booked
+    // one — admin's own account is never deleted, so a run-over-run
+    // leftover slot at this test's hardcoded date would otherwise collide
+    // with the next run's atomic claim) and by createdById/interviewerId
+    // (Pedro's account itself is about to be deleted, a restrict-on-delete FK).
+    await prisma.interviewAvailabilitySlot.deleteMany({
+      where: {
+        OR: [{ bookedById: { in: applicantIds } }, { createdById: officeAssistantId }, { interviewerId: officeAssistantId }],
+      },
+    });
     await prisma.applicant.deleteMany({ where: { id: { in: applicantIds } } });
     await prisma.areaAccess.deleteMany({ where: { userId: officeAssistantId } });
     await prisma.user.delete({ where: { id: officeAssistantId } });
