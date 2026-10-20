@@ -1081,6 +1081,7 @@ export async function scheduleInterviewCalendarEvent(
     `Email: ${applicant.email}`,
   ];
 
+  let location: string | undefined;
   if (format === "ZOOM") {
     const zoomPmi = process.env.RECRUITING_ZOOM_PMI;
     const zoomLink = zoomPmi
@@ -1091,6 +1092,23 @@ export async function scheduleInterviewCalendarEvent(
       const zoomPasscode = process.env.RECRUITING_ZOOM_PASSCODE;
       if (zoomPasscode) bodyLines.push(`Passcode: ${zoomPasscode}`);
     }
+  } else {
+    // In-person — the office address belongs on the event itself (the
+    // Location field shown right next to the time in Outlook/calendar
+    // apps, not just in the candidate's own confirmation email), plus the
+    // full arrival instructions in the body for whoever's conducting it.
+    const logistics = await getInterviewLogistics();
+    location = logistics.address.replace(/\n/g, ", ");
+    bodyLines.push(
+      "",
+      "📍 Location:",
+      logistics.address,
+      "",
+      `📞 Contact: ${logistics.phone}`,
+      "",
+      "Arrival instructions:",
+      logistics.arrivalInstructionsEn
+    );
   }
 
   try {
@@ -1100,6 +1118,7 @@ export async function scheduleInterviewCalendarEvent(
       startsAt: scheduledAt,
       durationMinutes: durationMins,
       body: bodyLines.join("\n"),
+      location,
       attendeeEmail: applicant.email,
       attendeeName: `${applicant.firstName} ${applicant.lastName}`,
     });
@@ -1134,6 +1153,7 @@ export async function updateOrCreateInterviewCalendarEvent(
     `Phone: ${applicant.phone}`,
     `Email: ${applicant.email}`,
   ];
+  let location: string | undefined;
   if (format === "ZOOM") {
     const zoomPmi = process.env.RECRUITING_ZOOM_PMI;
     const zoomLink = zoomPmi
@@ -1144,6 +1164,21 @@ export async function updateOrCreateInterviewCalendarEvent(
       const zoomPasscode = process.env.RECRUITING_ZOOM_PASSCODE;
       if (zoomPasscode) bodyLines.push(`Passcode: ${zoomPasscode}`);
     }
+  } else {
+    // Same in-person logistics as scheduleInterviewCalendarEvent — carried
+    // over on a reschedule too, not just the initial booking.
+    const logistics = await getInterviewLogistics();
+    location = logistics.address.replace(/\n/g, ", ");
+    bodyLines.push(
+      "",
+      "📍 Location:",
+      logistics.address,
+      "",
+      `📞 Contact: ${logistics.phone}`,
+      "",
+      "Arrival instructions:",
+      logistics.arrivalInstructionsEn
+    );
   }
 
   try {
@@ -1154,6 +1189,7 @@ export async function updateOrCreateInterviewCalendarEvent(
       startsAt: scheduledAt,
       durationMinutes: durationMins,
       body: bodyLines.join("\n"),
+      location,
     });
     if (result.ok) return existingEventId;
   } catch {

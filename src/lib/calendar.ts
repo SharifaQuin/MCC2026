@@ -13,6 +13,7 @@ export async function createCalendarEvent({
   startsAt,
   durationMinutes = 30,
   body,
+  location,
   attendeeEmail,
   attendeeName,
 }: {
@@ -21,6 +22,11 @@ export async function createCalendarEvent({
   startsAt: Date;
   durationMinutes?: number;
   body: string;
+  // Plain address text for an in-person interview — populates the event's
+  // own Location field (what actually shows next to the time in Outlook/
+  // calendar apps), separate from and in addition to the body text.
+  // Omitted entirely for a Zoom interview.
+  location?: string;
   attendeeEmail: string;
   attendeeName: string;
 }): Promise<{ ok: true; eventId: string } | { ok: false; error: string }> {
@@ -42,6 +48,7 @@ export async function createCalendarEvent({
         body: { contentType: "Text", content: body },
         start: { dateTime: startsAt.toISOString(), timeZone: "UTC" },
         end: { dateTime: endsAt.toISOString(), timeZone: "UTC" },
+        ...(location ? { location: { displayName: location } } : {}),
         attendees: [
           {
             emailAddress: { address: attendeeEmail, name: attendeeName },
@@ -76,6 +83,7 @@ export async function updateCalendarEvent({
   startsAt,
   durationMinutes = 30,
   body,
+  location,
 }: {
   mailbox: string;
   eventId: string;
@@ -83,6 +91,10 @@ export async function updateCalendarEvent({
   startsAt: Date;
   durationMinutes?: number;
   body?: string;
+  // See createCalendarEvent's `location` — omitted leaves the event's
+  // existing Location field as-is; pass the current address explicitly on
+  // every in-person reschedule, same as body/subject already are.
+  location?: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const token = await getGraphAccessToken();
   if (!token.ok) return token;
@@ -100,6 +112,7 @@ export async function updateCalendarEvent({
       body: JSON.stringify({
         ...(subject ? { subject } : {}),
         ...(body ? { body: { contentType: "Text", content: body } } : {}),
+        ...(location ? { location: { displayName: location } } : {}),
         start: { dateTime: startsAt.toISOString(), timeZone: "UTC" },
         end: { dateTime: endsAt.toISOString(), timeZone: "UTC" },
       }),

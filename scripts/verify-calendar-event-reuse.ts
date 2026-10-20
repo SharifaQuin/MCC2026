@@ -26,7 +26,7 @@ process.env.MS_GRAPH_CLIENT_SECRET = "fake-secret";
 process.env.MS_GRAPH_SENDER_EMAIL = "fake-sender@example.com";
 process.env.RECRUITING_CALENDAR_MAILBOX = "fake-calendar@example.com";
 
-type Call = { method: string; url: string };
+type Call = { method: string; url: string; body: Record<string, unknown> };
 const calls: Call[] = [];
 
 function fakeFetch(url: string, init?: RequestInit): Promise<Response> {
@@ -38,7 +38,7 @@ function fakeFetch(url: string, init?: RequestInit): Promise<Response> {
   if (url.includes("login.microsoftonline.com")) {
     return Promise.resolve(new Response(JSON.stringify({ access_token: "fake-token" }), { status: 200 }));
   }
-  calls.push({ method, url });
+  calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : {} });
   if (method === "POST" && url.endsWith("/events")) {
     return Promise.resolve(new Response(JSON.stringify({ id: "evt-new-123" }), { status: 201 }));
   }
@@ -135,6 +135,58 @@ async function main() {
   );
   check("initial booking (no prior event) issues a POST only", calls.map((c) => c.method), ["POST"]);
   check("initial booking returns the created event id", initialBooking, "evt-new-123");
+
+  // 5. An in-person booking's event carries the office address in the
+  // Location field (what Outlook shows next to the time), not just in the
+  // body text — this is the part a candidate's email already had but the
+  // calendar event itself was missing.
+  calls.length = 0;
+  await updateOrCreateInterviewCalendarEvent(
+    applicant,
+    "Cleaning Technician",
+    "IN_PERSON_SCHEDULED",
+    new Date(Date.now() + 5 * 86_400_000),
+    "IN_PERSON",
+    30,
+    null
+  );
+  const inPersonCreate = calls.find((c) => c.method === "POST" && c.url.endsWith("/events"));
+  check("in-person booking sets a non-empty Location field", Boolean(inPersonCreate?.body.location), true);
+  check(
+    "in-person booking's body also includes the office address",
+    typeof inPersonCreate?.body.body === "object" &&
+      String((inPersonCreate!.body.body as { content?: string }).content ?? "").includes("Brookhollow"),
+    true
+  );
+
+  // 6. A Zoom booking's event never sets a Location field.
+  calls.length = 0;
+  await updateOrCreateInterviewCalendarEvent(
+    applicant,
+    "Cleaning Technician",
+    "PHONE_INTERVIEW_SCHEDULED",
+    new Date(Date.now() + 6 * 86_400_000),
+    "ZOOM",
+    30,
+    null
+  );
+  const zoomCreate = calls.find((c) => c.method === "POST" && c.url.endsWith("/events"));
+  check("Zoom booking sets no Location field", zoomCreate?.body.location, undefined);
+
+  // 7. An in-person reschedule (existing event) PATCHes the Location field
+  // too, not just the time/body.
+  calls.length = 0;
+  await updateOrCreateInterviewCalendarEvent(
+    applicant,
+    "IN_PERSON_SCHEDULED",
+    "IN_PERSON_SCHEDULED",
+    new Date(Date.now() + 7 * 86_400_000),
+    "IN_PERSON",
+    30,
+    "evt-original-999"
+  );
+  const inPersonPatch = calls.find((c) => c.method === "PATCH");
+  check("in-person reschedule PATCHes a non-empty Location field too", Boolean(inPersonPatch?.body.location), true);
 
   console.log(failures === 0 ? "\nAll calendar event-reuse checks passed." : `\n${failures} check(s) FAILED.`);
   process.exit(failures === 0 ? 0 : 1);
