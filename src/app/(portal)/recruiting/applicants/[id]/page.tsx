@@ -9,6 +9,7 @@ import { isCalendarConfigured, describeCalendarSyncProblem } from "@/lib/calenda
 import { getZoomJoinInfo } from "@/lib/recruitingZoom";
 import { retryInterviewCalendarSyncAction } from "../actions";
 import CalendarSyncBanner from "./CalendarSyncBanner";
+import ContactInfoEditor from "./ContactInfoEditor";
 import StageControls from "./StageControls";
 import InterviewDecisionPanel from "./InterviewDecisionPanel";
 import CommunicationPanel from "./CommunicationPanel";
@@ -210,6 +211,20 @@ export default async function ApplicantDetailPage({
           <div>
             <dt className="text-neutral-400">Phone</dt>
             <dd>{formatPhone(applicant.phone)}</dd>
+          </div>
+          <div className="col-span-2">
+            <ContactInfoEditor
+              applicantId={applicant.id}
+              email={applicant.email}
+              phone={applicant.phone}
+              canEdit={canEdit}
+              // Specifically "a real calendar event already exists" (not
+              // calendarProblem, which also covers "no event exists yet" —
+              // that case has nothing to go stale) — the one scenario this
+              // warning is actually about: a previously-sent invite whose
+              // attendee address won't be touched by this edit.
+              hasStaleCalendarInvite={Boolean(applicant.bookedSlot?.calendarEventId)}
+            />
           </div>
           <div>
             <dt className="text-neutral-400">Applied</dt>
