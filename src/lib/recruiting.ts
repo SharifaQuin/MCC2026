@@ -1129,6 +1129,16 @@ export async function scheduleInterviewCalendarEvent(
 // returned id) to a new time/body instead of leaving a stale duplicate on the
 // shared calendar — used by a reschedule. Falls back to creating a fresh
 // event if the update fails (e.g. the original event or mailbox is gone).
+export interface CalendarSyncResult {
+  eventId: string | null;
+  // True whenever the calendar feature is configured but this attempt
+  // didn't fully succeed — either no event exists at all (eventId null) or
+  // an existing one's update failed for a non-404 reason (eventId
+  // preserved, unchanged). False when the feature isn't configured at all
+  // (nothing to report) or the sync genuinely succeeded.
+  syncFailed: boolean;
+}
+
 export async function updateOrCreateInterviewCalendarEvent(
   applicant: { firstName: string; lastName: string; email: string; phone: string },
   jobPostingTitle: string,
@@ -1137,10 +1147,11 @@ export async function updateOrCreateInterviewCalendarEvent(
   format: InterviewFormat,
   durationMins: number,
   existingEventId: string | null
-): Promise<string | null> {
+): Promise<CalendarSyncResult> {
   const calendarMailbox = process.env.RECRUITING_CALENDAR_MAILBOX;
   if (!calendarMailbox || !existingEventId) {
-    return scheduleInterviewCalendarEvent(applicant, jobPostingTitle, stage, scheduledAt, format, durationMins);
+    const eventId = await scheduleInterviewCalendarEvent(applicant, jobPostingTitle, stage, scheduledAt, format, durationMins);
+    return { eventId, syncFailed: calendarMailbox ? eventId === null : false };
   }
 
   const bodyLines = [
@@ -1183,27 +1194,44 @@ export async function updateOrCreateInterviewCalendarEvent(
       body: bodyLines.join("\n"),
       location,
     });
-    if (result.ok) return existingEventId;
+    if (result.ok) return { eventId: existingEventId, syncFailed: false };
+    if (result.notFound) {
+      // Confirmed gone, not just unreachable — safe to create a
+      // replacement, since there's no risk of the original still being out
+      // there to duplicate.
+      const eventId = await scheduleInterviewCalendarEvent(applicant, jobPostingTitle, stage, scheduledAt, format, durationMins);
+      return { eventId, syncFailed: eventId === null };
+    }
+    // Throttling, an auth hiccup, a 5xx — ambiguous, so preserve the known
+    // id rather than risk a genuine duplicate; report the failure so staff
+    // can retry (which re-targets this same event, never creates another).
+    return { eventId: existingEventId, syncFailed: true };
   } catch {
-    // Fall through to creating a fresh event below.
+    // A thrown error (network failure, timeout) is exactly as ambiguous as
+    // a non-404 Graph error above — same reasoning, same outcome.
+    return { eventId: existingEventId, syncFailed: true };
   }
-  return scheduleInterviewCalendarEvent(applicant, jobPostingTitle, stage, scheduledAt, format, durationMins);
 }
 
 // Staff-triggered recovery for the one thing every calendar call above does
 // silently: a create/update that fails (Graph error, the mailbox or app
 // registration misconfigured, a transient outage) just leaves
-// InterviewAvailabilitySlot.calendarEventId null forever — the stage move
-// and every email/SMS still went out, so nobody would otherwise know the
-// shared calendar itself never got the invite. This re-runs the exact same
-// updateOrCreateInterviewCalendarEvent a staffer clicking "Retry calendar
-// sync" (see the applicant dashboard banner) expects: existingEventId is
-// whatever's on file, so a slot that already has a live event gets PATCHed
-// in place and one that doesn't gets a single fresh event created — safe to
-// click as many times as needed, never produces a second invitation.
+// InterviewAvailabilitySlot.calendarEventId null (or, now, an id whose
+// update attempt failed) forever — the stage move and every email/SMS
+// still went out, so nobody would otherwise know the shared calendar
+// itself never got the invite or never got updated. This re-runs the exact
+// same updateOrCreateInterviewCalendarEvent a staffer clicking "Retry
+// calendar sync" (see the applicant dashboard banner) expects:
+// existingEventId is whatever's currently on file, so a slot that already
+// has a live event gets PATCHed in place and one that doesn't gets a
+// single fresh event created — safe to click as many times as needed,
+// never produces a second invitation. Always persists whatever the sync
+// attempt actually produced (the id and whether it's still failing),
+// regardless of outcome, so the dashboard reflects the real current state
+// even when the retry itself didn't fully succeed.
 export async function retryInterviewCalendarSync(
   applicantId: string
-): Promise<{ ok: true; eventId: string | null } | { ok: false; error: string }> {
+): Promise<{ ok: true; eventId: string } | { ok: false; error: string }> {
   const applicant = await prisma.applicant.findUnique({
     where: { id: applicantId },
     include: { jobPosting: { select: { titleEn: true } }, bookedSlot: true },
@@ -1221,7 +1249,7 @@ export async function retryInterviewCalendarSync(
   }
 
   const durationMins = applicant.bookedSlot?.durationMins ?? 30;
-  const eventId = await updateOrCreateInterviewCalendarEvent(
+  const sync = await updateOrCreateInterviewCalendarEvent(
     applicant,
     applicant.jobPosting.titleEn,
     applicant.stage,
@@ -1230,16 +1258,16 @@ export async function retryInterviewCalendarSync(
     durationMins,
     applicant.bookedSlot?.calendarEventId ?? null
   );
-  if (!eventId) {
-    return { ok: false, error: "The calendar still couldn't be reached — please try again shortly." };
-  }
   if (applicant.bookedSlot) {
     await prisma.interviewAvailabilitySlot.update({
       where: { id: applicant.bookedSlot.id },
-      data: { calendarEventId: eventId },
+      data: { calendarEventId: sync.eventId, calendarSyncFailedAt: sync.syncFailed ? new Date() : null },
     });
   }
-  return { ok: true, eventId };
+  if (sync.syncFailed || !sync.eventId) {
+    return { ok: false, error: "The calendar still couldn't be reached — please try again shortly." };
+  }
+  return { ok: true, eventId: sync.eventId };
 }
 
 // Emails the applicant a warm confirmation the moment an interview is
@@ -2223,7 +2251,7 @@ export async function rescheduleAssignedInterview(
     include: { jobPosting: { select: { titleEn: true, titleEs: true } } },
   });
 
-  const eventId = await updateOrCreateInterviewCalendarEvent(
+  const sync = await updateOrCreateInterviewCalendarEvent(
     updated,
     updated.jobPosting.titleEn,
     stage,
@@ -2232,9 +2260,10 @@ export async function rescheduleAssignedInterview(
     durationMins,
     oldEventId
   );
-  if (eventId) {
-    await prisma.interviewAvailabilitySlot.update({ where: { id: newSlotId }, data: { calendarEventId: eventId } });
-  }
+  await prisma.interviewAvailabilitySlot.update({
+    where: { id: newSlotId },
+    data: { calendarEventId: sync.eventId, calendarSyncFailedAt: sync.syncFailed ? new Date() : null },
+  });
 
   await sendInterviewConfirmationEmail(
     updated,

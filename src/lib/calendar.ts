@@ -12,6 +12,31 @@ export function isCalendarConfigured(
   return Boolean(mailbox);
 }
 
+export type CalendarSyncProblem = "missing" | "stale" | null;
+
+// Decides what (if anything) the applicant dashboard's calendar banner
+// should show, from the booked slot's own two columns — pure and
+// parameterized (same reasoning as isCalendarConfigured/isZoomConfigured)
+// so it's directly unit-testable without a live calendar integration.
+// "missing": no event id at all (every create attempt has failed so far).
+// "stale": an id exists, but the last sync attempt failed for a reason
+// other than a confirmed 404 — the real calendar may still show the
+// previous time/body, but retrying targets this exact same event rather
+// than ever creating a second one (see updateOrCreateInterviewCalendarEvent
+// and retryInterviewCalendarSync in src/lib/recruiting.ts).
+export function describeCalendarSyncProblem(params: {
+  calendarConfigured: boolean;
+  bookedSlot:
+    | { calendarEventId: string | null; calendarSyncFailedAt: Date | null }
+    | null
+    | undefined;
+}): CalendarSyncProblem {
+  if (!params.calendarConfigured || !params.bookedSlot) return null;
+  if (!params.bookedSlot.calendarEventId) return "missing";
+  if (params.bookedSlot.calendarSyncFailedAt) return "stale";
+  return null;
+}
+
 // Creates an event on a real (licensed, non-shared) mailbox's Outlook
 // calendar via Microsoft Graph, using the same app registration as email
 // sending — requires the app to also have the Calendars.ReadWrite
@@ -107,9 +132,9 @@ export async function updateCalendarEvent({
   // existing Location field as-is; pass the current address explicitly on
   // every in-person reschedule, same as body/subject already are.
   location?: string;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+}): Promise<{ ok: true } | { ok: false; error: string; notFound: boolean }> {
   const token = await getGraphAccessToken();
-  if (!token.ok) return token;
+  if (!token.ok) return { ...token, notFound: false };
 
   const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
 
@@ -135,6 +160,12 @@ export async function updateCalendarEvent({
     return {
       ok: false,
       error: `Microsoft Graph calendar event update failed: ${await res.text()}`,
+      // Only a confirmed 404 means the event is actually gone — safe for a
+      // caller to create a replacement. Anything else (429 throttling, a
+      // 401/403 auth hiccup, a 5xx) is ambiguous: the original event may
+      // still be perfectly fine, so a caller must NOT treat this the same
+      // as notFound (see updateOrCreateInterviewCalendarEvent).
+      notFound: res.status === 404,
     };
   }
   return { ok: true };

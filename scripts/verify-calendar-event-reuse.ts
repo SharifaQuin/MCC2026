@@ -48,6 +48,12 @@ function fakeFetch(url: string, init?: RequestInit): Promise<Response> {
   if (method === "PATCH" && url.includes("/events/evt-gone-404")) {
     return Promise.resolve(new Response("not found", { status: 404 }));
   }
+  if (method === "PATCH" && url.includes("/events/evt-transient-fail")) {
+    // A non-404 failure (rate-limited here; same handling for a 401/403 or
+    // a 5xx) — deliberately NOT 404, since that's the one status that means
+    // "confirmed gone, safe to replace."
+    return Promise.resolve(new Response("too many requests", { status: 429 }));
+  }
   if (method === "PATCH" && url.includes("/events/evt-new-123")) {
     return Promise.resolve(new Response(JSON.stringify({ id: "evt-new-123" }), { status: 200 }));
   }
@@ -103,10 +109,13 @@ async function main() {
     calls.map((c) => c.method),
     ["PATCH"]
   );
-  check("reschedule with a live existing event reuses the same event id", reschedResult, "evt-original-999");
+  check("reschedule with a live existing event reuses the same event id", reschedResult.eventId, "evt-original-999");
+  check("a successful reschedule reports no sync failure", reschedResult.syncFailed, false);
 
-  // 3. A reschedule whose existing event is gone (404 on PATCH) falls back
-  // to creating a fresh one, rather than silently losing the invite.
+  // 3. A reschedule whose existing event is CONFIRMED gone (a real 404 on
+  // PATCH) falls back to creating a fresh one — the only status that means
+  // "safe to replace," since the original is provably no longer there to
+  // duplicate.
   calls.length = 0;
   const fallbackResult = await updateOrCreateInterviewCalendarEvent(
     applicant,
@@ -118,11 +127,36 @@ async function main() {
     "evt-gone-404"
   );
   check(
-    "reschedule against a gone event tries PATCH then falls back to POST",
+    "reschedule against a confirmed-404 event tries PATCH then falls back to POST",
     calls.map((c) => c.method),
     ["PATCH", "POST"]
   );
-  check("that fallback returns the newly created event's id", fallbackResult, "evt-new-123");
+  check("that fallback returns the newly created event's id", fallbackResult.eventId, "evt-new-123");
+  check("a confirmed-404 replacement reports no sync failure once it succeeds", fallbackResult.syncFailed, false);
+
+  // 3b. A reschedule whose existing event's update fails for a reason OTHER
+  // than a confirmed 404 (rate-limited, an auth hiccup, a 5xx) must NEVER
+  // fall back to creating a replacement — the original event may well
+  // still be fine on the real calendar, and creating a second one here
+  // would be exactly the duplicate-invitation bug this is fixing. The
+  // existing id is preserved and the failure is reported instead.
+  calls.length = 0;
+  const transientResult = await updateOrCreateInterviewCalendarEvent(
+    applicant,
+    "Cleaning Technician",
+    "PHONE_INTERVIEW_SCHEDULED",
+    new Date(Date.now() + 10 * 86_400_000),
+    "ZOOM",
+    30,
+    "evt-transient-fail"
+  );
+  check(
+    "a transient (non-404) update failure PATCHes once and never falls back to POST",
+    calls.map((c) => c.method),
+    ["PATCH"]
+  );
+  check("a transient failure preserves the existing event id, not null", transientResult.eventId, "evt-transient-fail");
+  check("a transient failure reports a sync failure", transientResult.syncFailed, true);
 
   // 4. A fresh booking (no prior event at all — existingEventId null) goes
   // straight to POST, never attempts a PATCH on nothing.
@@ -137,7 +171,8 @@ async function main() {
     null
   );
   check("initial booking (no prior event) issues a POST only", calls.map((c) => c.method), ["POST"]);
-  check("initial booking returns the created event id", initialBooking, "evt-new-123");
+  check("initial booking returns the created event id", initialBooking.eventId, "evt-new-123");
+  check("a successful initial booking reports no sync failure", initialBooking.syncFailed, false);
 
   // 5. An in-person booking's event carries the office address in the
   // Location field (what Outlook shows next to the time), not just in the
@@ -266,6 +301,120 @@ async function main() {
     ok: false,
     error: "Applicant not found.",
   });
+
+  // 12-14. A retry whose update attempt fails transiently (not a confirmed
+  // 404) must come back reporting failure, while still preserving the
+  // existing event id (never nulling it, never creating a second event)
+  // and persisting the failure onto the slot so the dashboard banner
+  // reflects it — this is the exact bug this round fixes.
+  await prisma.interviewAvailabilitySlot.update({
+    where: { id: bookedSlot.id },
+    data: { calendarEventId: "evt-transient-fail", calendarSyncFailedAt: null },
+  });
+  calls.length = 0;
+  const stillFailingRetry = await retryInterviewCalendarSync(retryApplicant.id);
+  check("a retry that still fails transiently reports failure", stillFailingRetry.ok, false);
+  const slotAfterStillFailing = await prisma.interviewAvailabilitySlot.findUniqueOrThrow({ where: { id: bookedSlot.id } });
+  check(
+    "a still-failing retry preserves the existing event id rather than nulling or replacing it",
+    slotAfterStillFailing.calendarEventId,
+    "evt-transient-fail"
+  );
+  check(
+    "a still-failing retry persists the sync failure onto the slot (for the dashboard banner)",
+    slotAfterStillFailing.calendarSyncFailedAt !== null,
+    true
+  );
+  check(
+    "a retry against a known-transient-failing event PATCHes it, never falls back to creating another",
+    calls.map((c) => c.method),
+    ["PATCH"]
+  );
+
+  // Fixing the underlying problem and retrying again clears the failure —
+  // the banner should disappear once the calendar is actually back in sync.
+  await prisma.interviewAvailabilitySlot.update({
+    where: { id: bookedSlot.id },
+    data: { calendarEventId: "evt-original-999" },
+  });
+  calls.length = 0;
+  const recoveredRetry = await retryInterviewCalendarSync(retryApplicant.id);
+  check("a retry against a now-healthy event reports success", recoveredRetry.ok, true);
+  const slotAfterRecovery = await prisma.interviewAvailabilitySlot.findUniqueOrThrow({ where: { id: bookedSlot.id } });
+  check("a successful retry clears the sync-failure flag", slotAfterRecovery.calendarSyncFailedAt, null);
+
+  // 15-18. describeCalendarSyncProblem (src/lib/calendar.ts) — the pure
+  // function deciding what the applicant dashboard's banner shows. No
+  // network or live calendar integration needed: this is exactly why it's
+  // a separate, parameterized function rather than inlined on the page.
+  const { describeCalendarSyncProblem } = await import("../src/lib/calendar");
+  check(
+    "no problem when the calendar feature isn't configured at all, regardless of slot state",
+    describeCalendarSyncProblem({ calendarConfigured: false, bookedSlot: { calendarEventId: null, calendarSyncFailedAt: new Date() } }),
+    null
+  );
+  check(
+    "'missing' when there's no event id at all",
+    describeCalendarSyncProblem({ calendarConfigured: true, bookedSlot: { calendarEventId: null, calendarSyncFailedAt: null } }),
+    "missing"
+  );
+  check(
+    "'stale' when an event id exists but the last sync attempt failed — the exact case this round adds",
+    describeCalendarSyncProblem({
+      calendarConfigured: true,
+      bookedSlot: { calendarEventId: "evt-original-999", calendarSyncFailedAt: new Date() },
+    }),
+    "stale"
+  );
+  check(
+    "no problem when an event id exists and nothing is flagged as failed",
+    describeCalendarSyncProblem({
+      calendarConfigured: true,
+      bookedSlot: { calendarEventId: "evt-original-999", calendarSyncFailedAt: null },
+    }),
+    null
+  );
+
+  // 19-20. The warning actually appears — a real React render of
+  // CalendarSyncBanner (the component the applicant dashboard page uses),
+  // not just the pure decision function above. This sandbox's live
+  // calendar integration can never actually be "configured" (no Microsoft
+  // Graph credentials exist anywhere here), so a live Playwright browser
+  // test can only ever prove the negative case (no banner when the
+  // feature is off, covered in e2e/interview-scheduling-fixes-round3.spec.ts)
+  // — rendering the component directly, the same way it was factored out
+  // specifically to allow, is how the positive "stale" case gets proven.
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const React = await import("react");
+  // This script runs under plain `tsx` (esbuild), not Next's own SWC
+  // pipeline — esbuild falls back to the classic JSX transform for this
+  // tsconfig's "preserve" setting, which compiles JSX to bare
+  // React.createElement calls expecting a free `React` identifier, same as
+  // every other .tsx file in this app relies on Next's SWC (always
+  // automatic-runtime) to supply. Only needed for this ad hoc render; the
+  // real app never needs it.
+  (globalThis as unknown as { React: typeof React }).React = React;
+  const { default: CalendarSyncBanner } = await import(
+    "../src/app/(portal)/recruiting/applicants/[id]/CalendarSyncBanner"
+  );
+  const noopRetry = async () => {};
+  const staleHtml = renderToStaticMarkup(
+    React.createElement(CalendarSyncBanner, { problem: "stale", applicantId: "x", canEdit: true, retryAction: noopRetry })
+  );
+  check("the 'stale' banner actually renders the sync-failed warning text", staleHtml.includes("Calendar sync failed"), true);
+  check("the 'stale' banner does not render the 'invite missing' text", staleHtml.includes("Calendar invite missing"), false);
+  check("the 'stale' banner renders the Retry button", staleHtml.includes("Retry calendar sync"), true);
+
+  const missingHtml = renderToStaticMarkup(
+    React.createElement(CalendarSyncBanner, { problem: "missing", applicantId: "x", canEdit: true, retryAction: noopRetry })
+  );
+  check("the 'missing' banner renders the invite-missing warning text", missingHtml.includes("Calendar invite missing"), true);
+  check("the 'missing' banner does not render the sync-failed text", missingHtml.includes("Calendar sync failed"), false);
+
+  const noProblemHtml = renderToStaticMarkup(
+    React.createElement(CalendarSyncBanner, { problem: null, applicantId: "x", canEdit: true, retryAction: noopRetry })
+  );
+  check("no problem renders nothing at all", noProblemHtml, "");
 
   await prisma.interviewAvailabilitySlot.deleteMany({ where: { interviewerId: interviewer.id } });
   await prisma.applicant.delete({ where: { id: retryApplicant.id } });

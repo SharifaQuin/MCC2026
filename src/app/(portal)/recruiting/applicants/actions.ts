@@ -199,7 +199,7 @@ export async function setApplicantStageAction(
   // require. The Zoom-config check above still refuses outright rather
   // than ever sending a join link with no real way to connect.
   if (scheduledAtDate) {
-    const eventId = await updateOrCreateInterviewCalendarEvent(
+    const sync = await updateOrCreateInterviewCalendarEvent(
       applicant,
       applicant.jobPosting.titleEn,
       stage,
@@ -208,8 +208,11 @@ export async function setApplicantStageAction(
       claimedDurationMins,
       oldEventId
     );
-    if (eventId && claimedSlotId) {
-      await prisma.interviewAvailabilitySlot.update({ where: { id: claimedSlotId }, data: { calendarEventId: eventId } });
+    if (claimedSlotId) {
+      await prisma.interviewAvailabilitySlot.update({
+        where: { id: claimedSlotId },
+        data: { calendarEventId: sync.eventId, calendarSyncFailedAt: sync.syncFailed ? new Date() : null },
+      });
     }
     await sendInterviewConfirmationEmail(
       applicant,

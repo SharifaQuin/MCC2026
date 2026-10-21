@@ -1017,6 +1017,18 @@ model InterviewAvailabilitySlot {
   // (see src/lib/calendar.ts) — lets a reschedule update the same event in
   // place instead of leaving a stale duplicate on the shared calendar.
   calendarEventId String?
+  // Set the moment updateOrCreateInterviewCalendarEvent's update attempt
+  // fails for a reason OTHER than a confirmed 404 (throttling, an
+  // authorization error, a thrown network error) — calendarEventId is
+  // deliberately preserved (not nulled/replaced) in that case, since the
+  // existing event may well still be fine on the real calendar and
+  // creating a second one on a mere transient failure would risk a genuine
+  // duplicate invitation. Cleared back to null the next time a sync
+  // attempt (an ordinary reschedule, or the dashboard's own Retry button —
+  // see retryInterviewCalendarSync) actually succeeds. See
+  // describeCalendarSyncProblem (src/lib/calendar.ts) for how this and
+  // calendarEventId together decide what the applicant dashboard shows.
+  calendarSyncFailedAt DateTime?
   // startsAt/durationMins padded by the booking interviewer's own buffer
   // settings at the moment this row was claimed (see claimSlotAtomically in
   // lib/recruiting.ts) — the range two database EXCLUDE constraints (added
