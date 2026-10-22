@@ -5,6 +5,10 @@ import { STAGE_LABELS, SCHEDULING_STAGES, INTERVIEW_SCORECARD_COMPETENCIES, DEFA
 import { getMessageTemplates } from "@/lib/messageTemplates";
 import { formatInBusinessTimezone } from "@/lib/timezone";
 import { formatPhone } from "@/lib/formatPhone";
+import { isCalendarConfigured, describeCalendarSyncProblem } from "@/lib/calendar";
+import { getZoomJoinInfo } from "@/lib/recruitingZoom";
+import { retryInterviewCalendarSyncAction } from "../actions";
+import CalendarSyncBanner from "./CalendarSyncBanner";
 import StageControls from "./StageControls";
 import InterviewDecisionPanel from "./InterviewDecisionPanel";
 import CommunicationPanel from "./CommunicationPanel";
@@ -61,6 +65,7 @@ export default async function ApplicantDetailPage({
         orderBy: { createdAt: "desc" },
         include: { completedBy: { select: { name: true } } },
       },
+      bookedSlot: { select: { id: true, calendarEventId: true, calendarSyncFailedAt: true } },
     },
   });
 
@@ -71,6 +76,16 @@ export default async function ApplicantDetailPage({
   const messageTemplates = await getMessageTemplates("RECRUITING");
   const onboardingChecklist =
     applicant.stage === "HIRED" ? await getOnboardingChecklist(applicant.id) : [];
+  const zoomJoinInfo = getZoomJoinInfo();
+  const calendarProblem =
+    applicant.scheduledAt &&
+    (SCHEDULING_STAGES as string[]).includes(applicant.stage) &&
+    !applicant.interviewCantMakeItAt
+      ? describeCalendarSyncProblem({
+          calendarConfigured: isCalendarConfigured(),
+          bookedSlot: applicant.bookedSlot,
+        })
+      : null;
 
   // Stamp "viewed" once, the first time anyone opens this profile — a
   // persistent marker distinct from moving them through the pipeline.
@@ -428,6 +443,23 @@ export default async function ApplicantDetailPage({
           )}
         </div>
       )}
+
+      <CalendarSyncBanner
+        problem={calendarProblem}
+        applicantId={applicant.id}
+        canEdit={canEdit}
+        retryAction={retryInterviewCalendarSyncAction}
+      />
+
+      {applicant.scheduledAt &&
+        (SCHEDULING_STAGES as string[]).includes(applicant.stage) &&
+        applicant.interviewFormat === "ZOOM" &&
+        zoomJoinInfo && (
+          <div className="mt-2 rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-700">
+            Shared Zoom room (same link sent to the candidate): {zoomJoinInfo.link}
+            {zoomJoinInfo.passcode ? ` · Passcode: ${zoomJoinInfo.passcode}` : ""}
+          </div>
+        )}
 
       <div className="mb-6 mt-2 flex items-start justify-between">
         <div>

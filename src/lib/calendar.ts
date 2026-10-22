@@ -1,5 +1,42 @@
 import { getGraphAccessToken } from "@/lib/msGraph";
 
+// Whether a mailbox is configured to put interviews on a real calendar at
+// all — distinct from a calendar *failure*. No mailbox configured means the
+// feature is intentionally off (every caller already no-ops in that case,
+// same as isZoomConfigured's reasoning); a configured mailbox whose create/
+// update call still fails is the actual problem worth surfacing to staff.
+// Parameterized (not inlined) so it's directly unit-testable.
+export function isCalendarConfigured(
+  mailbox: string | undefined = process.env.RECRUITING_CALENDAR_MAILBOX
+): boolean {
+  return Boolean(mailbox);
+}
+
+export type CalendarSyncProblem = "missing" | "stale" | null;
+
+// Decides what (if anything) the applicant dashboard's calendar banner
+// should show, from the booked slot's own two columns — pure and
+// parameterized (same reasoning as isCalendarConfigured/isZoomConfigured)
+// so it's directly unit-testable without a live calendar integration.
+// "missing": no event id at all (every create attempt has failed so far).
+// "stale": an id exists, but the last sync attempt failed for a reason
+// other than a confirmed 404 — the real calendar may still show the
+// previous time/body, but retrying targets this exact same event rather
+// than ever creating a second one (see updateOrCreateInterviewCalendarEvent
+// and retryInterviewCalendarSync in src/lib/recruiting.ts).
+export function describeCalendarSyncProblem(params: {
+  calendarConfigured: boolean;
+  bookedSlot:
+    | { calendarEventId: string | null; calendarSyncFailedAt: Date | null }
+    | null
+    | undefined;
+}): CalendarSyncProblem {
+  if (!params.calendarConfigured || !params.bookedSlot) return null;
+  if (!params.bookedSlot.calendarEventId) return "missing";
+  if (params.bookedSlot.calendarSyncFailedAt) return "stale";
+  return null;
+}
+
 // Creates an event on a real (licensed, non-shared) mailbox's Outlook
 // calendar via Microsoft Graph, using the same app registration as email
 // sending — requires the app to also have the Calendars.ReadWrite
@@ -13,6 +50,7 @@ export async function createCalendarEvent({
   startsAt,
   durationMinutes = 30,
   body,
+  location,
   attendeeEmail,
   attendeeName,
 }: {
@@ -21,9 +59,14 @@ export async function createCalendarEvent({
   startsAt: Date;
   durationMinutes?: number;
   body: string;
+  // Plain address text for an in-person interview — populates the event's
+  // own Location field (what actually shows next to the time in Outlook/
+  // calendar apps), separate from and in addition to the body text.
+  // Omitted entirely for a Zoom interview.
+  location?: string;
   attendeeEmail: string;
   attendeeName: string;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+}): Promise<{ ok: true; eventId: string } | { ok: false; error: string }> {
   const token = await getGraphAccessToken();
   if (!token.ok) return token;
 
@@ -42,6 +85,7 @@ export async function createCalendarEvent({
         body: { contentType: "Text", content: body },
         start: { dateTime: startsAt.toISOString(), timeZone: "UTC" },
         end: { dateTime: endsAt.toISOString(), timeZone: "UTC" },
+        ...(location ? { location: { displayName: location } } : {}),
         attendees: [
           {
             emailAddress: { address: attendeeEmail, name: attendeeName },
@@ -56,6 +100,101 @@ export async function createCalendarEvent({
     return {
       ok: false,
       error: `Microsoft Graph calendar event creation failed: ${await res.text()}`,
+    };
+  }
+  const created = (await res.json()) as { id: string };
+  return { ok: true, eventId: created.id };
+}
+
+// Moves an existing event (created by createCalendarEvent, whose id was
+// saved) to a new time and refreshes its body — used on a reschedule so the
+// shared calendar shows one updated event rather than a stale duplicate
+// alongside a new one. Best-effort, same conventions as createCalendarEvent:
+// never throws, callers decide whether to fall back to creating a fresh
+// event when this fails (e.g. the original event or mailbox no longer
+// exists).
+export async function updateCalendarEvent({
+  mailbox,
+  eventId,
+  subject,
+  startsAt,
+  durationMinutes = 30,
+  body,
+  location,
+}: {
+  mailbox: string;
+  eventId: string;
+  subject?: string;
+  startsAt: Date;
+  durationMinutes?: number;
+  body?: string;
+  // See createCalendarEvent's `location` — omitted leaves the event's
+  // existing Location field as-is; pass the current address explicitly on
+  // every in-person reschedule, same as body/subject already are.
+  location?: string;
+}): Promise<{ ok: true } | { ok: false; error: string; notFound: boolean }> {
+  const token = await getGraphAccessToken();
+  if (!token.ok) return { ...token, notFound: false };
+
+  const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
+
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/events/${encodeURIComponent(eventId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...(subject ? { subject } : {}),
+        ...(body ? { body: { contentType: "Text", content: body } } : {}),
+        ...(location ? { location: { displayName: location } } : {}),
+        start: { dateTime: startsAt.toISOString(), timeZone: "UTC" },
+        end: { dateTime: endsAt.toISOString(), timeZone: "UTC" },
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    return {
+      ok: false,
+      error: `Microsoft Graph calendar event update failed: ${await res.text()}`,
+      // Only a confirmed 404 means the event is actually gone — safe for a
+      // caller to create a replacement. Anything else (429 throttling, a
+      // 401/403 auth hiccup, a 5xx) is ambiguous: the original event may
+      // still be perfectly fine, so a caller must NOT treat this the same
+      // as notFound (see updateOrCreateInterviewCalendarEvent).
+      notFound: res.status === 404,
+    };
+  }
+  return { ok: true };
+}
+
+// Cancels/removes a previously created event — used wherever an interview is
+// cancelled outright rather than rescheduled. Best-effort, never throws.
+export async function deleteCalendarEvent({
+  mailbox,
+  eventId,
+}: {
+  mailbox: string;
+  eventId: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const token = await getGraphAccessToken();
+  if (!token.ok) return token;
+
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/events/${encodeURIComponent(eventId)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token.accessToken}` },
+    }
+  );
+
+  if (!res.ok && res.status !== 404) {
+    return {
+      ok: false,
+      error: `Microsoft Graph calendar event deletion failed: ${await res.text()}`,
     };
   }
   return { ok: true };

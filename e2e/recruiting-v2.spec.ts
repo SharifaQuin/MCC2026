@@ -22,6 +22,36 @@ async function loginAsAdmin(page: Page) {
 }
 
 test.describe.serial("Recruiting 2.0 acceptance", () => {
+  let adminId: string;
+
+  test.beforeAll(async () => {
+    const admin = await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL }, select: { id: true } });
+    adminId = admin.id;
+    // The Recruiting Inbox's self-schedule invite now assigns a real
+    // interviewer + format (Recruiting is built around per-interviewer
+    // availability) rather than an interviewer-agnostic flat slot — give
+    // the admin account itself configured hours so this suite's invite/
+    // booking chain has a real interviewer to pick, same as any other
+    // staffer would need before they show up in that picker.
+    const availability = await prisma.interviewerAvailability.create({
+      data: {
+        interviewerId: adminId,
+        timezone: "America/Los_Angeles",
+        durationMins: 30,
+        supportsZoom: false,
+        supportsInPerson: true,
+      },
+    });
+    await prisma.availabilityWeeklyHour.createMany({
+      data: Array.from({ length: 7 }, (_, dayOfWeek) => ({
+        availabilityId: availability.id,
+        dayOfWeek,
+        startMinute: 0,
+        endMinute: 23 * 60 + 30,
+      })),
+    });
+  });
+
   test.afterAll(async () => {
     // Leave the toggle exactly as this suite found it (v1/default) and
     // remove every trace of the test applicant + any slot it consumed.
@@ -39,6 +69,9 @@ test.describe.serial("Recruiting 2.0 acceptance", () => {
     await prisma.interviewAvailabilitySlot.deleteMany({
       where: { startsAt: { gte: new Date(Number(RUN_ID)) } },
     });
+    await prisma.availabilityWeeklyHour.deleteMany({ where: { availability: { interviewerId: adminId } } });
+    await prisma.availabilityDateException.deleteMany({ where: { availability: { interviewerId: adminId } } });
+    await prisma.interviewerAvailability.deleteMany({ where: { interviewerId: adminId } });
     await prisma.$disconnect();
   });
 
@@ -157,25 +190,26 @@ test.describe.serial("Recruiting 2.0 acceptance", () => {
     // "Invite to Interview" is now the secondary self-schedule option — the
     // primary action on this card is "Schedule Zoom Interview" (direct
     // booking), added for Office Assistant use. This test still exercises
-    // the original self-schedule invite flow end to end.
+    // the original self-schedule invite flow end to end — now through the
+    // interviewer + format picker (Recruiting is built around each
+    // interviewer's own availability, never inferred).
     await card.locator('button:has-text("Or send a self-schedule invite instead")').click();
+    await card.locator("select").first().selectOption({ label: "Shar" });
+    await card.locator("select").nth(1).selectOption("IN_PERSON");
+    await card.locator('button:has-text("Send Invite")').click();
     await expect(card).not.toBeVisible({ timeout: 10_000 });
 
     const applicant = await prisma.applicant.findFirst({ where: { email: APPLICANT_EMAIL } });
     expect(applicant?.stage).toBe("INTERVIEW_INVITE_SENT");
     expect(applicant?.interviewConfirmToken).toBeTruthy();
+    expect(applicant?.interviewerId).toBe(adminId);
+    expect(applicant?.interviewFormat).toBe("IN_PERSON");
   });
 
   test("Shar can add an interview slot and the candidate can book it", async ({ page }) => {
-    const slotDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-
-    await loginAsAdmin(page);
-    await page.goto("/recruiting/availability");
-    await page.fill('input[name="slotDate"]', slotDate);
-    await page.fill('input[name="slotTime"]', "10:00");
-    await page.click('button:has-text("Add Slot")');
-    await page.waitForLoadState("networkidle");
-
+    // No separate "add a slot" step needed any more — the booking page now
+    // generates open times straight from the assigned interviewer's
+    // (Shar's, set up in beforeAll) recurring availability.
     const applicant = await prisma.applicant.findFirst({ where: { email: APPLICANT_EMAIL } });
     expect(applicant).not.toBeNull();
 

@@ -1,13 +1,15 @@
 import { prisma } from "@/lib/prisma";
-import type { ApplicantStage, Prisma } from "@prisma/client";
+import type { ApplicantStage, InterviewFormat, Prisma } from "@prisma/client";
 import { sendEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
 import { generateInviteToken } from "@/lib/tokens";
 import { generateNextEmployeeId } from "@/lib/employeeId";
-import { createCalendarEvent } from "@/lib/calendar";
-import { formatInBusinessTimezone } from "@/lib/timezone";
+import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, isCalendarConfigured } from "@/lib/calendar";
+import { formatInBusinessTimezone, businessDateKey } from "@/lib/timezone";
 import { postSlackDMToOwner } from "@/lib/slack";
 import { assignDefaultOnboardingDocuments } from "@/lib/onboarding";
+import { isZoomConfigured, getZoomJoinInfo } from "@/lib/recruitingZoom";
+import { computeAvailableSlots, getAvailabilityForInterviewer } from "@/lib/interviewerAvailability";
 
 // Categories whose answers count toward pass/fail. REQUIRED/QUALIFICATION
 // are the same behavior under two names (see PrescreenQuestionCategory) —
@@ -916,7 +918,7 @@ export async function sendApplicantAcknowledgmentEmail(
   ].join("\n");
 
   try {
-    const result = await sendEmail({ to: applicant.email, subject, body });
+    const result = await sendEmail({ to: applicant.email, subject, body, replyTo: recruitingReplyToEmail() });
     await prisma.communicationLog.create({
       data: {
         applicantId: applicant.id,
@@ -975,6 +977,50 @@ export const SCHEDULING_STAGES: ApplicantStage[] = [
   "IN_PERSON_SCHEDULED",
 ];
 
+// The format is the actual scheduling fact (what to send/where to point the
+// candidate); `stage` is just the pipeline-board label. Every *new*
+// appointment carries its own explicit interviewFormat, set once at invite/
+// booking time and preserved across a reschedule — this fallback exists
+// only for appointments booked before that field existed, so old records
+// keep behaving exactly as they did (Zoom stage → Zoom content, everything
+// else → in-person content).
+// LIMITATION (tracked, not fixed by this change): this fallback can only
+// ever guess from the *current* stage. A legacy record (interviewFormat
+// still null) whose stage was later hand-corrected, or whose original
+// booking predates both this field and today's stage conventions, has no
+// way to recover its *actual* original format from this alone — a
+// genuinely misclassified legacy row (e.g. an interview that was really
+// conducted over Zoom but is sitting on a stage this resolves to
+// IN_PERSON, or vice versa) will keep being misclassified by every
+// reminder/content choice this drives, including for Office Assistant
+// (Pedro) interviews booked before this PR. See
+// scripts/audit-legacy-interview-format.ts for a read-only audit that
+// cross-checks each such record's historical sent content (what was
+// actually emailed/texted) against what this function would compute for
+// it today, to find real mismatches — run it against production before
+// relying on self-service reschedule/reminders for any legacy record it
+// flags. This function never changes data and this PR never runs that
+// script against production; remediating a flagged record (if any) is a
+// manual, reviewed, separate step — never an automatic correction or an
+// unprompted candidate message.
+export function resolveInterviewFormat(
+  stage: ApplicantStage,
+  explicitFormat: InterviewFormat | null | undefined
+): InterviewFormat {
+  return explicitFormat ?? (stage === "PHONE_INTERVIEW_SCHEDULED" ? "ZOOM" : "IN_PERSON");
+}
+
+// Every applicant-facing email's Reply-To — a candidate's reply always
+// lands in the shared Info inbox, never whichever mailbox technically sent
+// it (MS_GRAPH_SENDER_EMAIL) and never a specific staffer. Falls back to
+// the sending mailbox only if RECRUITING_NOTIFY_EMAIL isn't set, same
+// fallback every other recruiting notification already uses — see
+// .env.example. Sales' own quote Reply-To/BCC (src/app/api/sales/
+// send-quote/route.ts) is entirely separate and untouched by this.
+export function recruitingReplyToEmail(): string | undefined {
+  return process.env.RECRUITING_NOTIFY_EMAIL || process.env.MS_GRAPH_SENDER_EMAIL || undefined;
+}
+
 export interface InterviewLogistics {
   address: string;
   phone: string;
@@ -1021,10 +1067,12 @@ export async function scheduleInterviewCalendarEvent(
   applicant: { firstName: string; lastName: string; email: string; phone: string },
   jobPostingTitle: string,
   stage: ApplicantStage,
-  scheduledAt: Date
-) {
+  scheduledAt: Date,
+  format: InterviewFormat = resolveInterviewFormat(stage, null),
+  durationMins = 30
+): Promise<string | null> {
   const calendarMailbox = process.env.RECRUITING_CALENDAR_MAILBOX;
-  if (!calendarMailbox) return;
+  if (!calendarMailbox) return null;
 
   const bodyLines = [
     `Interview with ${applicant.firstName} ${applicant.lastName} for ${jobPostingTitle}.`,
@@ -1033,55 +1081,228 @@ export async function scheduleInterviewCalendarEvent(
     `Email: ${applicant.email}`,
   ];
 
-  // Zoom only makes sense for the phone/video stage, not an in-person one.
-  if (stage === "PHONE_INTERVIEW_SCHEDULED") {
-    const zoomPmi = process.env.RECRUITING_ZOOM_PMI;
-    const zoomLink = zoomPmi
-      ? `https://zoom.us/j/${zoomPmi.replace(/\D/g, "")}`
-      : process.env.RECRUITING_ZOOM_LINK;
-    if (zoomLink) {
-      bodyLines.push("", `Join Zoom: ${zoomLink}`);
-      const zoomPasscode = process.env.RECRUITING_ZOOM_PASSCODE;
-      if (zoomPasscode) bodyLines.push(`Passcode: ${zoomPasscode}`);
+  let location: string | undefined;
+  if (format === "ZOOM") {
+    const zoomJoin = getZoomJoinInfo();
+    if (zoomJoin) {
+      bodyLines.push("", `Join Zoom: ${zoomJoin.link}`);
+      if (zoomJoin.passcode) bodyLines.push(`Passcode: ${zoomJoin.passcode}`);
     }
+  } else {
+    // In-person — the office address belongs on the event itself (the
+    // Location field shown right next to the time in Outlook/calendar
+    // apps, not just in the candidate's own confirmation email), plus the
+    // full arrival instructions in the body for whoever's conducting it.
+    const logistics = await getInterviewLogistics();
+    location = logistics.address.replace(/\n/g, ", ");
+    bodyLines.push(
+      "",
+      "📍 Location:",
+      logistics.address,
+      "",
+      `📞 Contact: ${logistics.phone}`,
+      "",
+      "Arrival instructions:",
+      logistics.arrivalInstructionsEn
+    );
   }
 
   try {
-    await createCalendarEvent({
+    const result = await createCalendarEvent({
       mailbox: calendarMailbox,
       subject: `${STAGE_LABELS[stage]} — ${applicant.firstName} ${applicant.lastName}`,
       startsAt: scheduledAt,
+      durationMinutes: durationMins,
       body: bodyLines.join("\n"),
+      location,
       attendeeEmail: applicant.email,
       attendeeName: `${applicant.firstName} ${applicant.lastName}`,
     });
+    return result.ok ? result.eventId : null;
   } catch {
     // Swallow — a calendar failure shouldn't block the stage move.
+    return null;
   }
+}
+
+// Moves a previously-created calendar event (see scheduleInterviewCalendarEvent's
+// returned id) to a new time/body instead of leaving a stale duplicate on the
+// shared calendar — used by a reschedule. Falls back to creating a fresh
+// event if the update fails (e.g. the original event or mailbox is gone).
+export interface CalendarSyncResult {
+  eventId: string | null;
+  // True whenever the calendar feature is configured but this attempt
+  // didn't fully succeed — either no event exists at all (eventId null) or
+  // an existing one's update failed for a non-404 reason (eventId
+  // preserved, unchanged). False when the feature isn't configured at all
+  // (nothing to report) or the sync genuinely succeeded.
+  syncFailed: boolean;
+}
+
+export async function updateOrCreateInterviewCalendarEvent(
+  applicant: { firstName: string; lastName: string; email: string; phone: string },
+  jobPostingTitle: string,
+  stage: ApplicantStage,
+  scheduledAt: Date,
+  format: InterviewFormat,
+  durationMins: number,
+  existingEventId: string | null
+): Promise<CalendarSyncResult> {
+  const calendarMailbox = process.env.RECRUITING_CALENDAR_MAILBOX;
+  if (!calendarMailbox || !existingEventId) {
+    const eventId = await scheduleInterviewCalendarEvent(applicant, jobPostingTitle, stage, scheduledAt, format, durationMins);
+    return { eventId, syncFailed: calendarMailbox ? eventId === null : false };
+  }
+
+  const bodyLines = [
+    `Interview with ${applicant.firstName} ${applicant.lastName} for ${jobPostingTitle}.`,
+    "",
+    `Phone: ${applicant.phone}`,
+    `Email: ${applicant.email}`,
+  ];
+  let location: string | undefined;
+  if (format === "ZOOM") {
+    const zoomJoin = getZoomJoinInfo();
+    if (zoomJoin) {
+      bodyLines.push("", `Join Zoom: ${zoomJoin.link}`);
+      if (zoomJoin.passcode) bodyLines.push(`Passcode: ${zoomJoin.passcode}`);
+    }
+  } else {
+    // Same in-person logistics as scheduleInterviewCalendarEvent — carried
+    // over on a reschedule too, not just the initial booking.
+    const logistics = await getInterviewLogistics();
+    location = logistics.address.replace(/\n/g, ", ");
+    bodyLines.push(
+      "",
+      "📍 Location:",
+      logistics.address,
+      "",
+      `📞 Contact: ${logistics.phone}`,
+      "",
+      "Arrival instructions:",
+      logistics.arrivalInstructionsEn
+    );
+  }
+
+  try {
+    const result = await updateCalendarEvent({
+      mailbox: calendarMailbox,
+      eventId: existingEventId,
+      subject: `${STAGE_LABELS[stage]} — ${applicant.firstName} ${applicant.lastName}`,
+      startsAt: scheduledAt,
+      durationMinutes: durationMins,
+      body: bodyLines.join("\n"),
+      location,
+    });
+    if (result.ok) return { eventId: existingEventId, syncFailed: false };
+    if (result.notFound) {
+      // Confirmed gone, not just unreachable — safe to create a
+      // replacement, since there's no risk of the original still being out
+      // there to duplicate.
+      const eventId = await scheduleInterviewCalendarEvent(applicant, jobPostingTitle, stage, scheduledAt, format, durationMins);
+      return { eventId, syncFailed: eventId === null };
+    }
+    // Throttling, an auth hiccup, a 5xx — ambiguous, so preserve the known
+    // id rather than risk a genuine duplicate; report the failure so staff
+    // can retry (which re-targets this same event, never creates another).
+    return { eventId: existingEventId, syncFailed: true };
+  } catch {
+    // A thrown error (network failure, timeout) is exactly as ambiguous as
+    // a non-404 Graph error above — same reasoning, same outcome.
+    return { eventId: existingEventId, syncFailed: true };
+  }
+}
+
+// Staff-triggered recovery for the one thing every calendar call above does
+// silently: a create/update that fails (Graph error, the mailbox or app
+// registration misconfigured, a transient outage) just leaves
+// InterviewAvailabilitySlot.calendarEventId null (or, now, an id whose
+// update attempt failed) forever — the stage move and every email/SMS
+// still went out, so nobody would otherwise know the shared calendar
+// itself never got the invite or never got updated. This re-runs the exact
+// same updateOrCreateInterviewCalendarEvent a staffer clicking "Retry
+// calendar sync" (see the applicant dashboard banner) expects:
+// existingEventId is whatever's currently on file, so a slot that already
+// has a live event gets PATCHed in place and one that doesn't gets a
+// single fresh event created — safe to click as many times as needed,
+// never produces a second invitation. Always persists whatever the sync
+// attempt actually produced (the id and whether it's still failing),
+// regardless of outcome, so the dashboard reflects the real current state
+// even when the retry itself didn't fully succeed.
+export async function retryInterviewCalendarSync(
+  applicantId: string
+): Promise<{ ok: true; eventId: string } | { ok: false; error: string }> {
+  const applicant = await prisma.applicant.findUnique({
+    where: { id: applicantId },
+    include: { jobPosting: { select: { titleEn: true } }, bookedSlot: true },
+  });
+  if (!applicant) return { ok: false, error: "Applicant not found." };
+  if (
+    !applicant.scheduledAt ||
+    !applicant.interviewFormat ||
+    !(SCHEDULING_STAGES as string[]).includes(applicant.stage)
+  ) {
+    return { ok: false, error: "This applicant has no active scheduled interview to sync." };
+  }
+  if (!isCalendarConfigured()) {
+    return { ok: false, error: "The shared calendar isn't configured." };
+  }
+
+  const durationMins = applicant.bookedSlot?.durationMins ?? 30;
+  const sync = await updateOrCreateInterviewCalendarEvent(
+    applicant,
+    applicant.jobPosting.titleEn,
+    applicant.stage,
+    applicant.scheduledAt,
+    applicant.interviewFormat,
+    durationMins,
+    applicant.bookedSlot?.calendarEventId ?? null
+  );
+  if (applicant.bookedSlot) {
+    await prisma.interviewAvailabilitySlot.update({
+      where: { id: applicant.bookedSlot.id },
+      data: { calendarEventId: sync.eventId, calendarSyncFailedAt: sync.syncFailed ? new Date() : null },
+    });
+  }
+  if (sync.syncFailed || !sync.eventId) {
+    return { ok: false, error: "The calendar still couldn't be reached — please try again shortly." };
+  }
+  return { ok: true, eventId: sync.eventId };
 }
 
 // Emails the applicant a warm confirmation the moment an interview is
 // scheduled — separate from the Outlook calendar invite, and specifically
 // so it lands as a tracked entry in their communication thread, letting
 // staff see (and search) that this went out without having to check Outlook.
-// Best-effort: never blocks or throws, since an email failure shouldn't
-// undo the stage move.
+// For a Zoom interview, also fires an immediate text confirmation (same
+// joining details as the email, from the one shared getZoomJoinInfo source)
+// — whether the booking came from a staffer (setApplicantStageAction) or
+// the candidate's own self-service booking/reschedule page, since every one
+// of those paths calls this same function. In-person gets no text here
+// (address/arrival instructions don't fit well in an SMS and the email
+// already carries them); the day/hour reminders still text everyone.
+// Best-effort per channel: neither ever blocks or throws, since a
+// notification failure shouldn't undo the stage move.
 export async function sendInterviewConfirmationEmail(
-  applicant: { id: string; firstName: string; lastName: string; email: string },
+  applicant: { id: string; firstName: string; lastName: string; email: string; phone: string },
   jobPostingTitle: string,
   stage: ApplicantStage,
   scheduledAt: Date,
   // Optional — null when a candidate books their own slot via Recruiting
   // 2.0's self-service booking page rather than a staffer picking a time.
   loggedById: string | null | undefined,
-  jobPostingTitleEs?: string | null
+  jobPostingTitleEs?: string | null,
+  // Explicit, authoritative format — see resolveInterviewFormat. Defaults
+  // to the stage-based guess only for call sites that predate this field.
+  format: InterviewFormat = resolveInterviewFormat(stage, null)
 ) {
   const whenText = `${formatInBusinessTimezone(scheduledAt)} Pacific Time`;
 
   let subject: string;
   let body: string;
+  let smsBody: string | null = null;
 
-  if (stage === "PHONE_INTERVIEW_SCHEDULED") {
+  if (format === "ZOOM") {
     const bodyLines = [
       `Hi ${applicant.firstName},`,
       "",
@@ -1090,20 +1311,25 @@ export async function sendInterviewConfirmationEmail(
       `When: ${whenText}`,
     ];
 
-    const zoomPmi = process.env.RECRUITING_ZOOM_PMI;
-    const zoomLink = zoomPmi
-      ? `https://zoom.us/j/${zoomPmi.replace(/\D/g, "")}`
-      : process.env.RECRUITING_ZOOM_LINK;
-    if (zoomLink) {
-      bodyLines.push(`Zoom link: ${zoomLink}`);
-      const zoomPasscode = process.env.RECRUITING_ZOOM_PASSCODE;
-      if (zoomPasscode) bodyLines.push(`Passcode: ${zoomPasscode}`);
+    const zoomJoin = getZoomJoinInfo();
+    if (zoomJoin) {
+      bodyLines.push(`Zoom link: ${zoomJoin.link}`);
+      if (zoomJoin.passcode) bodyLines.push(`Passcode: ${zoomJoin.passcode}`);
     }
 
     bodyLines.push("", "See you soon!", "", "Mama's Cleaning Crew");
 
     subject = `Your interview with Mama's Cleaning Crew — ${whenText}`;
     body = bodyLines.join("\n");
+
+    const smsLines = [
+      `Mama's Cleaning Crew: you're booked! Your phone interview for ${jobPostingTitle} is confirmed for ${whenText}.`,
+    ];
+    if (zoomJoin) {
+      smsLines.push(`Join Zoom: ${zoomJoin.link}`);
+      if (zoomJoin.passcode) smsLines.push(`Passcode: ${zoomJoin.passcode}`);
+    }
+    smsBody = smsLines.join(" ");
   } else {
     // In-person invite — bilingual (English then Spanish) so it works
     // regardless of which language the applicant prefers, since there's no
@@ -1163,7 +1389,7 @@ export async function sendInterviewConfirmationEmail(
   }
 
   try {
-    const result = await sendEmail({ to: applicant.email, subject, body });
+    const result = await sendEmail({ to: applicant.email, subject, body, replyTo: recruitingReplyToEmail() });
     await prisma.communicationLog.create({
       data: {
         applicantId: applicant.id,
@@ -1190,6 +1416,35 @@ export async function sendInterviewConfirmationEmail(
       },
     });
   }
+
+  if (smsBody) {
+    try {
+      const result = await sendSms({ to: applicant.phone, text: smsBody });
+      await prisma.communicationLog.create({
+        data: {
+          applicantId: applicant.id,
+          channel: "SMS",
+          direction: "OUTBOUND",
+          body: smsBody,
+          status: result.ok ? "SENT" : "FAILED",
+          errorMessage: result.ok ? null : result.error,
+          sentById: loggedById ?? null,
+        },
+      });
+    } catch (error) {
+      await prisma.communicationLog.create({
+        data: {
+          applicantId: applicant.id,
+          channel: "SMS",
+          direction: "OUTBOUND",
+          body: smsBody,
+          status: "FAILED",
+          errorMessage: error instanceof Error ? error.message : "Unknown error",
+          sentById: loggedById ?? null,
+        },
+      });
+    }
+  }
 }
 
 // Fired by interviewReminderScheduler one day before and again one hour
@@ -1212,21 +1467,35 @@ export async function sendInterviewReminder(
   stage: ApplicantStage,
   scheduledAt: Date,
   reminderType: "day" | "hour",
-  jobPostingTitleEs?: string | null
+  jobPostingTitleEs?: string | null,
+  // Explicit, authoritative format — see resolveInterviewFormat. Defaults
+  // to the stage-based guess only for call sites that predate this field.
+  format: InterviewFormat = resolveInterviewFormat(stage, null),
+  // The scheduler's own tick time — defaults to real "now" for every direct
+  // caller/test. The "day" tier fires any time scheduledAt is still within
+  // the next 24h (see interviewReminderScheduler), which very much includes
+  // an interview booked for later *today* — so "tomorrow" was wrong
+  // whenever the calendar day (Pacific) hadn't actually changed yet. The
+  // "hour" tier's "in about an hour" stays correct regardless of calendar
+  // day and is left alone.
+  now: Date = new Date()
 ) {
   const whenText = `${formatInBusinessTimezone(scheduledAt)} Pacific Time`;
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
   const confirmLink = applicant.interviewConfirmToken
     ? `${appUrl}/interview-confirm/${applicant.interviewConfirmToken}`
     : null;
-  const timeframeEn = reminderType === "day" ? "tomorrow" : "in about an hour";
-  const timeframeEs = reminderType === "day" ? "mañana" : "en aproximadamente una hora";
+  const isSameBusinessDay = businessDateKey(scheduledAt) === businessDateKey(now);
+  const timeframeEn =
+    reminderType === "hour" ? "in about an hour" : isSameBusinessDay ? "today" : "tomorrow";
+  const timeframeEs =
+    reminderType === "hour" ? "en aproximadamente una hora" : isSameBusinessDay ? "hoy" : "mañana";
 
   let subject: string;
   let emailBody: string;
   let smsBody: string;
 
-  if (stage === "PHONE_INTERVIEW_SCHEDULED") {
+  if (format === "ZOOM") {
     const bodyLines = [
       `Hi ${applicant.firstName},`,
       "",
@@ -1234,14 +1503,10 @@ export async function sendInterviewReminder(
       "",
       `When: ${whenText}`,
     ];
-    const zoomPmi = process.env.RECRUITING_ZOOM_PMI;
-    const zoomLink = zoomPmi
-      ? `https://zoom.us/j/${zoomPmi.replace(/\D/g, "")}`
-      : process.env.RECRUITING_ZOOM_LINK;
-    if (zoomLink) {
-      bodyLines.push(`Zoom link: ${zoomLink}`);
-      const zoomPasscode = process.env.RECRUITING_ZOOM_PASSCODE;
-      if (zoomPasscode) bodyLines.push(`Passcode: ${zoomPasscode}`);
+    const zoomJoin = getZoomJoinInfo();
+    if (zoomJoin) {
+      bodyLines.push(`Zoom link: ${zoomJoin.link}`);
+      if (zoomJoin.passcode) bodyLines.push(`Passcode: ${zoomJoin.passcode}`);
     }
     if (confirmLink) bodyLines.push("", `Please confirm you'll be joining: ${confirmLink}`);
     bodyLines.push("", "See you soon!", "", "Mama's Cleaning Crew");
@@ -1252,6 +1517,10 @@ export async function sendInterviewReminder(
     const smsLines = [
       `Mama's Cleaning Crew: reminder that your phone interview for ${jobPostingTitle} is ${timeframeEn} (${whenText}).`,
     ];
+    if (zoomJoin) {
+      smsLines.push(`Join Zoom: ${zoomJoin.link}`);
+      if (zoomJoin.passcode) smsLines.push(`Passcode: ${zoomJoin.passcode}`);
+    }
     if (confirmLink) smsLines.push(`Please confirm: ${confirmLink}`);
     smsBody = smsLines.join(" ");
   } else {
@@ -1304,7 +1573,7 @@ export async function sendInterviewReminder(
   }
 
   try {
-    const result = await sendEmail({ to: applicant.email, subject, body: emailBody });
+    const result = await sendEmail({ to: applicant.email, subject, body: emailBody, replyTo: recruitingReplyToEmail() });
     await prisma.communicationLog.create({
       data: {
         applicantId: applicant.id,
@@ -1437,22 +1706,198 @@ async function notifyStaffCandidateBookedInterview(
   );
 }
 
-// ── Recruiting 2.0: interview availability + self-service booking ──
-// Shar types in specific slots by hand (InterviewAvailabilitySlot) — this
-// is NOT a calendar/availability engine: no recurrence, no external sync,
-// no auto-generation. A candidate invited to interview can only pick from
-// currently-open ones.
+// Fired the moment a candidate reschedules their own interview to a new
+// time — mirrors notifyStaffCandidateBookedInterview so staff never find
+// out about a moved interview only by happening to check the calendar.
+async function notifyStaffCandidateRescheduledInterview(
+  applicant: { id: string; firstName: string; lastName: string },
+  jobPostingTitle: string,
+  scheduledAt: Date
+) {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+  const profileUrl = `${appUrl}/recruiting/applicants/${applicant.id}`;
+  const whenText = `${formatInBusinessTimezone(scheduledAt)} Pacific Time`;
 
-// Fired the moment Shar taps "Invite to Interview" on a qualified
-// applicant. Reuses the existing interviewConfirmToken field as the secure
+  const notifyEmail = process.env.RECRUITING_NOTIFY_EMAIL || process.env.MS_GRAPH_SENDER_EMAIL;
+  if (notifyEmail) {
+    try {
+      await sendEmail({
+        to: notifyEmail,
+        subject: `${applicant.firstName} ${applicant.lastName} rescheduled their interview`,
+        body: [
+          `${applicant.firstName} ${applicant.lastName} moved their own ${jobPostingTitle} interview to ${whenText}.`,
+          "",
+          `View their profile: ${profileUrl}`,
+        ].join("\n"),
+      });
+    } catch {
+      // Swallow — a notification failure should never block the reschedule from being recorded.
+    }
+  }
+
+  await postSlackDMToOwner(
+    [
+      `:calendar: *${applicant.firstName} ${applicant.lastName}* rescheduled their ${jobPostingTitle} interview to ${whenText}.`,
+      `<${profileUrl}|View applicant>`,
+    ].join("\n")
+  );
+}
+
+// ── Recruiting 2.0: interview availability + self-service booking ──
+// Two slot sources coexist: the original flat, admin-typed
+// InterviewAvailabilitySlot list (no interviewer/format concept — kept
+// working exactly as before for any in-flight invite that predates
+// per-interviewer availability), and the newer interviewer-assigned flow
+// below, which generates slots on the fly from InterviewerAvailability
+// (see src/lib/interviewerAvailability.ts) and always carries an explicit
+// interviewer + format.
+
+// Releases (deletes) an applicant's currently booked interview slot, if
+// any, and best-effort cancels its calendar event — used whenever an
+// active interview is being superseded or called off before it happens
+// (a fresh invite replacing an old one, an applicant being rejected while
+// still holding a future appointment) so a stale slot never stays
+// permanently "taken" and an obsolete calendar invite never lingers on the
+// shared calendar. Looks the slot up fresh right before deleting, so a
+// second, racing call (a repeated click, or re-inviting someone who was
+// already released) finds nothing left to release and is a safe no-op —
+// it only ever acts on the one row still attached to this exact
+// applicantId via the bookedById relation, never a different applicant's
+// appointment. A slot whose time has already passed is left completely
+// alone: it can no longer block anything going forward (computeAvailableSlots
+// only ever looks at future bookings) and both its calendar event and its
+// row are the only remaining record that the interview actually happened —
+// deleting either would destroy real history, not clean up stale state.
+export async function releaseBookedInterviewSlot(applicantId: string): Promise<void> {
+  const slot = await prisma.interviewAvailabilitySlot.findUnique({ where: { bookedById: applicantId } });
+  if (!slot || slot.startsAt.getTime() <= Date.now()) return;
+
+  const calendarMailbox = process.env.RECRUITING_CALENDAR_MAILBOX;
+  if (slot.calendarEventId && calendarMailbox) {
+    try {
+      await deleteCalendarEvent({ mailbox: calendarMailbox, eventId: slot.calendarEventId });
+    } catch {
+      // Best-effort — a calendar failure shouldn't block releasing the slot.
+    }
+  }
+  try {
+    await prisma.interviewAvailabilitySlot.delete({ where: { id: slot.id } });
+  } catch {
+    // Already gone — a concurrent release/reschedule beat us to it. Fine.
+  }
+}
+
+// The one place every booking/reschedule path (self-service and staff-
+// driven alike) actually claims a time slot, so every path gets the same
+// atomicity guarantee. Computes the buffered range from the booking
+// interviewer's own buffer settings and stores it on the row — this is
+// what the two EXCLUDE constraints on InterviewAvailabilitySlot
+// (bufferedStartsAt/bufferedEndsAt; see the migration and the model
+// comment in schema.prisma) actually enforce against at the database
+// level: one scoped to this interviewer so their own bookings can never
+// overlap even at *different* start times once buffers are accounted for,
+// and one scoped to format=ZOOM across *every* interviewer, modeling the
+// one shared Zoom room. A same-start unique key or a read-before-insert
+// check alone can't catch either case — two different, merely overlapping
+// start times would both still satisfy a same-start check, no matter how
+// tight the race.
+//
+// `releaseSlotId`, when given, is deleted in the *same* transaction as the
+// new slot's creation — needed because bookedById is itself @unique, so a
+// new row claiming this applicant while the old one still holds that same
+// applicantId would always violate that constraint on its own, regardless
+// of whether the new time is actually free. Deleting first, inside the one
+// transaction, keeps this atomic with the create: if the create then fails
+// (a genuine collision on the new time, from either exclusion constraint
+// or the exact-instant unique key), the whole transaction rolls back and
+// the original booking is left completely untouched — never left
+// half-cancelled.
+export async function claimSlotAtomically(params: {
+  applicantId: string;
+  interviewerId: string;
+  format: InterviewFormat;
+  startsAt: Date;
+  durationMins: number;
+  bufferBeforeMins: number;
+  bufferAfterMins: number;
+  createdById: string;
+  releaseSlotId?: string | null;
+}): Promise<{ ok: true; slotId: string } | { ok: false; error: string }> {
+  const bufferedStartsAt = new Date(params.startsAt.getTime() - params.bufferBeforeMins * 60_000);
+  const bufferedEndsAt = new Date(
+    params.startsAt.getTime() + params.durationMins * 60_000 + params.bufferAfterMins * 60_000
+  );
+
+  try {
+    const slot = await prisma.$transaction(async (tx) => {
+      if (params.releaseSlotId) await tx.interviewAvailabilitySlot.delete({ where: { id: params.releaseSlotId } });
+      return tx.interviewAvailabilitySlot.create({
+        data: {
+          interviewerId: params.interviewerId,
+          format: params.format,
+          startsAt: params.startsAt,
+          durationMins: params.durationMins,
+          bufferedStartsAt,
+          bufferedEndsAt,
+          bookedById: params.applicantId,
+          createdById: params.createdById,
+        },
+      });
+    });
+    return { ok: true, slotId: slot.id };
+  } catch {
+    // Either EXCLUDE constraint, or the exact-instant unique key — all mean
+    // the same thing to the person booking: someone else got there first.
+    return { ok: false, error: "That time conflicts with another interview — please pick another." };
+  }
+}
+
+// Fired the moment staff taps "Invite to Interview" (or "self-schedule
+// invite") on a qualified applicant, now that an interviewer + format is
+// always picked up front — both are stored on the applicant and preserved
+// across any later reschedule, never re-derived from the pipeline stage.
+// Reuses the existing interviewConfirmToken field as the secure
 // booking-link token (same idiom as every other scheduling flow) and the
 // existing email/SMS senders. Does not touch scheduledAt — that's only set
-// once the candidate actually books a slot (see bookInterviewSlot).
-export async function sendInterviewInvite(applicantId: string) {
+// once the candidate actually books a slot.
+export async function sendInterviewInvite(
+  applicantId: string,
+  interviewerId: string,
+  format: InterviewFormat
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const availability = await getAvailabilityForInterviewer(interviewerId);
+  if (!availability) return { ok: false, error: "That interviewer hasn't set up their availability yet." };
+  if (format === "ZOOM" && !availability.supportsZoom) {
+    return { ok: false, error: "That interviewer doesn't conduct Zoom interviews." };
+  }
+  if (format === "IN_PERSON" && !availability.supportsInPerson) {
+    return { ok: false, error: "That interviewer doesn't conduct in-person interviews." };
+  }
+  if (format === "ZOOM" && !isZoomConfigured()) {
+    return {
+      ok: false,
+      error: "Zoom isn't set up yet — configure RECRUITING_ZOOM_PMI or RECRUITING_ZOOM_LINK before sending a Zoom invite.",
+    };
+  }
+
+  // A fresh invite supersedes whatever this applicant previously had booked
+  // (e.g. re-inviting after a reschedule fell through) — release that old
+  // appointment (slot + calendar event) first, so it never stays
+  // permanently "taken" and the old calendar invite never lingers once the
+  // candidate is being asked to pick a brand new time. Safe to call even
+  // when nothing is currently booked (the common case, a first invite).
+  await releaseBookedInterviewSlot(applicantId);
+
   const applicant = await prisma.applicant.update({
     where: { id: applicantId },
     data: {
       stage: "INTERVIEW_INVITE_SENT",
+      interviewerId,
+      interviewFormat: format,
+      // A superseded invite means no appointment is currently booked —
+      // never leave the previous, now-released time sitting on the
+      // record as if it still held.
+      scheduledAt: null,
       interviewConfirmToken: generateInviteToken(),
       interviewConfirmedAt: null,
       interviewCantMakeItAt: null,
@@ -1477,7 +1922,7 @@ export async function sendInterviewInvite(applicantId: string) {
     "Mama's Cleaning Crew",
   ].join("\n");
 
-  const emailResult = await sendEmail({ to: applicant.email, subject, body });
+  const emailResult = await sendEmail({ to: applicant.email, subject, body, replyTo: recruitingReplyToEmail() });
   await prisma.communicationLog.create({
     data: {
       applicantId: applicant.id,
@@ -1505,7 +1950,7 @@ export async function sendInterviewInvite(applicantId: string) {
     },
   });
 
-  return applicant;
+  return { ok: true };
 }
 
 export interface OpenInterviewSlot {
@@ -1517,7 +1962,9 @@ export interface OpenInterviewSlot {
 // Slots a candidate is allowed to see for their posting: general-
 // availability slots (jobPostingId null — the default admin experience)
 // plus any slot created specifically for their posting. Only ever open
-// (unbooked), future ones.
+// (unbooked), future ones. Legacy path — only reached for an applicant with
+// no interviewerId (an invite sent before per-interviewer availability
+// existed); every new invite goes through listOpenSlotsForApplicant below.
 export async function listOpenInterviewSlots(jobPostingId: string): Promise<OpenInterviewSlot[]> {
   const slots = await prisma.interviewAvailabilitySlot.findMany({
     where: {
@@ -1530,13 +1977,34 @@ export async function listOpenInterviewSlots(jobPostingId: string): Promise<Open
   return slots.map((s) => ({ id: s.id, startsAt: s.startsAt.toISOString(), durationMins: s.durationMins }));
 }
 
-// The one function that actually prevents double-booking: the update only
-// succeeds if the slot is still unbooked at the moment it runs (`updateMany`
-// with `bookedById: null` in the where clause), so two candidates racing for
-// the same slot can never both win — the second one's update affects zero
-// rows and gets told to pick another time. Reuses the same scheduling side
-// effects (calendar event, confirmation email, reminder-scheduler dedup
-// fields) as every other interview-scheduling path in the app.
+// The interviewer-assigned equivalent of listOpenInterviewSlots — generated
+// on the fly from the assigned interviewer's recurring availability rather
+// than a flat pre-typed list. `excludeApplicantId` lets a reschedule exclude
+// the applicant's own current appointment from the collision check (so
+// their own held time doesn't block itself from being re-offered).
+export async function listOpenSlotsForApplicant(
+  interviewerId: string,
+  format: InterviewFormat,
+  excludeApplicantId?: string
+): Promise<OpenInterviewSlot[]> {
+  const slots = await computeAvailableSlots(interviewerId, format, { excludeApplicantId });
+  return slots.map((s) => ({
+    id: s.startsAt.toISOString(),
+    startsAt: s.startsAt.toISOString(),
+    durationMins: s.durationMins,
+  }));
+}
+
+// The one function that actually prevents double-booking on the legacy flat
+// slot list: the update only succeeds if the slot is still unbooked at the
+// moment it runs (`updateMany` with `bookedById: null` in the where
+// clause), so two candidates racing for the same slot can never both win —
+// the second one's update affects zero rows and gets told to pick another
+// time. Format/stage default to IN_PERSON/the original hardcoded behavior
+// when the slot carries no explicit format (every legacy row, since the
+// flat admin list never captured format) — new interviewer-assigned
+// bookings go through bookAssignedInterviewSlot instead, which always has
+// one.
 export async function bookInterviewSlot(
   applicantId: string,
   slotId: string
@@ -1556,6 +2024,9 @@ export async function bookInterviewSlot(
     return { ok: false, error: "That time was just taken — please pick another." };
   }
 
+  const format: InterviewFormat = slot.format ?? "IN_PERSON";
+  const stage: ApplicantStage = format === "ZOOM" ? "PHONE_INTERVIEW_SCHEDULED" : "IN_PERSON_SCHEDULED";
+
   const claim = await prisma.interviewAvailabilitySlot.updateMany({
     where: { id: slotId, bookedById: null },
     data: { bookedById: applicantId },
@@ -1567,7 +2038,8 @@ export async function bookInterviewSlot(
   const updated = await prisma.applicant.update({
     where: { id: applicantId },
     data: {
-      stage: "IN_PERSON_SCHEDULED",
+      stage,
+      interviewFormat: format,
       scheduledAt: slot.startsAt,
       interviewConfirmToken: generateInviteToken(),
       interviewConfirmedAt: null,
@@ -1578,16 +2050,231 @@ export async function bookInterviewSlot(
     include: { jobPosting: { select: { titleEn: true, titleEs: true } } },
   });
 
-  await scheduleInterviewCalendarEvent(updated, updated.jobPosting.titleEn, "IN_PERSON_SCHEDULED", slot.startsAt);
+  const eventId = await scheduleInterviewCalendarEvent(
+    updated,
+    updated.jobPosting.titleEn,
+    stage,
+    slot.startsAt,
+    format,
+    slot.durationMins
+  );
+  if (eventId) {
+    await prisma.interviewAvailabilitySlot.update({ where: { id: slotId }, data: { calendarEventId: eventId } });
+  }
   await sendInterviewConfirmationEmail(
     updated,
     updated.jobPosting.titleEn,
-    "IN_PERSON_SCHEDULED",
+    stage,
     slot.startsAt,
     null,
-    updated.jobPosting.titleEs
+    updated.jobPosting.titleEs,
+    format
   );
   await notifyStaffCandidateBookedInterview(updated, updated.jobPosting.titleEn, slot.startsAt);
+
+  return { ok: true };
+}
+
+// The interviewer-assigned booking path: applicant.interviewerId/
+// interviewFormat were set when the invite went out (sendInterviewInvite)
+// and are reused here as-is — never re-picked or re-inferred. The slot
+// itself doesn't pre-exist; claimSlotAtomically *creates* it, and that
+// insert succeeding (backstopped by both EXCLUDE constraints — see its own
+// comment — and the @@unique([interviewerId, startsAt]) exact-instant key)
+// is what atomically claims the time. A pre-check against
+// computeAvailableSlots catches the common case (including the
+// shared-Zoom-room cross-interviewer collision) before ever attempting the
+// insert; the database constraints are the real guarantee against a
+// genuine concurrent race, including one between two *different* (but
+// overlapping, once buffers are counted) start times.
+export async function bookAssignedInterviewSlot(
+  applicantId: string,
+  startsAtIso: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const applicant = await prisma.applicant.findUnique({
+    where: { id: applicantId },
+    include: { jobPosting: { select: { titleEn: true, titleEs: true } } },
+  });
+  if (!applicant) return { ok: false, error: "Applicant not found." };
+  if (applicant.stage !== "INTERVIEW_INVITE_SENT") {
+    return { ok: false, error: "This booking link is no longer active." };
+  }
+  if (!applicant.interviewerId || !applicant.interviewFormat) {
+    return { ok: false, error: "No interviewer is assigned to this invite." };
+  }
+
+  const startsAt = new Date(startsAtIso);
+  if (Number.isNaN(startsAt.getTime()) || startsAt.getTime() <= Date.now()) {
+    return { ok: false, error: "That time was just taken — please pick another." };
+  }
+  if (applicant.interviewFormat === "ZOOM" && !isZoomConfigured()) {
+    return { ok: false, error: "Zoom isn't set up right now — please contact us to schedule." };
+  }
+
+  const available = await computeAvailableSlots(applicant.interviewerId, applicant.interviewFormat);
+  const stillOpen = available.some((s) => s.startsAt.getTime() === startsAt.getTime());
+  if (!stillOpen) return { ok: false, error: "That time was just taken — please pick another." };
+
+  const availability = await getAvailabilityForInterviewer(applicant.interviewerId);
+  const durationMins = availability?.durationMins ?? 30;
+
+  const claim = await claimSlotAtomically({
+    applicantId,
+    interviewerId: applicant.interviewerId,
+    format: applicant.interviewFormat,
+    startsAt,
+    durationMins,
+    bufferBeforeMins: availability?.bufferBeforeMins ?? 0,
+    bufferAfterMins: availability?.bufferAfterMins ?? 0,
+    createdById: applicant.interviewerId,
+  });
+  if (!claim.ok) return claim;
+  const slotId = claim.slotId;
+
+  const stage: ApplicantStage =
+    applicant.interviewFormat === "ZOOM" ? "PHONE_INTERVIEW_SCHEDULED" : "IN_PERSON_SCHEDULED";
+  const updated = await prisma.applicant.update({
+    where: { id: applicantId },
+    data: {
+      stage,
+      scheduledAt: startsAt,
+      interviewConfirmToken: generateInviteToken(),
+      interviewConfirmedAt: null,
+      interviewCantMakeItAt: null,
+      interviewReminderDaySentAt: null,
+      interviewReminderHourSentAt: null,
+    },
+    include: { jobPosting: { select: { titleEn: true, titleEs: true } } },
+  });
+
+  const eventId = await scheduleInterviewCalendarEvent(
+    updated,
+    updated.jobPosting.titleEn,
+    stage,
+    startsAt,
+    applicant.interviewFormat,
+    durationMins
+  );
+  if (eventId) await prisma.interviewAvailabilitySlot.update({ where: { id: slotId }, data: { calendarEventId: eventId } });
+
+  await sendInterviewConfirmationEmail(
+    updated,
+    updated.jobPosting.titleEn,
+    stage,
+    startsAt,
+    null,
+    updated.jobPosting.titleEs,
+    applicant.interviewFormat
+  );
+  await notifyStaffCandidateBookedInterview(updated, updated.jobPosting.titleEn, startsAt);
+
+  return { ok: true };
+}
+
+// Self-service reschedule: atomically creates the new appointment and
+// releases the old one in a single transaction, so a failure (a collision,
+// a race with someone else) leaves the original booking completely
+// untouched rather than half-cancelled. A repeat submission of the exact
+// time already booked is a no-op success (not a resend) — protects a
+// double-click/retry from re-sending the confirmation or erroring
+// confusingly on what is, from the applicant's point of view, the same
+// request twice.
+export async function rescheduleAssignedInterview(
+  applicantId: string,
+  newStartsAtIso: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const applicant = await prisma.applicant.findUnique({
+    where: { id: applicantId },
+    include: { jobPosting: { select: { titleEn: true, titleEs: true } }, bookedSlot: true },
+  });
+  if (!applicant) return { ok: false, error: "Applicant not found." };
+  if (!applicant.interviewerId || !applicant.interviewFormat) {
+    return { ok: false, error: "This interview can't be rescheduled online — please contact us." };
+  }
+  if (!SCHEDULING_STAGES.includes(applicant.stage) || !applicant.scheduledAt) {
+    return { ok: false, error: "This link is no longer valid." };
+  }
+
+  const newStartsAt = new Date(newStartsAtIso);
+  if (Number.isNaN(newStartsAt.getTime()) || newStartsAt.getTime() <= Date.now()) {
+    return { ok: false, error: "Please pick a time in the future." };
+  }
+
+  // Idempotent no-op: re-submitting the time already booked (a double-click
+  // or a retried request) succeeds without touching anything or resending.
+  if (applicant.scheduledAt.getTime() === newStartsAt.getTime()) {
+    return { ok: true };
+  }
+
+  if (applicant.interviewFormat === "ZOOM" && !isZoomConfigured()) {
+    return { ok: false, error: "Zoom isn't set up right now — please contact us to reschedule." };
+  }
+
+  const available = await computeAvailableSlots(applicant.interviewerId, applicant.interviewFormat, {
+    excludeApplicantId: applicantId,
+  });
+  const stillOpen = available.some((s) => s.startsAt.getTime() === newStartsAt.getTime());
+  if (!stillOpen) return { ok: false, error: "That time was just taken — please pick another." };
+
+  const availability = await getAvailabilityForInterviewer(applicant.interviewerId);
+  const durationMins = availability?.durationMins ?? applicant.bookedSlot?.durationMins ?? 30;
+  const oldSlotId = applicant.bookedSlot?.id ?? null;
+  const oldEventId = applicant.bookedSlot?.calendarEventId ?? null;
+
+  const claim = await claimSlotAtomically({
+    applicantId,
+    interviewerId: applicant.interviewerId,
+    format: applicant.interviewFormat,
+    startsAt: newStartsAt,
+    durationMins,
+    bufferBeforeMins: availability?.bufferBeforeMins ?? 0,
+    bufferAfterMins: availability?.bufferAfterMins ?? 0,
+    createdById: applicant.interviewerId,
+    releaseSlotId: oldSlotId,
+  });
+  if (!claim.ok) return claim;
+  const newSlotId = claim.slotId;
+
+  const stage: ApplicantStage =
+    applicant.interviewFormat === "ZOOM" ? "PHONE_INTERVIEW_SCHEDULED" : "IN_PERSON_SCHEDULED";
+  const updated = await prisma.applicant.update({
+    where: { id: applicantId },
+    data: {
+      stage,
+      scheduledAt: newStartsAt,
+      interviewConfirmToken: generateInviteToken(),
+      interviewConfirmedAt: null,
+      interviewCantMakeItAt: null,
+      interviewReminderDaySentAt: null,
+      interviewReminderHourSentAt: null,
+    },
+    include: { jobPosting: { select: { titleEn: true, titleEs: true } } },
+  });
+
+  const sync = await updateOrCreateInterviewCalendarEvent(
+    updated,
+    updated.jobPosting.titleEn,
+    stage,
+    newStartsAt,
+    applicant.interviewFormat,
+    durationMins,
+    oldEventId
+  );
+  await prisma.interviewAvailabilitySlot.update({
+    where: { id: newSlotId },
+    data: { calendarEventId: sync.eventId, calendarSyncFailedAt: sync.syncFailed ? new Date() : null },
+  });
+
+  await sendInterviewConfirmationEmail(
+    updated,
+    updated.jobPosting.titleEn,
+    stage,
+    newStartsAt,
+    null,
+    updated.jobPosting.titleEs,
+    applicant.interviewFormat
+  );
+  await notifyStaffCandidateRescheduledInterview(updated, updated.jobPosting.titleEn, newStartsAt);
 
   return { ok: true };
 }

@@ -6,6 +6,7 @@ import {
   formatRelativeTime,
   getApplicantQualificationSummary,
 } from "@/lib/recruiting";
+import { listEligibleInterviewers } from "@/lib/interviewerAvailability";
 import PageHeader from "@/components/ds/PageHeader";
 import Card from "@/components/ds/Card";
 import { EmptyState } from "@/components/ds/EmptyState";
@@ -17,7 +18,7 @@ export const dynamic = "force-dynamic";
 export default async function RecruitingInboxPage() {
   await requireRecruitingAccess();
 
-  const [qualifiedApplicants, upcomingCount, nextInterview, needsDecisionCount, newHiresIncomplete] =
+  const [qualifiedApplicants, upcomingCount, nextInterview, needsDecisionCount, newHiresIncomplete, interviewers] =
     await Promise.all([
       prisma.applicant.findMany({
         where: { stage: "PRESCREEN_PASSED" },
@@ -36,6 +37,7 @@ export default async function RecruitingInboxPage() {
       prisma.user.count({
         where: { hiredFromApplicant: { isNot: null }, onboardingAssignments: { some: { signedAt: null } } },
       }),
+      listEligibleInterviewers(),
     ]);
 
   const cards = await Promise.all(
@@ -119,6 +121,7 @@ export default async function RecruitingInboxPage() {
             <ApplicantQuickCard
               key={c.id}
               applicant={c}
+              interviewers={interviewers}
               onBook={bookZoomInterviewAction}
               onInvite={inviteToInterviewAction}
               onPass={passApplicantAction}

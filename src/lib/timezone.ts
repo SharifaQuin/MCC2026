@@ -7,8 +7,11 @@ const BUSINESS_TIMEZONE = process.env.BUSINESS_TIMEZONE || "America/Los_Angeles"
 
 // Converts a wall-clock string like "2026-10-15T14:30" (no timezone info,
 // as produced by a datetime-local input) into the correct UTC Date for that
-// wall-clock time in BUSINESS_TIMEZONE, accounting for DST.
-export function zonedTimeToUtc(localDatetime: string): Date {
+// wall-clock time in the given IANA zone, accounting for DST. Defaults to
+// BUSINESS_TIMEZONE for every existing caller; an interviewer's own
+// configured zone (see InterviewerAvailability) is passed explicitly where
+// that's what the wall-clock time is actually in.
+export function zonedTimeToUtc(localDatetime: string, timeZone: string = BUSINESS_TIMEZONE): Date {
   const [datePart, timePart] = localDatetime.split("T");
   const [year, month, day] = datePart.split("-").map(Number);
   const [hour, minute] = (timePart ?? "00:00").split(":").map(Number);
@@ -16,7 +19,7 @@ export function zonedTimeToUtc(localDatetime: string): Date {
   const asUtc = Date.UTC(year, month - 1, day, hour, minute);
 
   const dtf = new Intl.DateTimeFormat("en-US", {
-    timeZone: BUSINESS_TIMEZONE,
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -38,15 +41,27 @@ export function zonedTimeToUtc(localDatetime: string): Date {
   return new Date(asUtc + (asUtc - asIfLocal));
 }
 
-// Formats a Date in the business timezone regardless of the server's own
-// runtime timezone, so a Server Component renders the same wall-clock time
-// a browser in that timezone would show.
-export function formatInBusinessTimezone(date: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: BUSINESS_TIMEZONE,
+// Formats a Date in the given IANA zone (business timezone by default)
+// regardless of the server's own runtime timezone, so a Server Component
+// renders the same wall-clock time a browser in that timezone would show.
+// `labeled` appends the zone's current short name (e.g. "PST"/"PDT") —
+// useful wherever a time is shown without other zone context, like an
+// interviewer's own schedule UI.
+export function formatInBusinessTimezone(
+  date: Date,
+  timeZone: string = BUSINESS_TIMEZONE,
+  labeled = false
+): string {
+  const formatted = new Intl.DateTimeFormat("en-US", {
+    timeZone,
     dateStyle: "short",
     timeStyle: "short",
   }).format(date);
+  if (!labeled) return formatted;
+  const zoneName = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "short" })
+    .formatToParts(date)
+    .find((p) => p.type === "timeZoneName")?.value;
+  return zoneName ? `${formatted} ${zoneName}` : formatted;
 }
 
 // "YYYY-MM-DD" for a date's calendar day in the business timezone —

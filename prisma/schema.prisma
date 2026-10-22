@@ -26,6 +26,25 @@ enum Role {
 // finer grain than a whole Department, and only ever consulted for
 // OFFICE_ASSISTANT (see getAreaAccess) — every other role's access is
 // unaffected by this table's existence.
+// Explicit interview format, tracked on its own — never inferred from
+// ApplicantStage downstream (stage names like PHONE_INTERVIEW_SCHEDULED
+// predate this and stay as pipeline-board labels only). This is what lets a
+// self-service reschedule preserve the original format/interviewer exactly,
+// instead of re-guessing it from whichever stage the applicant happens to
+// be in.
+enum InterviewFormat {
+  ZOOM
+  IN_PERSON
+}
+
+enum AvailabilityExceptionType {
+  // The whole day (or, with start/end set, just part of it) is blocked off
+  // — a day off, a holiday, etc.
+  UNAVAILABLE
+  // One-off extra hours beyond the normal weekly recurring schedule.
+  EXTRA_HOURS
+}
+
 enum PermissionArea {
   HR_SUMMARY
   RECRUITING
@@ -218,8 +237,8 @@ model User {
   leadNotesWritten            LeadNote[]
   leadStageChangesMade        LeadStageChange[]
   assignedLeads               Lead[]                 @relation("LeadAssignedTo")
-  slotFeedImports              SlotFeedMonth[]
-  slotBookingsAsRep             SlotBooking[]
+  slotFeedImports             SlotFeedMonth[]
+  slotBookingsAsRep           SlotBooking[]
   hiredFromApplicant          Applicant?             @relation("ApplicantHiredUser")
   applicantsViewed            Applicant[]            @relation("ApplicantViewedBy")
   onboardingAssignments       OnboardingAssignment[]
@@ -272,6 +291,9 @@ model User {
   complianceDocumentsCreated ComplianceDocument[] @relation("ComplianceDocumentCreatedBy")
 
   interviewAvailabilitySlotsCreated InterviewAvailabilitySlot[]
+  interviewSlotsAsInterviewer       InterviewAvailabilitySlot[] @relation("InterviewSlotInterviewer")
+  interviewerAvailability           InterviewerAvailability?
+  applicantsAssignedAsInterviewer   Applicant[]                 @relation("ApplicantAssignedInterviewer")
 
   rookieCheckoffsAsTrainee RookieFieldCheckoff[] @relation("RookieCheckoffTrainee")
   rookieCheckoffsAsTrainer RookieFieldCheckoff[] @relation("RookieCheckoffTrainer")
@@ -635,21 +657,21 @@ model PrescreenOption {
 // lesson photos are (a base64 data URI directly on the row) since the app
 // has no separate file/blob storage.
 model Applicant {
-  id                          String          @id @default(cuid())
+  id                          String           @id @default(cuid())
   jobPostingId                String
-  jobPosting                  JobPosting      @relation(fields: [jobPostingId], references: [id])
+  jobPosting                  JobPosting       @relation(fields: [jobPostingId], references: [id])
   firstName                   String
   lastName                    String
   email                       String
   phone                       String
-  resumeDataUrl               String?         @db.Text
+  resumeDataUrl               String?          @db.Text
   resumeFileName              String?
-  stage                       ApplicantStage  @default(NEW)
+  stage                       ApplicantStage   @default(NEW)
   // Where this applicant came from — CAREERS_PAGE by default for the public
   // /apply/[slug] form, overridden by a ?src= query param on job-board
   // postings that link there (see parseApplicantSource), or picked
   // explicitly on the manual "add applicant" form.
-  source                      ApplicantSource @default(OTHER)
+  source                      ApplicantSource  @default(OTHER)
   // Recruiting 2.0: the city they typed on the application — shown on the
   // Quick Review card ("where are they?") only. The "lives near the office"
   // preferred qualifier is a self-attested Yes/No prescreen question instead
@@ -667,13 +689,13 @@ model Applicant {
   prescreenScore              Int?
   prescreenMaxScore           Int?
   prescreenPassed             Boolean?
-  notes                       String?         @db.Text
+  notes                       String?          @db.Text
   scheduledAt                 DateTime?
   // Set whenever scheduledAt is (re)set for an interview stage — the token
   // in the "Yes, I'll be there" link sent with the reminders, and the
   // record of whether/when they clicked it. Cleared and regenerated on a
   // reschedule so a stale confirmation never carries over to a new time.
-  interviewConfirmToken       String?         @unique
+  interviewConfirmToken       String?          @unique
   interviewConfirmedAt        DateTime?
   // Set when the applicant clicks "I can't make it" on the confirm page —
   // deliberately does NOT let them pick a new time themselves; it just
@@ -682,19 +704,27 @@ model Applicant {
   interviewCantMakeItAt       DateTime?
   interviewReminderDaySentAt  DateTime?
   interviewReminderHourSentAt DateTime?
+  // Who's actually conducting the interview, and in what format — set the
+  // moment an invite is sent or a direct booking is made, and preserved
+  // across a reschedule (never re-derived from `stage`, which is a pipeline
+  // label, not a scheduling fact). Null for legacy appointments booked
+  // before per-interviewer availability existed.
+  interviewerId               String?
+  assignedInterviewer         User?            @relation("ApplicantAssignedInterviewer", fields: [interviewerId], references: [id], onDelete: SetNull)
+  interviewFormat             InterviewFormat?
   rejectedAt                  DateTime?
   benchedAt                   DateTime?
   hiredAt                     DateTime?
-  hiredUserId                 String?         @unique
-  hiredUser                   User?           @relation("ApplicantHiredUser", fields: [hiredUserId], references: [id])
+  hiredUserId                 String?          @unique
+  hiredUser                   User?            @relation("ApplicantHiredUser", fields: [hiredUserId], references: [id])
   // Stamped once, the first time a recruiter opens this applicant's profile
   // — a persistent "I've already looked into this person" marker, distinct
   // from moving them through the pipeline.
   viewedAt                    DateTime?
   viewedById                  String?
-  viewedBy                    User?           @relation("ApplicantViewedBy", fields: [viewedById], references: [id])
-  createdAt                   DateTime        @default(now())
-  updatedAt                   DateTime        @updatedAt
+  viewedBy                    User?            @relation("ApplicantViewedBy", fields: [viewedById], references: [id])
+  createdAt                   DateTime         @default(now())
+  updatedAt                   DateTime         @updatedAt
 
   answers             PrescreenAnswer[]
   communications      CommunicationLog[]
@@ -961,23 +991,142 @@ enum InterviewRecommendation {
 // posting — only set it when MCC is running multiple concurrent hiring
 // pushes and needs to keep their slots separate.
 model InterviewAvailabilitySlot {
-  id              String      @id @default(cuid())
+  id              String           @id @default(cuid())
   jobPostingId    String?
-  jobPosting      JobPosting? @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+  jobPosting      JobPosting?      @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+  // Which interviewer this appointment belongs to — null for pre-existing
+  // flat admin-created slots that predate per-interviewer availability
+  // (see InterviewerAvailability), required for anything generated through
+  // it. Distinct from createdById: that's whoever created the row (often a
+  // staffer booking on someone else's behalf), this is whose calendar it
+  // actually is — see availabilityDateException for why that distinction
+  // matters.
+  interviewerId   String?
+  interviewer     User?            @relation("InterviewSlotInterviewer", fields: [interviewerId], references: [id], onDelete: SetNull)
+  // Explicit, never re-derived from ApplicantStage — see InterviewFormat.
+  format          InterviewFormat?
   startsAt        DateTime
-  durationMins    Int         @default(30)
+  durationMins    Int              @default(30)
   // Set the moment a candidate claims this slot — the update that sets
   // this is conditioned on it still being null (see bookInterviewSlot in
   // lib/recruiting.ts), which is what actually prevents double-booking;
   // this column being non-null is just the resulting state.
-  bookedById      String?     @unique
-  bookedApplicant Applicant?  @relation(fields: [bookedById], references: [id], onDelete: SetNull)
+  bookedById      String?          @unique
+  bookedApplicant Applicant?       @relation(fields: [bookedById], references: [id], onDelete: SetNull)
+  // The Microsoft Graph calendar event id this appointment created, if any
+  // (see src/lib/calendar.ts) — lets a reschedule update the same event in
+  // place instead of leaving a stale duplicate on the shared calendar.
+  calendarEventId String?
+  // Set the moment updateOrCreateInterviewCalendarEvent's update attempt
+  // fails for a reason OTHER than a confirmed 404 (throttling, an
+  // authorization error, a thrown network error) — calendarEventId is
+  // deliberately preserved (not nulled/replaced) in that case, since the
+  // existing event may well still be fine on the real calendar and
+  // creating a second one on a mere transient failure would risk a genuine
+  // duplicate invitation. Cleared back to null the next time a sync
+  // attempt (an ordinary reschedule, or the dashboard's own Retry button —
+  // see retryInterviewCalendarSync) actually succeeds. See
+  // describeCalendarSyncProblem (src/lib/calendar.ts) for how this and
+  // calendarEventId together decide what the applicant dashboard shows.
+  calendarSyncFailedAt DateTime?
+  // startsAt/durationMins padded by the booking interviewer's own buffer
+  // settings at the moment this row was claimed (see claimSlotAtomically in
+  // lib/recruiting.ts) — the range two database EXCLUDE constraints (added
+  // via raw SQL in this model's migration; not representable in this
+  // schema file, so `prisma migrate dev`/`db pull` will never see them —
+  // this app only ever runs `migrate deploy`, which applies migrations
+  // verbatim and never diffs/drops anything not in this file) actually
+  // enforce against overlap: one scoped to (interviewerId, same range) so
+  // the same interviewer's bookings can never overlap even at *different*
+  // start times once buffers are accounted for, and one scoped to (format
+  // = ZOOM, same range) across *every* interviewer, modeling the one
+  // shared Zoom room. A same-start unique key alone can't catch either
+  // case — two overlapping-but-different-start bookings would both still
+  // satisfy it.
+  bufferedStartsAt DateTime?
+  bufferedEndsAt   DateTime?
   createdById     String
-  createdBy       User        @relation(fields: [createdById], references: [id])
-  createdAt       DateTime    @default(now())
+  createdBy       User             @relation(fields: [createdById], references: [id])
+  createdAt       DateTime         @default(now())
 
   @@unique([startsAt, jobPostingId])
+  // Hard backstop against the same interviewer ending up double-booked at
+  // the exact same instant (e.g. a race between two concurrent booking
+  // attempts) — NULL interviewerId rows (legacy flat slots) are exempt,
+  // same as Postgres already treats the jobPostingId unique above. The
+  // EXCLUDE constraints on bufferedStartsAt/bufferedEndsAt above are what
+  // catch an overlapping-but-different-start race; this unique key is kept
+  // as a second, independent backstop for the exact-instant case.
+  @@unique([interviewerId, startsAt])
   @@index([jobPostingId, startsAt])
+  @@index([interviewerId, startsAt])
+  // Used to find every other booked Zoom appointment (any interviewer) that
+  // might collide on the one shared Zoom room.
+  @@index([format, startsAt])
+}
+
+// One interviewer's own scheduling configuration — who they are, their
+// timezone, default interview length/buffers, and which formats they can
+// conduct. Recurring weekly hours and date exceptions live in their own
+// models below so a schedule can have any number of windows per day.
+// Ownership (interviewerId) is deliberately independent of whoever happens
+// to be editing some applicant's record elsewhere in the app — see the
+// interviewerId comment on InterviewAvailabilitySlot.
+model InterviewerAvailability {
+  id               String   @id @default(cuid())
+  interviewerId    String   @unique
+  interviewer      User     @relation(fields: [interviewerId], references: [id], onDelete: Cascade)
+  // IANA zone name (e.g. "America/Los_Angeles") — interviewer-configured,
+  // not assumed to match the business's own BUSINESS_TIMEZONE, so a remote
+  // interviewer in a different zone sees and sets their own hours correctly
+  // and DST is handled per that zone.
+  timezone         String   @default("America/Los_Angeles")
+  durationMins     Int      @default(30)
+  bufferBeforeMins Int      @default(0)
+  bufferAfterMins  Int      @default(0)
+  supportsZoom     Boolean  @default(true)
+  supportsInPerson Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  weeklyHours AvailabilityWeeklyHour[]
+  exceptions  AvailabilityDateException[]
+}
+
+// A single recurring weekly window (there can be more than one per day,
+// e.g. 9-12 and 1-5) — start/end are minutes from midnight in the parent
+// InterviewerAvailability's own timezone, not UTC, so they stay correct
+// across a DST transition without needing to be recomputed.
+model AvailabilityWeeklyHour {
+  id             String                  @id @default(cuid())
+  availabilityId String
+  availability   InterviewerAvailability @relation(fields: [availabilityId], references: [id], onDelete: Cascade)
+  // 0 = Sunday .. 6 = Saturday
+  dayOfWeek      Int
+  startMinute    Int
+  endMinute      Int
+  createdAt      DateTime                @default(now())
+
+  @@index([availabilityId, dayOfWeek])
+}
+
+// A one-off override for a specific calendar date — either blocking off
+// normally-available time (UNAVAILABLE, startMinute/endMinute null for the
+// whole day) or opening up time beyond the usual weekly hours
+// (EXTRA_HOURS, both minutes required).
+model AvailabilityDateException {
+  id             String                    @id @default(cuid())
+  availabilityId String
+  availability   InterviewerAvailability   @relation(fields: [availabilityId], references: [id], onDelete: Cascade)
+  date           DateTime
+  type           AvailabilityExceptionType
+  startMinute    Int?
+  endMinute      Int?
+  note           String?
+  createdAt      DateTime                  @default(now())
+
+  @@unique([availabilityId, date, startMinute])
+  @@index([availabilityId, date])
 }
 
 // The competency scorecard completed after the interview (Structured
@@ -1600,8 +1749,8 @@ model ChecklistTask {
   // only exists so a TEAM-visibility task can additionally be handed to one
   // specific person (e.g. an Office Assistant's own follow-ups) without
   // becoming visible to every TEAM viewer as "theirs" to act on.
-  assigneeId String?
-  assignee   User?   @relation("ChecklistTaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  assigneeId      String?
+  assignee        User?               @relation("ChecklistTaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
 }
 
 enum ChecklistTaskStatus {
@@ -2586,23 +2735,23 @@ enum ApprovalStatus {
 // the manager must still carry out manually, in the normal recruiting UI,
 // after reviewing the exact recipient/words themselves.
 model ApprovalRequest {
-  id          String             @id @default(cuid())
-  requesterId String
-  requester   User               @relation("ApprovalRequester", fields: [requesterId], references: [id])
-  managerId   String
-  manager     User               @relation("ApprovalManager", fields: [managerId], references: [id])
-  applicantId String
-  applicant   Applicant          @relation(fields: [applicantId], references: [id], onDelete: Cascade)
-  actionType  ApprovalActionType
-  rationale   String             @db.Text
+  id                      String             @id @default(cuid())
+  requesterId             String
+  requester               User               @relation("ApprovalRequester", fields: [requesterId], references: [id])
+  managerId               String
+  manager                 User               @relation("ApprovalManager", fields: [managerId], references: [id])
+  applicantId             String
+  applicant               Applicant          @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  actionType              ApprovalActionType
+  rationale               String             @db.Text
   // The exact proposed outcome/terms (e.g. "Decline — did not meet
   // availability requirement" or "Offer $19/hr, start Mon Oct 19").
-  proposedOutcome String @db.Text
+  proposedOutcome         String             @db.Text
   // Set only for actionType SEND_MESSAGE, or an OFFER/REJECT that includes
   // an outbound message — the exact recipient and final text, so the
   // manager reviews precisely what would go out, not a paraphrase.
-  recipientEmail String?
-  messageText    String? @db.Text
+  recipientEmail          String?
+  messageText             String?            @db.Text
   // The applicant's stage at submission time — compared against its current
   // stage at decision time; a mismatch means the record moved on since this
   // request was written, so the decision becomes NEEDS_RESUBMISSION instead
@@ -2639,13 +2788,13 @@ model ApprovalRequest {
 // to this model yet; it exists so the page has a real (currently empty)
 // data source instead of a hardcoded empty list.
 model PolicyDocument {
-  id              String   @id @default(cuid())
-  title           String
-  filename        String
-  visibleToRoles  Role[]   @default([])
-  addedById       String?
-  addedBy         User?    @relation(fields: [addedById], references: [id], onDelete: SetNull)
-  createdAt       DateTime @default(now())
+  id             String   @id @default(cuid())
+  title          String
+  filename       String
+  visibleToRoles Role[]   @default([])
+  addedById      String?
+  addedBy        User?    @relation(fields: [addedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
 }
 
 enum ProblemReportCategory {
@@ -2665,15 +2814,15 @@ enum ProblemReportStatus {
 // are a snapshot at submission time (not a live join) so the queue still
 // reads correctly even if the reporter's name or role later changes.
 model ProblemReport {
-  id           String                 @id @default(cuid())
+  id           String                @id @default(cuid())
   reporterId   String
-  reporter     User                   @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+  reporter     User                  @relation(fields: [reporterId], references: [id], onDelete: Cascade)
   reporterName String
   reporterRole Role
   category     ProblemReportCategory
-  description  String                 @db.Text
-  status       ProblemReportStatus    @default(OPEN)
-  createdAt    DateTime               @default(now())
+  description  String                @db.Text
+  status       ProblemReportStatus   @default(OPEN)
+  createdAt    DateTime              @default(now())
 
   @@index([status, createdAt])
 }
