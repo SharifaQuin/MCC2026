@@ -49,6 +49,7 @@ test.describe.serial("Applicant contact-info editing", () => {
   });
 
   test.afterAll(async () => {
+    await prisma.interviewAvailabilitySlot.deleteMany({ where: { bookedById: { in: applicantIds } } });
     await prisma.applicantNote.deleteMany({ where: { applicantId: { in: applicantIds } } });
     await prisma.applicant.deleteMany({ where: { id: { in: applicantIds } } });
     await prisma.areaAccess.deleteMany({ where: { userId: { in: userIds } } });
@@ -223,12 +224,32 @@ test.describe.serial("Applicant contact-info editing", () => {
     expect(commCount).toBe(0);
   });
 
-  test("The stale-calendar-invite warning shows only for an applicant with an active scheduled interview", async ({ page }) => {
+  test("The stale-calendar-invite warning shows only for an applicant with a real calendar event, not just a scheduled stage", async ({ page }) => {
     const scheduledApplicant = await makeApplicant("warning-shown", {
       stage: "PHONE_INTERVIEW_SCHEDULED",
       scheduledAt: new Date(Date.now() + 5 * 86_400_000),
     });
     applicantIds.push(scheduledApplicant.id);
+    const admin = await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL } });
+    await prisma.interviewAvailabilitySlot.create({
+      data: {
+        startsAt: new Date(Date.now() + 5 * 86_400_000),
+        bookedById: scheduledApplicant.id,
+        calendarEventId: `fake-event-${RUN_ID}`,
+        createdById: admin.id,
+      },
+    });
+
+    // Same scheduled stage/time as above, but no real calendar event was
+    // ever created for it (e.g. calendar sync is unconfigured, or every
+    // create attempt has failed so far) — the warning must not fire off the
+    // stage/scheduledAt alone.
+    const scheduledNoEventApplicant = await makeApplicant("warning-hidden-no-event", {
+      stage: "PHONE_INTERVIEW_SCHEDULED",
+      scheduledAt: new Date(Date.now() + 5 * 86_400_000),
+    });
+    applicantIds.push(scheduledNoEventApplicant.id);
+
     const freshApplicant = await makeApplicant("warning-hidden");
     applicantIds.push(freshApplicant.id);
 
@@ -239,10 +260,41 @@ test.describe.serial("Applicant contact-info editing", () => {
     await page.getByRole("button", { name: "Edit contact info" }).click();
     await expect(page.getByText(/has an existing calendar invitation/)).toBeVisible();
 
+    await page.goto(`/recruiting/applicants/${scheduledNoEventApplicant.id}`);
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: "Edit contact info" }).click();
+    await expect(page.getByText(/has an existing calendar invitation/)).toHaveCount(0);
+
     await page.goto(`/recruiting/applicants/${freshApplicant.id}`);
     await page.waitForLoadState("networkidle");
     await page.getByRole("button", { name: "Edit contact info" }).click();
     await expect(page.getByText(/has an existing calendar invitation/)).toHaveCount(0);
+  });
+
+  test("Editing to another applicant's existing phone is rejected, without overwriting that applicant", async ({ page }) => {
+    const applicantA = await makeApplicant("phone-conflict-a", { phone: "5555550111" });
+    applicantIds.push(applicantA.id);
+    const applicantB = await makeApplicant("phone-conflict-b", { phone: "5555550122" });
+    applicantIds.push(applicantB.id);
+
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto(`/recruiting/applicants/${applicantA.id}`);
+    await page.waitForLoadState("networkidle");
+
+    await page.getByRole("button", { name: "Edit contact info" }).click();
+    await page.locator('input[name="email"]').fill(applicantA.email);
+    // Different formatting on purpose — the conflict check compares
+    // normalized 10-digit values, same as the email check is case-insensitive.
+    await page.locator('input[name="phone"]').fill("(555) 555-0122");
+    await page.getByRole("button", { name: "Save" }).click();
+    await page.waitForTimeout(500);
+
+    await expect(page.getByText("Another applicant already uses this phone number.")).toBeVisible();
+
+    const freshA = await prisma.applicant.findUniqueOrThrow({ where: { id: applicantA.id } });
+    const freshB = await prisma.applicant.findUniqueOrThrow({ where: { id: applicantB.id } });
+    expect(freshA.phone).toBe(applicantA.phone);
+    expect(freshB.phone).toBe(applicantB.phone);
   });
 
   test("Cancel discards edits without saving", async ({ page }) => {
