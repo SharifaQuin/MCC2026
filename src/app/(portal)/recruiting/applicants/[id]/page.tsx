@@ -27,9 +27,15 @@ export default async function ApplicantDetailPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { duplicate?: string; tab?: string };
+  searchParams: { duplicate?: string; tab?: string; rejectRequest?: string };
 }) {
   const { session, canEdit } = await requireRecruitingAccess();
+  // Same condition ApprovalRequestPanel uses for canSubmit (an Office
+  // Assistant with RECRUITING edit access) — gates whether "Request
+  // rejection" shows anywhere on this page at all, so it's never a
+  // dead-end link for an Office Assistant who only has view access and
+  // could never actually submit the request it leads to.
+  const canRequestRejection = session.role === "OFFICE_ASSISTANT" && canEdit;
 
   const applicant = await prisma.applicant.findUnique({
     where: { id: params.id },
@@ -317,15 +323,33 @@ export default async function ApplicantDetailPage({
       )}
 
       {applicant.stage === "IN_PERSON_SCHEDULED" && (
-        <InterviewDecisionPanel applicantId={applicant.id} />
+        <InterviewDecisionPanel
+          applicantId={applicant.id}
+          canDirectlyReject={session.role !== "OFFICE_ASSISTANT"}
+          canRequestRejection={canRequestRejection}
+        />
       )}
 
       <div className="rounded-lg border border-neutral-200 bg-white p-4">
         <h2 className="mb-3 font-medium text-neutral-900">Move Applicant</h2>
-        <StageControls applicantId={applicant.id} stage={applicant.stage} scheduledAt={applicant.scheduledAt} />
+        <StageControls
+          applicantId={applicant.id}
+          stage={applicant.stage}
+          scheduledAt={applicant.scheduledAt}
+          // Only an Office Assistant is redirected to the approval-request
+          // flow instead — every other role with recruiting edit access
+          // (exactly who rejectApplicantAction itself allows) keeps the
+          // direct Reject & Send Email / Reject (No Email) controls.
+          canDirectlyReject={session.role !== "OFFICE_ASSISTANT"}
+          canRequestRejection={canRequestRejection}
+        />
       </div>
 
-      <ApprovalRequestPanel applicantId={applicant.id} session={session} />
+      <ApprovalRequestPanel
+        applicantId={applicant.id}
+        session={session}
+        openRejectionRequest={searchParams.rejectRequest === "1"}
+      />
     </div>
   );
 

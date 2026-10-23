@@ -9,6 +9,7 @@ import { sendEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
 import {
   SCHEDULING_STAGES,
+  OFFICE_ASSISTANT_BLOCKED_STAGES,
   createEmployeeAccountForHiredApplicant,
   sendInterviewConfirmationEmail,
   rejectionEmailTemplate,
@@ -51,19 +52,31 @@ function requireEdit(canEdit: boolean) {
   if (!canEdit) throw new Error("Not authorized to make changes here.");
 }
 
-// Final hiring-pipeline moves an Office Assistant must never make directly
-// — even with an approved "Send for approval" request, the designated
-// manager carries these out themselves, manually, in this same UI (see
-// src/app/actions/approvals.ts). Approval never grants this role a new
-// permission; it only produces a decision for the manager to act on.
-const OFFICE_ASSISTANT_BLOCKED_STAGES = new Set<ApplicantStage>(["OFFER_SENT", "HIRED", "REJECTED", "BENCH"]);
+// Next.js replaces a thrown Server Action error's message with a generic,
+// non-specific placeholder in production builds (to avoid leaking internal
+// details by default) — fine for a genuinely unexpected failure, but it
+// also swallows an "expected" denial's actual, safe-to-show reason (wrong
+// role, stale record, missing config). setApplicantStageAction and
+// rejectApplicantAction return this result instead of throwing for exactly
+// those expected cases, so the client always has the real message to show
+// inline — the same already-established pattern src/app/actions/approvals.ts
+// uses. Their genuinely-unexpected failures (a database error, say) are
+// left to throw/redact as normal; only the "this is refused, safely and
+// for a known reason" paths return { ok: false }.
+export interface StageActionResult {
+  ok: boolean;
+  error?: string;
+}
 
-function assertRoutineStageTransition(role: string, stage: ApplicantStage) {
-  if (role === "OFFICE_ASSISTANT" && OFFICE_ASSISTANT_BLOCKED_STAGES.has(stage)) {
-    throw new Error(
-      "This stage change needs the authorized manager — submit a Send for approval request instead."
-    );
+// Set form of the shared OFFICE_ASSISTANT_BLOCKED_STAGES list (see its own
+// comment in lib/recruiting.ts) for O(1) membership checks here.
+const OFFICE_ASSISTANT_BLOCKED_STAGES_SET = new Set<ApplicantStage>(OFFICE_ASSISTANT_BLOCKED_STAGES);
+
+function routineStageTransitionError(role: string, stage: ApplicantStage): string | null {
+  if (role === "OFFICE_ASSISTANT" && OFFICE_ASSISTANT_BLOCKED_STAGES_SET.has(stage)) {
+    return "This stage change needs the authorized manager — submit a Send for approval request instead.";
   }
+  return null;
 }
 
 // "offer_letter"/"payroll" checklist items read as proxies for an Offer
@@ -89,10 +102,11 @@ export async function setApplicantStageAction(
   // Assistant or manager scheduling it is usually the one conducting it
   // too). Explicit override lets the UI name a different interviewer.
   interviewerId?: string
-) {
+): Promise<StageActionResult> {
   const { session, canEdit } = await requireRecruitingAccess();
-  requireEdit(canEdit);
-  assertRoutineStageTransition(session.role, stage);
+  if (!canEdit) return { ok: false, error: "Not authorized to make changes here." };
+  const blockedReason = routineStageTransitionError(session.role, stage);
+  if (blockedReason) return { ok: false, error: blockedReason };
   const timestampField = STAGE_TIMESTAMP_FIELD[stage];
   const scheduledAtDate =
     SCHEDULING_STAGES.includes(stage) && scheduledAt ? zonedTimeToUtc(scheduledAt) : undefined;
@@ -102,9 +116,10 @@ export async function setApplicantStageAction(
   // a candidate confirmation with no way to actually join.
   const format: InterviewFormat = stage === "PHONE_INTERVIEW_SCHEDULED" ? "ZOOM" : "IN_PERSON";
   if (scheduledAtDate && format === "ZOOM" && !isZoomConfigured()) {
-    throw new Error(
-      "Zoom isn't set up yet — configure RECRUITING_ZOOM_PMI or RECRUITING_ZOOM_LINK before booking a Zoom interview."
-    );
+    return {
+      ok: false,
+      error: "Zoom isn't set up yet — configure RECRUITING_ZOOM_PMI or RECRUITING_ZOOM_LINK before booking a Zoom interview.",
+    };
   }
   const resolvedInterviewerId = scheduledAtDate ? interviewerId ?? getTrueActorId(session) : undefined;
 
@@ -156,7 +171,7 @@ export async function setApplicantStageAction(
       createdById: getTrueActorId(session),
       releaseSlotId: oldSlotId,
     });
-    if (!claim.ok) throw new Error(claim.error);
+    if (!claim.ok) return { ok: false, error: claim.error };
     claimedSlotId = claim.slotId;
   }
 
@@ -249,6 +264,7 @@ export async function setApplicantStageAction(
   revalidatePath("/recruiting/applicants");
   revalidatePath("/recruiting");
   revalidatePath("/recruiting/inbox");
+  return { ok: true };
 }
 
 // Thin wrapper around retryInterviewCalendarSync (see its own comment) —
@@ -270,13 +286,17 @@ export async function retryInterviewCalendarSyncAction(applicantId: string) {
 // email — everything else stays silent per Phase 1. sendEmail is false for
 // spam applications, duplicates, or no-shows that were never real
 // candidates to begin with.
-export async function rejectApplicantAction(applicantId: string, sendEmailToApplicant: boolean) {
+export async function rejectApplicantAction(
+  applicantId: string,
+  sendEmailToApplicant: boolean
+): Promise<StageActionResult> {
   const { session, canEdit } = await requireRecruitingAccess();
-  requireEdit(canEdit);
+  if (!canEdit) return { ok: false, error: "Not authorized to make changes here." };
   if (session.role === "OFFICE_ASSISTANT") {
-    throw new Error(
-      "Rejecting an applicant needs the authorized manager — submit a Send for approval request instead."
-    );
+    return {
+      ok: false,
+      error: "Rejecting an applicant needs the authorized manager — submit a Send for approval request instead.",
+    };
   }
 
   const applicant = await prisma.applicant.update({
@@ -311,6 +331,7 @@ export async function rejectApplicantAction(applicantId: string, sendEmailToAppl
   revalidatePath(`/recruiting/applicants/${applicantId}`);
   revalidatePath("/recruiting/applicants");
   revalidatePath("/recruiting");
+  return { ok: true };
 }
 
 // For walk-ins, referrals, or anyone recruited outside the public

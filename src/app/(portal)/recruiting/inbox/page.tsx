@@ -16,7 +16,7 @@ import { bookZoomInterviewAction, inviteToInterviewAction, passApplicantAction }
 export const dynamic = "force-dynamic";
 
 export default async function RecruitingInboxPage() {
-  await requireRecruitingAccess();
+  const { session } = await requireRecruitingAccess();
 
   const [qualifiedApplicants, upcomingCount, nextInterview, needsDecisionCount, newHiresIncomplete, interviewers] =
     await Promise.all([
@@ -125,6 +125,7 @@ export default async function RecruitingInboxPage() {
               onBook={bookZoomInterviewAction}
               onInvite={inviteToInterviewAction}
               onPass={passApplicantAction}
+              canPass={session.role !== "OFFICE_ASSISTANT"}
             />
           ))
         )}

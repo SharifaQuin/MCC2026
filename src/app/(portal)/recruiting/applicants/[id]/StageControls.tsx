@@ -1,10 +1,26 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import type { ApplicantStage } from "@prisma/client";
 import { setApplicantStageAction, rejectApplicantAction } from "../actions";
-import { STAGE_LABELS, SCHEDULING_STAGES } from "@/lib/recruiting";
+import { STAGE_LABELS, SCHEDULING_STAGES, OFFICE_ASSISTANT_BLOCKED_STAGES } from "@/lib/recruiting";
 import { businessTimeParts } from "@/lib/timezone";
+
+const BLOCKED_STAGES = new Set(OFFICE_ASSISTANT_BLOCKED_STAGES);
+const FALLBACK_ERROR = "Something went wrong — please try again.";
+
+// A readable inline message instead of letting an expected, already-handled
+// server refusal (wrong role, stale record, Zoom not configured, etc.)
+// escape uncaught out of useTransition and hit Next's generic error
+// boundary — the same crash this control was built to fix in the first
+// place, just reachable from a few more buttons here. setApplicantStageAction/
+// rejectApplicantAction report their own expected refusals via { ok, error }
+// rather than throwing (see their own comment on why); this only covers a
+// genuinely unexpected throw.
+function describeError(err: unknown): string {
+  return err instanceof Error ? err.message : FALLBACK_ERROR;
+}
 
 // Phase 1 keeps stage changes manual — a manager reviews and moves the
 // applicant forward themselves. Automated scheduling/messaging on these
@@ -44,16 +60,41 @@ export default function StageControls({
   applicantId,
   stage,
   scheduledAt,
+  canDirectlyReject,
+  canRequestRejection,
 }: {
   applicantId: string;
   stage: ApplicantStage;
   scheduledAt?: Date | string | null;
+  // False for an Office Assistant — rejectApplicantAction refuses them
+  // outright (they have no authority to carry out or send a rejection),
+  // so "Move to: Rejected" is replaced with a link into the Approval
+  // Requests composer below instead of a control that would just fail.
+  // Also gates whether OFFER_SENT/HIRED/BENCH (the rest of
+  // OFFICE_ASSISTANT_BLOCKED_STAGES) ever show as routine or manual-override
+  // targets — every one of these needs the authorized manager, not just
+  // REJECTED.
+  canDirectlyReject: boolean;
+  // Only meaningful when canDirectlyReject is false. True when this Office
+  // Assistant also has RECRUITING edit access, so "Request rejection"
+  // actually leads to a composer they can submit from — otherwise the
+  // control is left off the page entirely rather than being a dead-end link
+  // for view-only staff (submitApprovalRequestAction would just refuse it).
+  canRequestRejection: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [scheduling, setScheduling] = useState<ApplicantStage | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [overriding, setOverriding] = useState(false);
-  const options = NEXT_STAGES[stage] ?? [];
+  const [error, setError] = useState<string | null>(null);
+  const allOptions = NEXT_STAGES[stage] ?? [];
+  // REJECTED is never simply dropped — it's either the direct button
+  // (canDirectlyReject) or the "Request rejection" link below, so it stays
+  // in the list for this filter and is handled specially in the map.
+  const options = canDirectlyReject
+    ? allOptions
+    : allOptions.filter((s) => s === "REJECTED" || !BLOCKED_STAGES.has(s));
+  const overrideStages = canDirectlyReject ? ALL_STAGES : ALL_STAGES.filter((s) => !BLOCKED_STAGES.has(s));
   const isCurrentlyScheduled = scheduledAt && (SCHEDULING_STAGES as string[]).includes(stage);
 
   // Prefilling the reschedule form with the existing date/time (read in the
@@ -81,33 +122,61 @@ export default function StageControls({
       )}
       {options.length > 0 && (
         <div className="flex flex-wrap gap-2">
-          {options.map((next) => (
-            <button
-              key={next}
-              type="button"
-              disabled={pending}
-              onClick={() => {
-                if (next === "REJECTED") {
-                  setRejecting(true);
-                } else if ((SCHEDULING_STAGES as string[]).includes(next)) {
-                  setScheduling(next);
-                } else {
-                  startTransition(() => setApplicantStageAction(applicantId, next));
-                }
-              }}
-              className={`rounded-md px-3 py-2 text-sm font-medium disabled:opacity-60 ${
-                next === "REJECTED"
-                  ? "border border-red-300 text-red-700 hover:bg-red-50"
-                  : next === "BENCH"
-                    ? "border border-neutral-300 text-neutral-700 hover:bg-neutral-50"
-                    : "bg-brand-600 text-white hover:bg-brand-700"
-              }`}
-            >
-              {stage === "HIRED" && next === "OFFER_SENT" ? "Undo Hire" : `Move to: ${STAGE_LABELS[next]}`}
-            </button>
-          ))}
+          {options.map((next) => {
+            if (next === "REJECTED" && !canDirectlyReject) {
+              if (!canRequestRejection) return null;
+              // Same-page navigation (no full reload needed) into the
+              // Approval Requests composer below, already open and preset
+              // to REJECT_APPLICANT (see ApprovalRequestControls) — never
+              // a control that would just fail against rejectApplicantAction's
+              // own OFFICE_ASSISTANT guard.
+              return (
+                <Link
+                  key={next}
+                  href="?rejectRequest=1#approval-requests"
+                  className="rounded-md border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                >
+                  Request rejection
+                </Link>
+              );
+            }
+            return (
+              <button
+                key={next}
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  setError(null);
+                  if (next === "REJECTED") {
+                    setRejecting(true);
+                  } else if ((SCHEDULING_STAGES as string[]).includes(next)) {
+                    setScheduling(next);
+                  } else {
+                    startTransition(async () => {
+                      try {
+                        const result = await setApplicantStageAction(applicantId, next);
+                        if (!result.ok) setError(result.error ?? FALLBACK_ERROR);
+                      } catch (err) {
+                        setError(describeError(err));
+                      }
+                    });
+                  }
+                }}
+                className={`rounded-md px-3 py-2 text-sm font-medium disabled:opacity-60 ${
+                  next === "REJECTED"
+                    ? "border border-red-300 text-red-700 hover:bg-red-50"
+                    : next === "BENCH"
+                      ? "border border-neutral-300 text-neutral-700 hover:bg-neutral-50"
+                      : "bg-brand-600 text-white hover:bg-brand-700"
+                }`}
+              >
+                {stage === "HIRED" && next === "OFFER_SENT" ? "Undo Hire" : `Move to: ${STAGE_LABELS[next]}`}
+              </button>
+            );
+          })}
         </div>
       )}
+      {error && <p className="text-xs font-medium text-red-700">{error}</p>}
       {stage === "HIRED" && (
         <p className="text-xs text-neutral-500">
           Undo Hire moves this applicant back to Offer Sent. If the training account created for
@@ -124,9 +193,15 @@ export default function StageControls({
             const date = String(formData.get("scheduledDate") ?? "");
             const time = String(formData.get("scheduledTime") ?? "");
             if (!date || !time) return;
+            setError(null);
             startTransition(async () => {
-              await setApplicantStageAction(applicantId, scheduling, `${date}T${time}`);
-              setScheduling(null);
+              try {
+                const result = await setApplicantStageAction(applicantId, scheduling, `${date}T${time}`);
+                if (result.ok) setScheduling(null);
+                else setError(result.error ?? FALLBACK_ERROR);
+              } catch (err) {
+                setError(describeError(err));
+              }
             });
           }}
           className="rounded-md border border-neutral-200 bg-neutral-50 p-3"
@@ -173,12 +248,18 @@ export default function StageControls({
           <button
             type="button"
             disabled={pending}
-            onClick={() =>
+            onClick={() => {
+              setError(null);
               startTransition(async () => {
-                await rejectApplicantAction(applicantId, true);
-                setRejecting(false);
-              })
-            }
+                try {
+                  const result = await rejectApplicantAction(applicantId, true);
+                  if (result.ok) setRejecting(false);
+                  else setError(result.error ?? FALLBACK_ERROR);
+                } catch (err) {
+                  setError(describeError(err));
+                }
+              });
+            }}
             className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
           >
             {pending ? "..." : "Reject & Send Email"}
@@ -186,12 +267,18 @@ export default function StageControls({
           <button
             type="button"
             disabled={pending}
-            onClick={() =>
+            onClick={() => {
+              setError(null);
               startTransition(async () => {
-                await rejectApplicantAction(applicantId, false);
-                setRejecting(false);
-              })
-            }
+                try {
+                  const result = await rejectApplicantAction(applicantId, false);
+                  if (result.ok) setRejecting(false);
+                  else setError(result.error ?? FALLBACK_ERROR);
+                } catch (err) {
+                  setError(describeError(err));
+                }
+              });
+            }}
             className="rounded-md border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"
           >
             Reject (No Email)
@@ -217,9 +304,15 @@ export default function StageControls({
                 setOverriding(false);
                 return;
               }
+              setError(null);
               startTransition(async () => {
-                await setApplicantStageAction(applicantId, target);
-                setOverriding(false);
+                try {
+                  const result = await setApplicantStageAction(applicantId, target);
+                  if (result.ok) setOverriding(false);
+                  else setError(result.error ?? FALLBACK_ERROR);
+                } catch (err) {
+                  setError(describeError(err));
+                }
               });
             }}
             className="rounded-md border border-neutral-200 bg-neutral-50 p-3"
@@ -231,10 +324,10 @@ export default function StageControls({
             <div className="flex flex-wrap items-center gap-2">
               <select
                 name="targetStage"
-                defaultValue={stage}
+                defaultValue={overrideStages.includes(stage) ? stage : overrideStages[0]}
                 className="rounded-md border border-neutral-300 px-3 py-2 text-sm"
               >
-                {ALL_STAGES.map((s) => (
+                {overrideStages.map((s) => (
                   <option key={s} value={s}>
                     {STAGE_LABELS[s]}
                   </option>

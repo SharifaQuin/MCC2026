@@ -177,15 +177,18 @@ test.describe.serial("Office Assistant direct Zoom interview booking", () => {
       expect(visibleMoves.some((m) => m.includes(blocked))).toBe(false);
     }
 
-    // The manual "Correct the stage manually" override lists every stage
-    // (unlike the routine Move-to buttons) and is reachable regardless of
-    // role — it's the real server-side check (assertRoutineStageTransition
-    // in applicants/actions.ts, unchanged by this feature) that must still
-    // reject a blocked stage, not just the UI hiding its own buttons.
+    // The manual "Correct the stage manually" override used to list every
+    // stage regardless of role; it now removes the same four blocked
+    // targets too (see OFFICE_ASSISTANT_BLOCKED_STAGES in lib/recruiting.ts)
+    // — there's no longer a selectable option that would just be refused by
+    // the server-side check (routineStageTransitionError in
+    // applicants/actions.ts, unchanged in substance by this feature, only
+    // in how it reports a refusal).
     await page.locator("button", { hasText: "Made a mistake?" }).click();
-    await page.selectOption("select[name='targetStage']", "OFFER_SENT");
-    await page.click('button:has-text("Confirm")');
-    await page.waitForTimeout(500);
+    const select = page.locator("select[name='targetStage']");
+    for (const blocked of ["OFFER_SENT", "HIRED", "REJECTED", "BENCH"]) {
+      await expect(select.locator(`option[value="${blocked}"]`)).toHaveCount(0);
+    }
 
     const stillBlocked = await prisma.applicant.findUniqueOrThrow({ where: { id: applicant.id } });
     expect(stillBlocked.stage).toBe("PHONE_INTERVIEW_SCHEDULED");

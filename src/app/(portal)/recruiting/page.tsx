@@ -160,7 +160,7 @@ export default async function RecruitingPage() {
         <Stat label="Hired" value={stats.hired} />
       </div>
 
-      <PipelineBoard columns={columns} />
+      <PipelineBoard columns={columns} isOfficeAssistant={session.role === "OFFICE_ASSISTANT"} />
 
       {funnelBySource.length > 0 && (
         <div className="mt-6 rounded-lg border border-neutral-200 bg-white p-4">
