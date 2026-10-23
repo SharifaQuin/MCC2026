@@ -255,7 +255,7 @@ export function RequestRow({ row }: { row: ApprovalRequestRow }) {
               value={decisionNote}
               onChange={(e) => setDecisionNote(e.target.value)}
               placeholder="Decision note (optional)"
-              className="w-48 rounded-md border border-neutral-300 px-2 py-1 text-xs"
+              className="w-full min-w-[12rem] flex-1 rounded-md border border-neutral-300 px-2 py-1 text-xs sm:w-64"
             />
             <button
               type="button"
