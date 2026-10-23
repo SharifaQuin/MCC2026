@@ -23,8 +23,6 @@ export default async function MyReportDetailPage({ params }: { params: { id: str
   const report = await getMyProblemReportDetail(session, params.id);
   if (!report) notFound();
 
-  const latestResolution = report.resolutions[0] ?? null;
-
   return (
     <div className="mx-auto max-w-2xl">
       <Link href="/my-reports" className="text-sm text-brand-700 hover:underline">
@@ -59,22 +57,37 @@ export default async function MyReportDetailPage({ params }: { params: { id: str
         <p className="whitespace-pre-wrap text-sm text-neutral-700">{report.description}</p>
       </div>
 
-      {(report.status === "RESOLVED" || report.status === "CONFIRMED") && (
-        <div className="mt-4 rounded-md border border-neutral-200 p-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+      {/* Every resolution this report has ever had, newest first, regardless
+          of the CURRENT status — a reporter who reopens it via "Still having
+          trouble" (or whose report has since been resolved again) still
+          needs to reread what was already tried. Only the feedback form
+          below is tied to the current status/latest resolution; this
+          history is never gated on it. Each entry is just the reporter-
+          visible note + when — never who resolved it or its email delivery
+          state, both owner-only. */}
+      {report.resolutions.length > 0 ? (
+        <div className="mt-4 space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
             {labels.myReportsResolutionHeading}
           </p>
-          {latestResolution ? (
-            <>
-              <p className="whitespace-pre-wrap text-sm text-neutral-700">{latestResolution.note}</p>
+          {report.resolutions.map((res) => (
+            <div key={res.id} className="rounded-md border border-neutral-200 p-4">
+              <p className="whitespace-pre-wrap text-sm text-neutral-700">{res.note}</p>
               <p className="mt-1 text-xs text-neutral-400">
-                {labels.myReportsResolvedOn} {new Date(latestResolution.resolvedAt).toLocaleString()}
+                {labels.myReportsResolvedOn} {new Date(res.resolvedAt).toLocaleString()}
               </p>
-            </>
-          ) : (
-            <p className="text-sm text-neutral-500">{labels.myReportsResolutionNoNote}</p>
-          )}
+            </div>
+          ))}
         </div>
+      ) : (
+        (report.status === "RESOLVED" || report.status === "CONFIRMED") && (
+          <div className="mt-4 rounded-md border border-neutral-200 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+              {labels.myReportsResolutionHeading}
+            </p>
+            <p className="text-sm text-neutral-500">{labels.myReportsResolutionNoNote}</p>
+          </div>
+        )
       )}
 
       {report.status === "RESOLVED" && (

@@ -270,12 +270,16 @@ test.describe.serial("Problem Reports: owner badge, resolve, reopen, reporter fe
       },
     });
     const adminSession: SessionPayload = { sub: adminId, role: "ADMIN", language: "EN", name: "Owner" };
-    await resolveProblemReport(adminSession, report.id, "Attempted fix for still-broken-flow test.");
+    const firstResolutionNote = "Attempted fix for still-broken-flow test.";
+    await resolveProblemReport(adminSession, report.id, firstResolutionNote);
     const beforeBadge = await prisma.problemReport.count({ where: { status: "OPEN" } });
 
     await loginAs(page, REPORTER_EMAIL, REPORTER_PASSWORD);
     await page.goto(`/my-reports/${report.id}`);
     await page.waitForLoadState("networkidle");
+    // The resolution note is readable before any feedback too — not just
+    // the thing this test is about to reopen.
+    await expect(page.getByText(firstResolutionNote)).toBeVisible();
     await page.click("text=Still having trouble");
     const feedbackNote = `Still broken: ${RUN_ID}`;
     await page.fill("textarea", feedbackNote);
@@ -296,11 +300,47 @@ test.describe.serial("Problem Reports: owner badge, resolve, reopen, reporter fe
     const afterBadge = await prisma.problemReport.count({ where: { status: "OPEN" } });
     expect(afterBadge).toBe(beforeBadge + 1);
 
-    // The prior resolution note must still be intact, not overwritten by
-    // this feedback.
+    // The resolution section must not disappear just because the ticket
+    // reopened — the reporter still needs to reread what was already tried,
+    // regardless of the current (now OPEN) status.
     await page.reload();
     await page.waitForLoadState("networkidle");
+    await expect(page.getByText(/^Open$/)).toBeVisible();
+    await expect(page.getByText(firstResolutionNote)).toBeVisible();
     await expect(page.getByText(feedbackNote)).toBeVisible();
+
+    // Resolve a second time with a different note. The reporter must then
+    // see BOTH resolution notes (newest first, per the Prisma ordering) and
+    // the earlier feedback history — none of it ever replaced by the next.
+    const secondResolutionNote = `Second attempted fix: ${RUN_ID}`;
+    await resolveProblemReport(adminSession, report.id, secondResolutionNote);
+
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByText(/^Resolved$/)).toBeVisible();
+    const resolutionNotes = page.locator("p.whitespace-pre-wrap");
+    await expect(resolutionNotes.filter({ hasText: secondResolutionNote })).toHaveCount(1);
+    await expect(resolutionNotes.filter({ hasText: firstResolutionNote })).toHaveCount(1);
+    // Newest resolution note renders before the older one.
+    const resolutionTexts = await resolutionNotes.allTextContents();
+    expect(resolutionTexts.indexOf(secondResolutionNote)).toBeLessThan(resolutionTexts.indexOf(firstResolutionNote));
+    await expect(page.getByText(feedbackNote)).toBeVisible();
+
+    // Exactly one feedback form is shown (tied to the CURRENT/second
+    // resolution only) — the first resolution's historical note never
+    // grows a stale feedback button of its own, and no owner-only
+    // resolvedBy/email info leaks here.
+    await expect(page.getByRole("button", { name: "It's working" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Still having trouble" })).toHaveCount(1);
+    await expect(page.getByText(/Email to reporter/)).not.toBeVisible();
+
+    const resolutionsAfterSecond = await prisma.problemReportResolution.findMany({
+      where: { reportId: report.id },
+      orderBy: { resolvedAt: "asc" },
+    });
+    expect(resolutionsAfterSecond.length).toBe(2);
+    expect(resolutionsAfterSecond[0].note).toBe(firstResolutionNote);
+    expect(resolutionsAfterSecond[1].note).toBe(secondResolutionNote);
   });
 
   test("A legacy RESOLVED report with no resolution row on file is handled gracefully, for both the owner and the reporter, and feedback still works", async ({ page }) => {
