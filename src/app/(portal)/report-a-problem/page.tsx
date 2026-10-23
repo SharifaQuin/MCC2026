@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { t } from "@/lib/i18n";
@@ -21,6 +22,9 @@ export default async function ReportAProblemPage() {
         <p className="mt-1 text-sm text-neutral-500">{labels.reportProblemSubtitle}</p>
       </div>
       <ReportProblemForm language={session.language} />
+      <Link href="/my-reports" className="inline-block text-sm text-brand-700 hover:underline">
+        {labels.reportProblemViewMyReports}
+      </Link>
     </div>
   );
 }

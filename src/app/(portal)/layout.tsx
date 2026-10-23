@@ -44,6 +44,12 @@ export default async function PortalLayout({ children }: { children: React.React
     session.role === "ADMIN" || session.role === "SERVICE_MANAGER"
       ? await prisma.approvalRequest.count({ where: { managerId: session.sub, status: "PENDING" } })
       : 0;
+  // Same live-count-on-every-request pattern as pendingApprovalCount above —
+  // a fresh submission or a reporter reopening theirs via "Still having
+  // trouble" both show up here on the very next navigation, no separate
+  // invalidation needed beyond the status write itself.
+  const openProblemReportCount =
+    session.role === "ADMIN" ? await prisma.problemReport.count({ where: { status: "OPEN" } }) : 0;
 
   // Trainer/Service Manager-facing screens have no Spanish content, so the
   // language toggle (wherever it now lives — the gear dropdown) stays
@@ -57,6 +63,7 @@ export default async function PortalLayout({ children }: { children: React.React
     hideModulesLink: hideModulesNavLink,
     officeAssistantAreas,
     pendingApprovalCount,
+    openProblemReportCount,
   });
 
   return (

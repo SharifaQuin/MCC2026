@@ -43,6 +43,7 @@ export function buildNavGroups({
   hideModulesLink,
   officeAssistantAreas,
   pendingApprovalCount,
+  openProblemReportCount,
 }: {
   role: Role;
   language: Language;
@@ -50,6 +51,7 @@ export function buildNavGroups({
   hideModulesLink?: boolean;
   officeAssistantAreas?: Partial<Record<PermissionArea, AreaAccessResult>>;
   pendingApprovalCount?: number;
+  openProblemReportCount?: number;
 }): NavGroup[] {
   const labels = t(language);
   const groups: NavGroup[] = [];
@@ -102,7 +104,7 @@ export function buildNavGroups({
         { href: "/assistant", label: labels.assistant },
         { href: "/todo", label: labels.todo },
         { href: "/admin/rookie-journey", label: "Rookie Journey" },
-        { href: "/owner/problem-reports", label: "Problem Reports" },
+        { href: "/owner/problem-reports", label: "Problem Reports", badge: openProblemReportCount },
         { href: "/test-accounts", label: labels.testAccounts },
       ],
     });
@@ -164,6 +166,7 @@ const FALLBACK_PAGE_TITLES: Array<{ prefix: string; label: (language: Language) 
   { prefix: "/help", label: () => "Help" },
   { prefix: "/report-a-problem", label: () => "Report a Problem" },
   { prefix: "/owner/problem-reports", label: () => "Problem Reports" },
+  { prefix: "/my-reports", label: (l) => t(l).myReportsTitle },
   { prefix: "/admin", label: (l) => t(l).admin },
   { prefix: "/staff", label: () => "Staff" },
   { prefix: "/recruiting", label: (l) => t(l).recruiting },

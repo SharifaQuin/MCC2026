@@ -23,6 +23,21 @@ export default async function ProblemReportsPage() {
     description: r.description,
     status: r.status,
     createdAt: r.createdAt.toISOString(),
+    latestResolutionId: r.latestResolutionId,
+    resolutions: r.resolutions.map((res) => ({
+      id: res.id,
+      note: res.note,
+      resolvedByName: res.resolvedBy.name,
+      resolvedAt: res.resolvedAt.toISOString(),
+      emailStatus: res.emailStatus,
+      emailError: res.emailError,
+    })),
+    feedback: r.feedback.map((f) => ({
+      id: f.id,
+      outcome: f.outcome,
+      note: f.note,
+      createdAt: f.createdAt.toISOString(),
+    })),
   }));
 
   return (
