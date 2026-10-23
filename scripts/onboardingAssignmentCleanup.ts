@@ -4,14 +4,20 @@
 //   audit <userId> [--out <path>]
 //     Read-only. Lists this user's unsigned default-document assignments
 //     and writes a restore snapshot (default: scripts/snapshots/<userId>-
-//     <timestamp>.json). Always run this first.
+//     <timestamp>.json). Always run this first. Refuses (clear error,
+//     non-zero exit, nothing written) if the user's LIVE role is TRAINEE —
+//     their unsigned default documents are the legitimate onboarding
+//     packet, never erroneous.
 //
 //   cleanup <userId> --snapshot <path> --confirm
 //     Deletes exactly the rows in the given snapshot, after re-verifying
 //     each one against the live database (see deleteAssignmentsFromSnapshot
 //     in scripts/lib/onboardingAssignmentAudit.ts for exactly what that
-//     re-check covers). Refuses to run without --confirm, and refuses a
-//     snapshot whose userId doesn't match the one given here.
+//     re-check covers). Refuses to run without --confirm, refuses a
+//     snapshot whose userId doesn't match the one given here, and refuses
+//     outright (nothing deleted) if the user's LIVE role is TRAINEE —
+//     re-checked at delete time regardless of what role the snapshot
+//     itself recorded, so a stale or edited snapshot can't bypass this.
 //
 //   restore --snapshot <path>
 //     Re-creates the exact rows from a snapshot (same ids). Safe to run

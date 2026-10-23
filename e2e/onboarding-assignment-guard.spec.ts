@@ -1,5 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
 import { hashPassword } from "../src/lib/password";
 import { assignDefaultOnboardingDocuments, backfillDefaultDocumentToTrainees } from "../src/lib/onboarding";
 import {
@@ -7,7 +9,13 @@ import {
   buildSnapshot,
   deleteAssignmentsFromSnapshot,
   restoreAssignmentsFromSnapshot,
+  type AuditedAssignmentRow,
 } from "../scripts/lib/onboardingAssignmentAudit";
+
+const CLI_PATH = path.join(__dirname, "..", "scripts", "onboardingAssignmentCleanup.ts");
+function runCli(args: string[]) {
+  return spawnSync("npx", ["tsx", CLI_PATH, ...args], { encoding: "utf-8" });
+}
 
 // Covers the fix for Pedro Paez's account (created as TRAINEE — the only
 // roles Staff > Add Employee offers — then switched to OFFICE_ASSISTANT,
@@ -198,5 +206,74 @@ test.describe.serial("Onboarding-assignment TRAINEE-only guard", () => {
 
     await prisma.onboardingAssignment.deleteMany({ where: { documentId: { in: [nonDefaultDoc.id, secondDefaultDoc.id] } } });
     await prisma.onboardingDocument.deleteMany({ where: { id: { in: [nonDefaultDoc.id, secondDefaultDoc.id] } } });
+  });
+
+  test("Audit and cleanup both refuse for an active Trainee, preserving all of their assignments", async () => {
+    const trainee = await makeUser("TRAINEE", "active-trainee");
+    createdUserIds.push(trainee.id);
+    // The normal, legitimate path — exactly what the onboarding guard is
+    // supposed to produce for a real Trainee.
+    await assignDefaultOnboardingDocuments(trainee.id);
+    const assignment = await prisma.onboardingAssignment.findFirstOrThrow({
+      where: { userId: trainee.id, documentId: defaultDocId },
+    });
+
+    // Audit itself refuses — it never even gets to list this as
+    // "erroneous", let alone write a snapshot of it.
+    await expect(findErroneousDefaultAssignments(prisma, trainee.id)).rejects.toThrow(/TRAINEE/);
+
+    // Cleanup refuses independently too, even given a snapshot that
+    // someone assembled some other way (e.g. a hand-edited file, or one
+    // from before this guard existed) rather than through the now-guarded
+    // audit function above.
+    const forgedRow: AuditedAssignmentRow = {
+      id: assignment.id,
+      documentId: assignment.documentId,
+      documentTitle: "Guard Test Default Doc",
+      userId: trainee.id,
+      signedAt: null,
+      signedName: null,
+      signedPdfDataUrl: null,
+      createdAt: assignment.createdAt.toISOString(),
+    };
+    const forgedSnapshot = await buildSnapshot(prisma, trainee.id, [forgedRow]);
+    await expect(deleteAssignmentsFromSnapshot(prisma, forgedSnapshot, { confirm: true })).rejects.toThrow(/TRAINEE/);
+
+    // Nothing was deleted by either attempt.
+    const stillThere = await prisma.onboardingAssignment.findUnique({ where: { id: assignment.id } });
+    expect(stillThere).not.toBeNull();
+
+    // The real CLI entry point refuses the same way — a clear message,
+    // non-zero exit, and (since it never gets past the audit call) no
+    // snapshot file written.
+    const cliResult = runCli(["audit", trainee.id]);
+    expect(cliResult.status).not.toBe(0);
+    expect(cliResult.stderr).toMatch(/TRAINEE/);
+  });
+
+  test("Cleanup refuses if the user became a Trainee after the snapshot was created", async () => {
+    // Pedro-like at audit time: a real erroneous row, found and
+    // snapshotted while NOT a Trainee.
+    const user = await makeUser("OFFICE_ASSISTANT", "became-trainee");
+    createdUserIds.push(user.id);
+    const erroneous = await prisma.onboardingAssignment.create({
+      data: { documentId: defaultDocId, userId: user.id },
+    });
+
+    const found = await findErroneousDefaultAssignments(prisma, user.id);
+    expect(found.map((r) => r.id)).toEqual([erroneous.id]);
+    const snapshot = await buildSnapshot(prisma, user.id, found);
+    expect(snapshot.user?.role).toBe("OFFICE_ASSISTANT");
+
+    // The user is switched back to TRAINEE before cleanup ever runs —
+    // e.g. a corrected role assignment, or simply time passing between the
+    // audit and the cleanup step. The snapshot still says OFFICE_ASSISTANT;
+    // only the LIVE role must decide this.
+    await prisma.user.update({ where: { id: user.id }, data: { role: "TRAINEE" } });
+
+    await expect(deleteAssignmentsFromSnapshot(prisma, snapshot, { confirm: true })).rejects.toThrow(/TRAINEE/);
+
+    const stillThere = await prisma.onboardingAssignment.findUnique({ where: { id: erroneous.id } });
+    expect(stillThere).not.toBeNull();
   });
 });

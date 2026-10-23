@@ -7,6 +7,18 @@ import type { PrismaClient } from "@prisma/client";
 // is only ever considered erroneous here if it's BOTH for a default
 // document AND still unsigned — a signed one is a real, completed record
 // regardless of the user's current role, and is never touched.
+//
+// Critically, an unsigned default-document assignment is only erroneous
+// for a user who ISN'T (currently) a TRAINEE — for an actual Trainee it's
+// exactly the legitimate, in-progress Cleaning Technician onboarding packet
+// assignDefaultOnboardingDocuments is supposed to assign. Both
+// findErroneousDefaultAssignments (the audit) and
+// deleteAssignmentsFromSnapshot (the cleanup) refuse outright — nothing
+// deleted, no per-row skipping — the moment the LIVE role is TRAINEE, and
+// cleanup re-checks that live role itself rather than trusting whatever
+// role a saved snapshot recorded, so a snapshot taken while the user held
+// a different role (or a stale/forged one) can never be used to delete a
+// now-Trainee's real onboarding documents.
 export interface AuditedAssignmentRow {
   id: string;
   documentId: string;
@@ -30,6 +42,13 @@ export async function findErroneousDefaultAssignments(
   prisma: PrismaClient,
   userId: string
 ): Promise<AuditedAssignmentRow[]> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+  if (user?.role === "TRAINEE") {
+    throw new Error(
+      `User ${userId} is currently a TRAINEE — their unsigned default-document assignments are the legitimate onboarding packet, not erroneous. Refusing to audit.`
+    );
+  }
+
   const rows = await prisma.onboardingAssignment.findMany({
     where: { userId, signedAt: null, document: { assignByDefault: true } },
     include: { document: { select: { title: true } } },
@@ -86,6 +105,20 @@ export async function deleteAssignmentsFromSnapshot(
 ): Promise<CleanupResult> {
   if (!confirm) {
     throw new Error("Refusing to delete without explicit confirm:true (pass --confirm on the CLI).");
+  }
+
+  // Re-check the LIVE role, never the role a snapshot happened to record —
+  // a user who is (or became) a TRAINEE again by the time cleanup actually
+  // runs must not have their now-legitimate onboarding documents deleted,
+  // whether the snapshot is simply stale (taken before a later role
+  // change) or was saved/edited to say something else entirely. Refuses
+  // the whole run rather than skipping row-by-row, so nothing from this
+  // snapshot is ever deleted for a currently-Trainee user.
+  const liveUser = await prisma.user.findUnique({ where: { id: snapshot.userId }, select: { role: true } });
+  if (liveUser?.role === "TRAINEE") {
+    throw new Error(
+      `User ${snapshot.userId} is currently a TRAINEE — refusing to delete any assignment from this snapshot.`
+    );
   }
 
   const deleted: string[] = [];
