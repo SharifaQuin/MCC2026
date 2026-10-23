@@ -8,7 +8,10 @@ function escapeHtml(text: string): string {
 // outbound email — applicant correspondence and internal notifications
 // alike — looks like it actually came from a company, not an unformatted
 // automated script.
-function toHtmlBody(text: string): string {
+// Exported for tests that want to render/screenshot an actual composed
+// email body (proving safe escaping of free-text content) without
+// duplicating this template.
+export function toHtmlBody(text: string): string {
   const paragraphs = escapeHtml(text)
     .split(/\n{2,}/)
     .map((p) => `<p style="margin:0 0 12px;">${p.replace(/\n/g, "<br>")}</p>`)

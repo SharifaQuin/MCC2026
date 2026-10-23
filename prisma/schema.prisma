@@ -329,6 +329,7 @@ model User {
   assignedChecklistTasks   ChecklistTask[]   @relation("ChecklistTaskAssignee")
   policyDocumentsAdded     PolicyDocument[]
   problemReportsFiled      ProblemReport[]
+  problemReportsResolved   ProblemReportResolution[]
 
   @@index([role])
 }
@@ -2807,6 +2808,10 @@ enum ProblemReportCategory {
 enum ProblemReportStatus {
   OPEN
   RESOLVED
+  // The reporter said a resolution actually worked ("It's working"). Only
+  // reachable from RESOLVED, by the reporter themselves — never set by a
+  // migration or any automated process.
+  CONFIRMED
 }
 
 // A short, private note from any staff member straight to the owner — no
@@ -2824,5 +2829,85 @@ model ProblemReport {
   status       ProblemReportStatus   @default(OPEN)
   createdAt    DateTime              @default(now())
 
+  // Points at the most recent ProblemReportResolution row for this report
+  // (null for an OPEN report that's never been resolved, and for a
+  // pre-existing RESOLVED report from before this field existed — handled
+  // as "no note on file", never backfilled). A plain scalar, not a Prisma
+  // relation, on purpose: its only job is the atomic
+  // "is this feedback still about the resolution the reporter actually
+  // saw" check in submitProblemReportFeedback (compared against the id the
+  // reporter's page was rendered with) — it never needs its own join.
+  // Reset to the new row's id, inside the same transaction that creates it,
+  // every time this report is resolved (including a second or third time
+  // after being reopened) — so a resolution is never overwritten in place
+  // and a stale reporter page can never silently land feedback on the
+  // wrong one.
+  latestResolutionId String?
+
+  resolutions ProblemReportResolution[]
+  feedback    ProblemReportFeedback[]
+
   @@index([status, createdAt])
+}
+
+enum ProblemReportEmailStatus {
+  PENDING
+  // Transient claim set right before calling sendEmail, the same
+  // compare-and-swap ScheduledMessage's SENDING status uses, so a retried
+  // or double-submitted resolve can never send this reporter a second
+  // copy of the same resolution.
+  SENDING
+  SENT
+  // Terminal, like ScheduledMessage's own FAILED — never auto-retried.
+  // Surfaced to the owner so a human can notice and decide what to do
+  // (even just resolving again, which creates a fresh row/fresh attempt).
+  FAILED
+}
+
+// One row per time this report was resolved — never updated in place and
+// never overwritten by a later reopen+resolve cycle, so the full history
+// (what was told the reporter, and whether it reached them) survives any
+// number of reopen/resolve rounds.
+model ProblemReportResolution {
+  id           String                   @id @default(cuid())
+  reportId     String
+  report       ProblemReport            @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  // Shown to the reporter (in the app and in the resolution email) — the
+  // owner is prompted to keep this free of internal-only detail.
+  note         String                   @db.Text
+  resolvedById String
+  resolvedBy   User                     @relation(fields: [resolvedById], references: [id])
+  resolvedAt   DateTime                 @default(now())
+  emailStatus  ProblemReportEmailStatus @default(PENDING)
+  emailError   String?                  @db.Text
+  emailSentAt  DateTime?
+
+  feedback ProblemReportFeedback[]
+
+  @@index([reportId, resolvedAt])
+}
+
+enum ProblemReportFeedbackOutcome {
+  CONFIRMED_WORKING
+  STILL_BROKEN
+}
+
+// The reporter's own response to a specific resolution — also never
+// updated in place, so repeated feedback across reopen/resolve cycles
+// stays a readable timeline rather than one field that keeps getting
+// clobbered.
+model ProblemReportFeedback {
+  id           String                       @id @default(cuid())
+  reportId     String
+  report       ProblemReport                @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  // Nullable (and SetNull on delete) purely because this points at a
+  // specific historical resolution, not because feedback can exist
+  // without one — submitProblemReportFeedback always sets it.
+  resolutionId String?
+  resolution   ProblemReportResolution?     @relation(fields: [resolutionId], references: [id], onDelete: SetNull)
+  outcome      ProblemReportFeedbackOutcome
+  note         String?                      @db.Text
+  createdAt    DateTime                     @default(now())
+
+  @@index([reportId, createdAt])
 }
