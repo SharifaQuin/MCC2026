@@ -9,3 +9,7 @@ tsconfig.tsbuildinfo
 /playwright-report
 /test-results
 /blob-report
+
+# Onboarding-assignment audit snapshots (scripts/onboardingAssignmentCleanup.ts)
+# can contain a real user's email and signed-PDF data URLs — never committed.
+/scripts/snapshots
