@@ -18,6 +18,7 @@ import {
   releaseBookedInterviewSlot,
   updateOrCreateInterviewCalendarEvent,
   retryInterviewCalendarSync,
+  INTERVIEW_EMAIL_SUBJECT_PREFIXES,
 } from "@/lib/recruiting";
 import { getAvailabilityForInterviewer } from "@/lib/interviewerAvailability";
 import { generateInviteToken } from "@/lib/tokens";
@@ -26,6 +27,7 @@ import { logAudit } from "@/lib/auditLog";
 import { getTrueActorId } from "@/lib/impersonation";
 import { isZoomConfigured } from "@/lib/recruitingZoom";
 import type { InterviewFormat } from "@prisma/client";
+import { formatPhone, normalizePhoneDigits } from "@/lib/formatPhone";
 import type {
   ApplicantStage,
   ApplicantSource,
@@ -377,6 +379,173 @@ export async function addApplicantNoteAction(applicantId: string, formData: Form
     });
   }
   revalidatePath(`/recruiting/applicants/${applicantId}`);
+}
+
+export interface ContactInfoFormState {
+  error?: string;
+  success?: boolean;
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Edits an existing applicant's own email/phone — the one thing there was
+// previously no way to fix after the fact (a typo at application time, a
+// candidate who got a new number). Deliberately narrow: this only ever
+// touches Applicant.email/phone plus a visible history entry. It never
+// resends anything, never touches stage/scheduledAt, and never creates or
+// updates a calendar event — a reschedule or re-invite already exists for
+// those and this isn't meant to replace them. Every notification path
+// (sendApplicantEmailAction, sendApplicantTextAction,
+// sendInterviewConfirmationEmail, sendInterviewReminder, etc.) already
+// re-queries the applicant fresh from the database at send time rather than
+// holding a cached address, so the very next message automatically goes to
+// whatever's saved here — no separate "propagate the new address" step
+// exists or is needed.
+export async function updateApplicantContactInfoAction(
+  applicantId: string,
+  _prevState: ContactInfoFormState,
+  formData: FormData
+): Promise<ContactInfoFormState> {
+  const { session, canEdit } = await requireRecruitingAccess();
+  requireEdit(canEdit);
+
+  const emailRaw = String(formData.get("email") ?? "").trim();
+  const phoneRaw = String(formData.get("phone") ?? "").trim();
+
+  const email = emailRaw.toLowerCase();
+  if (!email || !EMAIL_PATTERN.test(email)) {
+    return { error: "Enter a valid email address." };
+  }
+
+  const applicant = await prisma.applicant.findUnique({
+    where: { id: applicantId },
+    include: { bookedSlot: { select: { calendarEventId: true } } },
+  });
+  if (!applicant) {
+    return { error: "Applicant not found." };
+  }
+
+  // Compare via every digit-representation the stored value could already
+  // be in (as-typed, or with a US country code stripped — see
+  // normalizePhoneDigits) rather than a raw string/exact-digits match, so a
+  // resubmission of the applicant's own current number — however it was
+  // originally stored (with punctuation, a leading "1", or any other
+  // legacy format that isn't itself a clean 10 digits) — is never treated
+  // as a change. That matters on two fronts: it never forces this one
+  // field's 10-digit acceptance rule on a phone the staffer isn't actually
+  // touching (editing just the email must keep working even when the
+  // stored phone wouldn't itself pass that rule), and it never records a
+  // false "phone changed" history entry for what's really only a
+  // formatting difference.
+  const submittedPhoneDigits = normalizePhoneDigits(phoneRaw);
+  const storedPhoneDigits = normalizePhoneDigits(applicant.phone);
+  const phoneUnchanged =
+    submittedPhoneDigits.size > 0 && [...submittedPhoneDigits].some((d) => storedPhoneDigits.has(d));
+
+  let phone: string;
+  if (phoneUnchanged) {
+    phone = applicant.phone;
+  } else {
+    // Same 10-digit-US-number acceptance rule formatPhone/normalizePhoneDigits
+    // already use elsewhere for this exact phone column (a leading country
+    // code "1" is stripped, anything else that isn't a clean 10 digits is
+    // rejected) — stored as bare digits so every existing display/comparison
+    // helper keeps working on it unchanged. Only enforced here, on an
+    // actually-changing value — see phoneUnchanged above.
+    const digits = phoneRaw.replace(/\D/g, "");
+    phone = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+    if (phone.length !== 10) {
+      return { error: "Enter a valid 10-digit phone number." };
+    }
+  }
+
+  // Scoped across every applicant, not just this one's own job posting —
+  // unlike the create-time duplicate-application check (which only guards
+  // against the same person double-applying to the same posting), reusing
+  // another applicant's email/phone here would conflate two different
+  // people's communication threads/history, regardless of which posting
+  // either is on.
+  if (email !== applicant.email.toLowerCase()) {
+    const conflict = await prisma.applicant.findFirst({
+      where: { email: { equals: email, mode: "insensitive" }, id: { not: applicantId } },
+      select: { id: true },
+    });
+    if (conflict) {
+      return { error: "Another applicant already uses this email address." };
+    }
+  }
+  if (!phoneUnchanged) {
+    // An exact-string match against the `phone` column would miss another
+    // applicant's own legacy-formatted number (punctuation, a leading
+    // country code) even though it's the same real number — so this
+    // compares every candidate the same normalized way duplicate/change
+    // detection above does, rather than trusting every stored row to
+    // already be in bare-digits form.
+    const otherApplicants = await prisma.applicant.findMany({
+      where: { id: { not: applicantId } },
+      select: { id: true, phone: true },
+    });
+    const newPhoneDigits = normalizePhoneDigits(phone);
+    const conflict = otherApplicants.find((other) =>
+      [...normalizePhoneDigits(other.phone)].some((d) => newPhoneDigits.has(d))
+    );
+    if (conflict) {
+      return { error: "Another applicant already uses this phone number." };
+    }
+  }
+
+  const changeLines: string[] = [];
+  if (email !== applicant.email) {
+    changeLines.push(`Email changed from ${applicant.email} to ${email}`);
+  }
+  if (!phoneUnchanged) {
+    changeLines.push(`Phone changed from ${formatPhone(applicant.phone)} to ${formatPhone(phone)}`);
+  }
+  if (changeLines.length === 0) {
+    return { success: true };
+  }
+  // A real calendar event already exists for this applicant (its id is
+  // persisted on the booked slot — see calendarEventId in schema.prisma)
+  // and this edit never touches it (updateCalendarEvent has no attendees
+  // field — see lib/calendar.ts — so an existing invite's attendee address
+  // is never refreshed on a reschedule either). Surface that rather than
+  // leave it silently inconsistent.
+  if (applicant.bookedSlot?.calendarEventId) {
+    changeLines.push(
+      "Note: this applicant has an existing calendar invitation that was NOT updated — it may still show the previous contact details."
+    );
+  }
+  // The email itself is changing and at least one past invitation/
+  // confirmation/reminder email was already delivered to the OLD address —
+  // flag that it was NOT resent, same reasoning as the calendar-invite
+  // note above (never silently reissue a message that already went out).
+  if (email !== applicant.email.toLowerCase()) {
+    const priorInterviewEmail = await prisma.communicationLog.findFirst({
+      where: {
+        applicantId,
+        channel: "EMAIL",
+        direction: "OUTBOUND",
+        status: "SENT",
+        OR: INTERVIEW_EMAIL_SUBJECT_PREFIXES.map((prefix) => ({ subject: { startsWith: prefix } })),
+      },
+      select: { id: true },
+    });
+    if (priorInterviewEmail) {
+      changeLines.push(
+        "Note: an interview invitation/confirmation/reminder email was already sent to this applicant's previous email address — it was NOT resent."
+      );
+    }
+  }
+
+  await prisma.$transaction([
+    prisma.applicant.update({ where: { id: applicantId }, data: { email, phone } }),
+    prisma.applicantNote.create({
+      data: { applicantId, authorId: getTrueActorId(session), body: changeLines.join("\n") },
+    }),
+  ]);
+
+  revalidatePath(`/recruiting/applicants/${applicantId}`);
+  return { success: true };
 }
 
 // ── Phone Screen tab ──

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
-import { STAGE_LABELS, SCHEDULING_STAGES, INTERVIEW_SCORECARD_COMPETENCIES, DEFAULT_PHONE_SCREEN_CRITERIA, WORKING_SESSION_CHECKLIST_ITEMS, getOnboardingChecklist, SCORED_CATEGORIES } from "@/lib/recruiting";
+import { STAGE_LABELS, SCHEDULING_STAGES, INTERVIEW_SCORECARD_COMPETENCIES, DEFAULT_PHONE_SCREEN_CRITERIA, WORKING_SESSION_CHECKLIST_ITEMS, getOnboardingChecklist, SCORED_CATEGORIES, INTERVIEW_EMAIL_SUBJECT_PREFIXES } from "@/lib/recruiting";
 import { getMessageTemplates } from "@/lib/messageTemplates";
 import { formatInBusinessTimezone } from "@/lib/timezone";
 import { formatPhone } from "@/lib/formatPhone";
@@ -9,6 +9,7 @@ import { isCalendarConfigured, describeCalendarSyncProblem } from "@/lib/calenda
 import { getZoomJoinInfo } from "@/lib/recruitingZoom";
 import { retryInterviewCalendarSyncAction } from "../actions";
 import CalendarSyncBanner from "./CalendarSyncBanner";
+import ContactInfoEditor from "./ContactInfoEditor";
 import StageControls from "./StageControls";
 import InterviewDecisionPanel from "./InterviewDecisionPanel";
 import CommunicationPanel from "./CommunicationPanel";
@@ -95,6 +96,19 @@ export default async function ApplicantDetailPage({
       data: { viewedAt: new Date(), viewedById: session.sub },
     });
   }
+
+  // Same signal updateApplicantContactInfoAction checks before saving — a
+  // past invitation/confirmation/reminder already reached the applicant's
+  // current email, so the edit form can warn before this address is
+  // changed out from under it, not only after.
+  const hasPriorInterviewEmail = applicant.communications.some(
+    (c) =>
+      c.channel === "EMAIL" &&
+      c.direction === "OUTBOUND" &&
+      c.status === "SENT" &&
+      c.subject !== null &&
+      INTERVIEW_EMAIL_SUBJECT_PREFIXES.some((prefix) => c.subject!.startsWith(prefix))
+  );
 
   const commHistory = applicant.communications.map((c) => ({
     id: c.id,
@@ -210,6 +224,21 @@ export default async function ApplicantDetailPage({
           <div>
             <dt className="text-neutral-400">Phone</dt>
             <dd>{formatPhone(applicant.phone)}</dd>
+          </div>
+          <div className="col-span-2">
+            <ContactInfoEditor
+              applicantId={applicant.id}
+              email={applicant.email}
+              phone={applicant.phone}
+              canEdit={canEdit}
+              // Specifically "a real calendar event already exists" (not
+              // calendarProblem, which also covers "no event exists yet" —
+              // that case has nothing to go stale) — the one scenario this
+              // warning is actually about: a previously-sent invite whose
+              // attendee address won't be touched by this edit.
+              hasStaleCalendarInvite={Boolean(applicant.bookedSlot?.calendarEventId)}
+              hasPriorInterviewEmail={hasPriorInterviewEmail}
+            />
           </div>
           <div>
             <dt className="text-neutral-400">Applied</dt>
