@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/lib/password";
 import { rescheduleAssignedInterview, sendInterviewInvite, sendInterviewReminder } from "../src/lib/recruiting";
 import { zonedTimeToUtc } from "../src/lib/timezone";
+import { laDateTimeUtcPlusDays } from "./helpers/bookingDates";
 
 // Round-2 PR review fixes for interview scheduling:
 // 1. Calendar event id preservation for every staff-booking path (Pedro's
@@ -300,8 +301,12 @@ test.describe.serial("Interview scheduling round-2 fixes: calendar reuse, atomic
 
     const applicant = await makeApplicant(jobPostingId, "rollback-check");
     applicantIds.push(applicant.id);
-    const originalTime = new Date(Date.now() + 12 * 86_400_000);
-    originalTime.setUTCHours(18, 0, 0, 0);
+    // Derived the same way as every other "N days out" fixture in this
+    // file (see e2e/helpers/bookingDates.ts) — a fixed UTC hour here, on
+    // its own, previously let this land on the exact same real-world
+    // instant as the re-invite test's Los-Angeles-day-derived time below,
+    // whenever the two calendar-day calculations happened to agree.
+    const originalTime = laDateTimeUtcPlusDays(12, "11:00");
     const originalSlot = await prisma.interviewAvailabilitySlot.create({
       data: {
         interviewerId: interviewer.id,
@@ -383,13 +388,13 @@ test.describe.serial("Interview scheduling round-2 fixes: calendar reuse, atomic
     // timezone) so that once released, computeAvailableSlots offers this
     // *exact* instant back — a manually-picked, non-grid-aligned Date
     // would never reappear as a candidate even though the row is gone.
-    const reinviteDateKey = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/Los_Angeles",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date(Date.now() + 13 * 86_400_000));
-    const bookedTime = zonedTimeToUtc(`${reinviteDateKey}T10:00`, "America/Los_Angeles");
+    // A week further out than the rollback-check test's own "N days out"
+    // fixture above (both now go through the same helper — see
+    // e2e/helpers/bookingDates.ts) so the two can never land on the same
+    // calendar day, and therefore never collide as the same shared-Zoom-
+    // room instant, regardless of what day/DST side of the year either
+    // test happens to run on.
+    const bookedTime = laDateTimeUtcPlusDays(19, "10:00");
     const oldSlot = await prisma.interviewAvailabilitySlot.create({
       data: {
         interviewerId: interviewer.id,
