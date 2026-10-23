@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { formatInBusinessTimezone } from "@/lib/timezone";
 import ApprovalQueueList from "./ApprovalQueueList";
 import type { ApprovalRequestRow } from "../applicants/[id]/ApprovalRequestControls";
 
@@ -34,6 +35,12 @@ export default async function ApprovalsQueuePage() {
     proposedOutcome: r.proposedOutcome,
     recipientEmail: r.recipientEmail,
     messageText: r.messageText,
+    proposedScheduledAt: r.proposedScheduledAt ? r.proposedScheduledAt.toISOString() : null,
+    proposedScheduledAtDisplay: r.proposedScheduledAt ? formatInBusinessTimezone(r.proposedScheduledAt, undefined, true) : null,
+    decidedScheduledAt: r.decidedScheduledAt ? r.decidedScheduledAt.toISOString() : null,
+    decidedScheduledAtDisplay: r.decidedScheduledAt ? formatInBusinessTimezone(r.decidedScheduledAt, undefined, true) : null,
+    executionStatus: r.executionStatus,
+    executionError: r.executionError,
     status: r.status,
     decisionNote: r.decisionNote,
     decidedByName: r.decidedBy?.name ?? null,
@@ -41,6 +48,7 @@ export default async function ApprovalsQueuePage() {
     isMine: r.requesterId === session.sub,
     canDecide: r.requesterId !== session.sub,
     canMarkExecuted: r.decidedById === session.sub,
+    canRetryExecution: r.decidedById === session.sub,
     applicantId: r.applicantId,
     applicantName: `${r.applicant.firstName} ${r.applicant.lastName}`,
   }));

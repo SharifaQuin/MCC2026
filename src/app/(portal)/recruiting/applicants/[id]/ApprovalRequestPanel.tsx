@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { SessionPayload } from "@/lib/session";
 import { getAreaAccessForUser } from "@/lib/officeAssistant";
+import { formatInBusinessTimezone } from "@/lib/timezone";
 import ApprovalRequestControls, { type ApprovalRequestRow } from "./ApprovalRequestControls";
 
 // Shown to two different audiences on the same applicant page: an Office
@@ -57,6 +58,12 @@ export default async function ApprovalRequestPanel({
     proposedOutcome: r.proposedOutcome,
     recipientEmail: r.recipientEmail,
     messageText: r.messageText,
+    proposedScheduledAt: r.proposedScheduledAt ? r.proposedScheduledAt.toISOString() : null,
+    proposedScheduledAtDisplay: r.proposedScheduledAt ? formatInBusinessTimezone(r.proposedScheduledAt, undefined, true) : null,
+    decidedScheduledAt: r.decidedScheduledAt ? r.decidedScheduledAt.toISOString() : null,
+    decidedScheduledAtDisplay: r.decidedScheduledAt ? formatInBusinessTimezone(r.decidedScheduledAt, undefined, true) : null,
+    executionStatus: r.executionStatus,
+    executionError: r.executionError,
     status: r.status,
     decisionNote: r.decisionNote,
     decidedByName: r.decidedBy?.name ?? null,
@@ -64,6 +71,7 @@ export default async function ApprovalRequestPanel({
     isMine: r.requesterId === session.sub,
     canDecide: canDecideAsManager && r.managerId === session.sub && r.requesterId !== session.sub,
     canMarkExecuted: r.decidedById === session.sub,
+    canRetryExecution: r.decidedById === session.sub,
   }));
 
   return (

@@ -16,6 +16,7 @@ import LeadDealDetailsForm from "./LeadDealDetailsForm";
 import LeadActivityFeed from "./LeadActivityFeed";
 import AssignLeadForm from "./AssignLeadForm";
 import OfficeAssistantLeadDetail from "../OfficeAssistantLeadDetail";
+import LeadContactEditor from "../LeadContactEditor";
 
 export default async function LeadDetailPage({ params }: { params: { id: string } }) {
   const { session, canEdit } = await requireSalesLeadsAccess();
@@ -49,6 +50,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
           followUpDueAt: lead.followUpDueAt ? lead.followUpDueAt.toISOString() : null,
           createdAt: lead.createdAt.toISOString(),
           assignedToName: lead.assignedTo?.name ?? null,
+          hasQuote: lead.quoteKey != null,
           notes: lead.notes.map((n) => ({
             id: n.id,
             body: n.body,
@@ -164,6 +166,9 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
           <div>
             <dt className="text-neutral-400">Phone</dt>
             <dd>{formatPhone(lead.phone)}</dd>
+          </div>
+          <div className="col-span-2">
+            <LeadContactEditor leadId={lead.id} email={lead.email} phone={lead.phone} hasQuote={lead.quoteKey != null} />
           </div>
           {lead.address && (
             <div>
