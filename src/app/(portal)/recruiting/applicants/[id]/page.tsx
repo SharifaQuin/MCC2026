@@ -30,6 +30,12 @@ export default async function ApplicantDetailPage({
   searchParams: { duplicate?: string; tab?: string; rejectRequest?: string };
 }) {
   const { session, canEdit } = await requireRecruitingAccess();
+  // Same condition ApprovalRequestPanel uses for canSubmit (an Office
+  // Assistant with RECRUITING edit access) — gates whether "Request
+  // rejection" shows anywhere on this page at all, so it's never a
+  // dead-end link for an Office Assistant who only has view access and
+  // could never actually submit the request it leads to.
+  const canRequestRejection = session.role === "OFFICE_ASSISTANT" && canEdit;
 
   const applicant = await prisma.applicant.findUnique({
     where: { id: params.id },
@@ -317,7 +323,11 @@ export default async function ApplicantDetailPage({
       )}
 
       {applicant.stage === "IN_PERSON_SCHEDULED" && (
-        <InterviewDecisionPanel applicantId={applicant.id} />
+        <InterviewDecisionPanel
+          applicantId={applicant.id}
+          canDirectlyReject={session.role !== "OFFICE_ASSISTANT"}
+          canRequestRejection={canRequestRejection}
+        />
       )}
 
       <div className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -331,6 +341,7 @@ export default async function ApplicantDetailPage({
           // (exactly who rejectApplicantAction itself allows) keeps the
           // direct Reject & Send Email / Reject (No Email) controls.
           canDirectlyReject={session.role !== "OFFICE_ASSISTANT"}
+          canRequestRejection={canRequestRejection}
         />
       </div>
 

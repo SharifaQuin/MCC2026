@@ -58,17 +58,24 @@ test.describe.serial("Office Assistant role", () => {
   let adminId: string;
   let officeAssistantId: string;
   let applicantId: string;
+  let jobPostingId: string;
   let leadId: string;
   let traineeId: string;
   let teamTaskId: string;
   let ownerOnlyTaskId: string;
   let assignedTaskId: string;
+  // setApplicantStageAction's real Next.js server-action id — captured off
+  // a legitimate routine click in the first test below, then reused by the
+  // direct/forged-call checks further down (same exported action
+  // regardless of which args it's replayed with).
+  let setStageActionId: string;
 
   test.beforeAll(async () => {
     const admin = await prisma.user.findFirstOrThrow({ where: { role: "ADMIN" }, select: { id: true } });
     adminId = admin.id;
 
     const jobPosting = await prisma.jobPosting.findFirstOrThrow({ select: { id: true } });
+    jobPostingId = jobPosting.id;
 
     const oa = await prisma.user.create({
       data: {
@@ -186,8 +193,11 @@ test.describe.serial("Office Assistant role", () => {
 
     // Routine move: Phone Interview Scheduled -> Passed is in NEXT_STAGES
     // and not in the Office-Assistant-blocked set (Offer Sent/Hired/
-    // Rejected/Bench).
-    await page.click('button:has-text("Move to: Phone/Zoom Interview Passed")');
+    // Rejected/Bench). Captured here for the direct/forged-call checks
+    // further down this file.
+    setStageActionId = await captureActionId(page, async () => {
+      await page.click('button:has-text("Move to: Phone/Zoom Interview Passed")');
+    });
     await page.waitForTimeout(1000);
     const after = await prisma.applicant.findUniqueOrThrow({ where: { id: applicantId } });
     expect(after.stage).toBe("PHONE_INTERVIEW_PASSED");
@@ -197,11 +207,21 @@ test.describe.serial("Office Assistant role", () => {
     await prisma.applicant.update({ where: { id: applicantId }, data: { stage: "IN_PERSON_PASSED" } });
   });
 
-  test("Office Assistant cannot move an applicant to a final hiring stage, even via the UI", async ({ page }) => {
+  test("Office Assistant cannot move an applicant to a final hiring stage — the controls are hidden entirely, and a direct call is still refused", async ({ page }) => {
     await loginAs(page, OA_EMAIL, OA_PASSWORD);
     await page.goto(`/recruiting/applicants/${applicantId}`);
-    await page.click('button:has-text("Move to: Offer Sent")');
-    await page.waitForTimeout(1000);
+
+    // IN_PERSON_PASSED's other routine targets (Offer Sent, Talent Pool)
+    // both need the authorized manager — hidden entirely for this role,
+    // never just disabled, so there's no button here that would just fail.
+    await expect(page.locator('button:has-text("Move to: Offer Sent")')).toHaveCount(0);
+    await expect(page.locator('button:has-text("Move to: Talent Pool")')).toHaveCount(0);
+
+    // Hiding the button is UX, not the security boundary — a direct call to
+    // the same server action, bypassing the UI entirely, must still be
+    // refused before any write.
+    await forgeAction(page, `/recruiting/applicants/${applicantId}`, setStageActionId, [applicantId, "OFFER_SENT"]);
+    await page.waitForTimeout(500);
 
     const after = await prisma.applicant.findUniqueOrThrow({ where: { id: applicantId } });
     expect(after.stage).toBe("IN_PERSON_PASSED");
@@ -234,21 +254,64 @@ test.describe.serial("Office Assistant role", () => {
     expect(requestCount).toBe(0);
   });
 
-  test("Office Assistant cannot reach Mark Hired / final actions via a hand-crafted stage override", async ({ page }) => {
+  test("The manual stage-correction override never offers a blocked target, and a direct call to it is still refused", async ({ page }) => {
     await loginAs(page, OA_EMAIL, OA_PASSWORD);
     await page.goto(`/recruiting/applicants/${applicantId}`);
-    const overrideToggle = page.locator('button:has-text("Correct the stage manually")');
-    if (await overrideToggle.isVisible().catch(() => false)) {
-      await overrideToggle.click();
-    }
+    await page.click('button:has-text("Correct the stage manually")');
+
     const select = page.locator('select[name="targetStage"]');
-    if (await select.isVisible().catch(() => false)) {
-      await select.selectOption("HIRED");
-      await page.click('button:has-text("Confirm")').catch(() => {});
-      await page.waitForTimeout(1000);
+    await expect(select).toBeVisible();
+    // All four of OFFICE_ASSISTANT_BLOCKED_STAGES are removed from this
+    // selector, not just Rejected.
+    for (const blocked of ["OFFER_SENT", "HIRED", "REJECTED", "BENCH"]) {
+      await expect(select.locator(`option[value="${blocked}"]`)).toHaveCount(0);
     }
+
+    // Hiding the option is only the UX — assertRoutineStageTransition is
+    // the real boundary, checked again here via a direct call that
+    // bypasses this form (and its now-missing option) entirely.
+    await forgeAction(page, `/recruiting/applicants/${applicantId}`, setStageActionId, [applicantId, "HIRED"]);
+    await page.waitForTimeout(500);
+
     const after = await prisma.applicant.findUniqueOrThrow({ where: { id: applicantId } });
     expect(after.stage).not.toBe("HIRED");
+    expect(after.stage).toBe("IN_PERSON_PASSED");
+  });
+
+  test("Interview Decision panel hides Office Assistant's direct Hire/Talent Pool/Not Moving Forward, keeps the non-mutating links, and never shows a dead-end Request rejection link when view-only", async ({ page }) => {
+    await prisma.applicant.update({ where: { id: applicantId }, data: { stage: "IN_PERSON_SCHEDULED" } });
+
+    await loginAs(page, OA_EMAIL, OA_PASSWORD);
+    await page.goto(`/recruiting/applicants/${applicantId}`);
+    await expect(page.locator("h2:has-text(\"Interview Decision\")")).toBeVisible();
+
+    // Hire and Talent Pool both need the authorized manager (they're in
+    // OFFICE_ASSISTANT_BLOCKED_STAGES); Not Moving Forward is replaced
+    // with the same Request rejection link StageControls uses.
+    await expect(page.locator('button:has-text("Hire")')).toHaveCount(0);
+    await expect(page.locator('button:has-text("Talent Pool")')).toHaveCount(0);
+    await expect(page.locator('button:has-text("Not Moving Forward")')).toHaveCount(0);
+    // Working Session / Additional Screening never change the stage, so
+    // they're untouched by this restriction and stay for every role.
+    await expect(page.locator('a:has-text("Working Session")')).toBeVisible();
+    await expect(page.locator('a:has-text("Additional Screening")')).toBeVisible();
+
+    await page.click("text=Request rejection");
+    await page.waitForLoadState("networkidle");
+    await expect(page.locator('select[name="actionType"]')).toHaveValue("REJECT_APPLICANT");
+
+    // View-only (no RECRUITING edit): the panel must not offer a dead-end
+    // Request rejection link either — submitApprovalRequestAction would
+    // just refuse it.
+    await prisma.areaAccess.updateMany({ where: { userId: officeAssistantId, area: "RECRUITING" }, data: { canEdit: false } });
+    await page.goto(`/recruiting/applicants/${applicantId}`);
+    await expect(page.locator('button:has-text("Hire")')).toHaveCount(0);
+    await expect(page.locator("text=Request rejection")).toHaveCount(0);
+    await prisma.areaAccess.updateMany({ where: { userId: officeAssistantId, area: "RECRUITING" }, data: { canEdit: true } });
+
+    // Restore for the tests that follow — this role never actually
+    // mutated the applicant above (only navigated/opened the composer).
+    await prisma.applicant.update({ where: { id: applicantId }, data: { stage: "IN_PERSON_PASSED" } });
   });
 
   test("Request rejection: submitting via the preset composer records the manager-routed request-stage snapshot, without changing the applicant or sending anything", async ({ page }) => {
@@ -280,6 +343,95 @@ test.describe.serial("Office Assistant role", () => {
     // merely submitting the request.
     const commCount = await prisma.communicationLog.count({ where: { applicantId } });
     expect(commCount).toBe(0);
+  });
+
+  test("Pipeline board hides Office Assistant's manager-authority primary action (Send Offer, Mark Hired) but keeps a routine one", async ({ page }) => {
+    const disposable = await prisma.applicant.create({
+      data: {
+        jobPostingId,
+        firstName: "OAE2E",
+        lastName: `Pipeline-${RUN_ID}`,
+        email: `oa-pipeline-${RUN_ID}@example.com`,
+        phone: "5555559003",
+        stage: "NEW",
+      },
+    });
+    try {
+      await loginAs(page, OA_EMAIL, OA_PASSWORD);
+      await page.goto("/recruiting");
+      let card = page.locator("div.rounded-lg.border", { hasText: `Pipeline-${RUN_ID}` }).first();
+      // NEW -> Prescreen Passed is routine — kept.
+      await expect(card.locator('button:has-text("Pass Prescreen")')).toBeVisible();
+
+      await prisma.applicant.update({ where: { id: disposable.id }, data: { stage: "IN_PERSON_PASSED" } });
+      await page.goto("/recruiting");
+      card = page.locator("div.rounded-lg.border", { hasText: `Pipeline-${RUN_ID}` }).first();
+      // IN_PERSON_PASSED -> Offer Sent needs the authorized manager.
+      await expect(card.locator("button")).toHaveCount(0);
+
+      await prisma.applicant.update({ where: { id: disposable.id }, data: { stage: "OFFER_SENT" } });
+      await page.goto("/recruiting");
+      card = page.locator("div.rounded-lg.border", { hasText: `Pipeline-${RUN_ID}` }).first();
+      // Offer Sent -> Hired needs the authorized manager.
+      await expect(card.locator("button")).toHaveCount(0);
+    } finally {
+      await prisma.applicant.delete({ where: { id: disposable.id } });
+    }
+  });
+
+  test("Recruiting Inbox hides Office Assistant's Pass control; a direct/forged call to it is still refused without mutating anything", async ({ page }) => {
+    const qualified = await prisma.applicant.create({
+      data: {
+        jobPostingId,
+        firstName: "OAE2E",
+        lastName: `Inbox-${RUN_ID}`,
+        email: `oa-inbox-${RUN_ID}@example.com`,
+        phone: "5555559004",
+        stage: "PRESCREEN_PASSED",
+      },
+    });
+    // A second, disposable applicant only used to legitimately capture
+    // passApplicantAction's real server-action id, as an authorized role —
+    // Office Assistant never has a "Pass" button to click it from.
+    const captureSubject = await prisma.applicant.create({
+      data: {
+        jobPostingId,
+        firstName: "OAE2E",
+        lastName: `InboxCapture-${RUN_ID}`,
+        email: `oa-inbox-capture-${RUN_ID}@example.com`,
+        phone: "5555559005",
+        stage: "PRESCREEN_PASSED",
+      },
+    });
+    try {
+      await loginAs(page, OA_EMAIL, OA_PASSWORD);
+      await page.goto("/recruiting/inbox");
+      const card = page.locator(`[data-testid="applicant-quick-card-${qualified.id}"]`);
+      await expect(card).toBeVisible();
+      await expect(card.locator('button:has-text("Pass")')).toHaveCount(0);
+      await expect(card.locator('button:has-text("Schedule Zoom Interview")')).toBeVisible();
+      await expect(card.locator('a:has-text("Full Profile")')).toBeVisible();
+      await expect(card.getByText(/authorized manager/i)).toBeVisible();
+
+      await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+      await page.goto("/recruiting/inbox");
+      const captureCard = page.locator(`[data-testid="applicant-quick-card-${captureSubject.id}"]`);
+      const passActionId = await captureActionId(page, async () => {
+        await captureCard.locator('button:has-text("Pass")').click();
+      });
+
+      await loginAs(page, OA_EMAIL, OA_PASSWORD);
+      await page.goto("/recruiting/inbox");
+      await forgeAction(page, "/recruiting/inbox", passActionId, [qualified.id]);
+      await page.waitForTimeout(500);
+
+      const after = await prisma.applicant.findUniqueOrThrow({ where: { id: qualified.id } });
+      expect(after.stage).toBe("PRESCREEN_PASSED");
+      const commCount = await prisma.communicationLog.count({ where: { applicantId: qualified.id } });
+      expect(commCount).toBe(0);
+    } finally {
+      await prisma.applicant.deleteMany({ where: { id: { in: [qualified.id, captureSubject.id] } } });
+    }
   });
 
   test("Office Assistant with no valid approval manager configured gets a clear setup message, not a routed request", async ({
@@ -394,6 +546,34 @@ test.describe.serial("Office Assistant role", () => {
 
     // Restore the shared applicant's stage for the tests that still follow.
     await prisma.applicant.update({ where: { id: applicantId }, data: { stage: "IN_PERSON_PASSED", rejectedAt: null } });
+  });
+
+  test("A permission revoked mid-session shows a readable inline message instead of crashing when a still-visible routine control is submitted", async ({ page }) => {
+    await loginAs(page, OA_EMAIL, OA_PASSWORD);
+    await page.goto(`/recruiting/applicants/${applicantId}`);
+    await page.click('button:has-text("Correct the stage manually")');
+    await page.locator('select[name="targetStage"]').selectOption("IN_PERSON_SCHEDULED");
+
+    // Revoke edit access without a fresh page load — the already-rendered
+    // form has no way to know this happened until it actually submits, the
+    // same way a real race between two browser tabs would play out.
+    await prisma.areaAccess.updateMany({ where: { userId: officeAssistantId, area: "RECRUITING" }, data: { canEdit: false } });
+
+    try {
+      await page.click('button:has-text("Confirm")');
+      await page.waitForTimeout(800);
+
+      // Readable, inline — never Next's generic error boundary (the exact
+      // crash this whole fix is about, just reachable from a different,
+      // still-visible control this time).
+      await expect(page.getByText(/not authorized to make changes/i)).toBeVisible();
+      await expect(page.getByText(/application error/i)).toHaveCount(0);
+
+      const after = await prisma.applicant.findUniqueOrThrow({ where: { id: applicantId } });
+      expect(after.stage).toBe("IN_PERSON_PASSED"); // unchanged — the write never happened
+    } finally {
+      await prisma.areaAccess.updateMany({ where: { userId: officeAssistantId, area: "RECRUITING" }, data: { canEdit: true } });
+    }
   });
 
   test("Self-approval is blocked even via a direct/forged server-action call, not only through the UI", async ({ page }) => {
@@ -514,6 +694,9 @@ test.describe.serial("Office Assistant role", () => {
     // approval-request submit button must not be present.
     expect(res?.status()).toBe(200);
     await expect(page.locator('button:has-text("Request Approval")')).toHaveCount(0);
+    // Same view-only gate applies to the "Request rejection" shortcut on
+    // StageControls — never a dead-end link either.
+    await expect(page.locator("text=Request rejection")).toHaveCount(0);
 
     await prisma.areaAccess.updateMany({ where: { userId: officeAssistantId, area: "RECRUITING" }, data: { canEdit: true } });
   });

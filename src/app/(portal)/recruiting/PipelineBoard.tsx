@@ -1,11 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { setApplicantStageAction } from "./applicants/actions";
-import { PRIMARY_NEXT_STAGE, SCHEDULING_STAGES } from "@/lib/recruiting";
+import { PRIMARY_NEXT_STAGE, SCHEDULING_STAGES, OFFICE_ASSISTANT_BLOCKED_STAGES } from "@/lib/recruiting";
 import { formatInBusinessTimezone } from "@/lib/timezone";
 import type { ApplicantStage } from "@prisma/client";
+
+const BLOCKED_STAGES = new Set(OFFICE_ASSISTANT_BLOCKED_STAGES);
+const FALLBACK_ERROR = "Something went wrong — please try again.";
+
+function describeError(err: unknown): string {
+  return err instanceof Error ? err.message : FALLBACK_ERROR;
+}
 
 interface Card {
   id: string;
@@ -19,9 +26,19 @@ interface Card {
   viewedAt: string | null;
 }
 
-function ApplicantCard({ applicant }: { applicant: Card }) {
+function ApplicantCard({ applicant, isOfficeAssistant }: { applicant: Card; isOfficeAssistant: boolean }) {
   const [pending, startTransition] = useTransition();
-  const primary = PRIMARY_NEXT_STAGE[applicant.stage];
+  const [error, setError] = useState<string | null>(null);
+  const rawPrimary = PRIMARY_NEXT_STAGE[applicant.stage];
+  // "Send Offer (Gusto)" and "Mark Hired" both target a stage that needs
+  // the authorized manager (OFFICE_ASSISTANT_BLOCKED_STAGES) — hidden for
+  // this role rather than left as a one-tap button that would just fail.
+  // Nothing routes these into the approval flow from here: the quick action
+  // is a convenience shortcut, not the only way to reach a stage, and the
+  // full applicant profile already covers the request-rejection case.
+  const primary = isOfficeAssistant && rawPrimary && BLOCKED_STAGES.has(rawPrimary.stage as ApplicantStage)
+    ? undefined
+    : rawPrimary;
   const needsSchedule = primary && (SCHEDULING_STAGES as string[]).includes(primary.stage);
 
   return (
@@ -65,24 +82,33 @@ function ApplicantCard({ applicant }: { applicant: Card }) {
           <button
             type="button"
             disabled={pending}
-            onClick={() =>
-              startTransition(() =>
-                setApplicantStageAction(applicant.id, primary.stage as ApplicantStage)
-              )
-            }
+            onClick={() => {
+              setError(null);
+              startTransition(async () => {
+                try {
+                  const result = await setApplicantStageAction(applicant.id, primary.stage as ApplicantStage);
+                  if (!result.ok) setError(result.error ?? FALLBACK_ERROR);
+                } catch (err) {
+                  setError(describeError(err));
+                }
+              });
+            }}
             className="mt-2 w-full rounded-md bg-brand-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
           >
             {pending ? "Moving..." : `→ ${primary.label}`}
           </button>
         ))}
+      {error && <p className="mt-1 text-xs font-medium text-red-700">{error}</p>}
     </div>
   );
 }
 
 export default function PipelineBoard({
   columns,
+  isOfficeAssistant,
 }: {
   columns: { stage: string; label: string; applicants: Card[] }[];
+  isOfficeAssistant: boolean;
 }) {
   return (
     <div className="flex gap-4 overflow-x-auto pb-4">
@@ -100,7 +126,9 @@ export default function PipelineBoard({
                 Empty
               </p>
             ) : (
-              col.applicants.map((a) => <ApplicantCard key={a.id} applicant={a} />)
+              col.applicants.map((a) => (
+                <ApplicantCard key={a.id} applicant={a} isOfficeAssistant={isOfficeAssistant} />
+              ))
             )}
           </div>
         </div>

@@ -74,18 +74,30 @@ export default function ApplicantQuickCard({
   onBook,
   onInvite,
   onPass,
+  canPass,
 }: {
   applicant: ApplicantQuickCardData;
   interviewers: EligibleInterviewerOption[];
   onBook: (applicantId: string, scheduledAtLocal: string) => Promise<{ scheduledAt: string }>;
   onInvite: (applicantId: string, interviewerId: string, format: InterviewFormat) => Promise<void>;
-  onPass: (applicantId: string) => Promise<void>;
+  // Reports its own expected refusals (wrong role, stale record) as
+  // { ok: false, error } rather than throwing — Next.js replaces a thrown
+  // Server Action error's message with a generic placeholder in production,
+  // which would otherwise swallow the real, safe-to-show reason.
+  onPass: (applicantId: string) => Promise<{ ok: boolean; error?: string }>;
+  // False for an Office Assistant — passApplicantAction is just
+  // rejectApplicantAction underneath, which refuses this role outright, so
+  // "Pass" is left off the card entirely rather than being a one-tap button
+  // that would just fail. Full Profile (always present below) is where
+  // their "Request rejection" control already lives.
+  canPass: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [action, setAction] = useState<"invite" | "pass" | "book" | null>(null);
   const [scheduling, setScheduling] = useState(false);
   const [bookError, setBookError] = useState<string | null>(null);
+  const [passError, setPassError] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
   const [inviteInterviewerId, setInviteInterviewerId] = useState(interviewers[0]?.id ?? "");
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -251,7 +263,7 @@ export default function ApplicantQuickCard({
         </form>
       )}
 
-      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <div className={`mt-4 grid grid-cols-1 gap-2 ${canPass ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
         <Button
           variant="primary"
           size="lg"
@@ -267,19 +279,36 @@ export default function ApplicantQuickCard({
         >
           Full Profile
         </Link>
-        <Button
-          variant="danger"
-          size="lg"
-          className="w-full"
-          disabled={pending}
-          onClick={() => {
-            setAction("pass");
-            startTransition(() => onPass(applicant.id));
-          }}
-        >
-          {pending && action === "pass" ? "Passing…" : "Pass"}
-        </Button>
+        {canPass && (
+          <Button
+            variant="danger"
+            size="lg"
+            className="w-full"
+            disabled={pending}
+            onClick={() => {
+              setPassError(null);
+              setAction("pass");
+              startTransition(async () => {
+                try {
+                  const result = await onPass(applicant.id);
+                  if (!result.ok) setPassError(result.error ?? "Couldn't pass this applicant.");
+                } catch (err) {
+                  setPassError(err instanceof Error ? err.message : "Couldn't pass this applicant.");
+                }
+              });
+            }}
+          >
+            {pending && action === "pass" ? "Passing…" : "Pass"}
+          </Button>
+        )}
       </div>
+      {passError && <p className="mt-2 text-xs font-medium text-red-700">{passError}</p>}
+      {!canPass && (
+        <p className="mt-2 text-xs text-neutral-500">
+          Passing on a candidate needs the authorized manager — open Full Profile to request a
+          rejection instead.
+        </p>
+      )}
 
       {inviting ? (
         <form

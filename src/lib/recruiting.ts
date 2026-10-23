@@ -977,6 +977,16 @@ export const SCHEDULING_STAGES: ApplicantStage[] = [
   "IN_PERSON_SCHEDULED",
 ];
 
+// Final hiring-pipeline moves an Office Assistant must never make directly
+// — even with an approved "Send for approval" request, the designated
+// manager carries these out themselves, manually, in the normal recruiting
+// UI (see src/app/actions/approvals.ts). Approval never grants this role a
+// new permission; it only produces a decision for the manager to act on.
+// Shared between the server-side enforcement (assertRoutineStageTransition
+// in recruiting/applicants/actions.ts) and every client component that
+// hides the corresponding controls for this role, so the two can't drift.
+export const OFFICE_ASSISTANT_BLOCKED_STAGES: ApplicantStage[] = ["OFFER_SENT", "HIRED", "REJECTED", "BENCH"];
+
 // The format is the actual scheduling fact (what to send/where to point the
 // candidate); `stage` is just the pipeline-board label. Every *new*
 // appointment carries its own explicit interviewFormat, set once at invite/

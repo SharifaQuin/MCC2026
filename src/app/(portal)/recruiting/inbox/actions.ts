@@ -31,12 +31,17 @@ export async function bookZoomInterviewAction(applicantId: string, scheduledAtLo
   const { session, canEdit } = await requireRecruitingAccess();
   if (!canEdit) throw new Error("Not authorized to make changes here.");
 
-  await setApplicantStageAction(
+  // setApplicantStageAction returns a result rather than throwing for its
+  // own expected refusals (see its own comment) — re-thrown here so this
+  // action's existing external contract (throw on failure, used by
+  // ApplicantQuickCard's onBook) is unchanged.
+  const result = await setApplicantStageAction(
     applicantId,
     "PHONE_INTERVIEW_SCHEDULED",
     scheduledAtLocal,
     getTrueActorId(session)
   );
+  if (!result.ok) throw new Error(result.error);
   revalidatePath("/recruiting/inbox");
 
   const applicant = await prisma.applicant.findUniqueOrThrow({
@@ -50,8 +55,16 @@ export async function bookZoomInterviewAction(applicantId: string, scheduledAtLo
 // already supports — reused directly rather than re-implemented. Sends the
 // existing warm rejection email by default; a recruiter who wants the silent
 // variant (spam/duplicate) can still do that from the full profile.
-export async function passApplicantAction(applicantId: string) {
+// Office Assistant never has a "Pass" button to click (see
+// ApplicantQuickCard's canPass) — rejectApplicantAction's own
+// OFFICE_ASSISTANT guard still refuses a direct/forged call here too, as a
+// result rather than a throw, so the real reason reaches the client even in
+// production (see setApplicantStageAction's own comment on why).
+export async function passApplicantAction(
+  applicantId: string
+): Promise<{ ok: boolean; error?: string }> {
   await requireRecruitingAccess();
-  await rejectApplicantAction(applicantId, true);
-  revalidatePath("/recruiting/inbox");
+  const result = await rejectApplicantAction(applicantId, true);
+  if (result.ok) revalidatePath("/recruiting/inbox");
+  return result;
 }
