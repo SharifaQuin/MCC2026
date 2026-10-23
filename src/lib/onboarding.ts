@@ -11,7 +11,20 @@ export async function getPendingOnboardingCount(userId: string): Promise<number>
 // Called right after a new employee is created (single or bulk invite) so
 // they land on the documents they're supposed to sign without Shar having
 // to manually assign each one after every invite.
+//
+// Default documents are the Cleaning Technician onboarding packet —
+// TRAINEE only. Every current caller already checks the new user's role
+// before calling this, but that check lived at each call site rather than
+// here, which is exactly how a Trainee-created-then-switched-to-Office-
+// Assistant account (or any future direct non-Trainee creation path) could
+// end up with technician paperwork assigned: whoever writes the next
+// caller has to remember to re-add the same guard. Checking the role here
+// too makes it structurally impossible to call this for a non-Trainee,
+// regardless of what any caller does or forgets.
 export async function assignDefaultOnboardingDocuments(userId: string): Promise<void> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+  if (!user || user.role !== "TRAINEE") return;
+
   const defaults = await prisma.onboardingDocument.findMany({
     where: { assignByDefault: true },
     select: { id: true },
@@ -19,6 +32,21 @@ export async function assignDefaultOnboardingDocuments(userId: string): Promise<
   if (!defaults.length) return;
   await prisma.onboardingAssignment.createMany({
     data: defaults.map((d) => ({ documentId: d.id, userId })),
+    skipDuplicates: true,
+  });
+}
+
+// Shared by both "create a default-assigned document" paths (single and
+// bulk upload) in src/app/(portal)/admin/documents/actions.ts — assigning a
+// newly-marked-default document to every *current* Trainee, not just future
+// invites. Centralized here (rather than each call site re-querying
+// `role: "TRAINEE"` itself) so this backfill can't drift from
+// assignDefaultOnboardingDocuments' own TRAINEE-only rule.
+export async function backfillDefaultDocumentToTrainees(documentId: string): Promise<void> {
+  const trainees = await prisma.user.findMany({ where: { role: "TRAINEE" }, select: { id: true } });
+  if (!trainees.length) return;
+  await prisma.onboardingAssignment.createMany({
+    data: trainees.map((u) => ({ documentId, userId: u.id })),
     skipDuplicates: true,
   });
 }
