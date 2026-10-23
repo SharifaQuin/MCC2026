@@ -31,12 +31,14 @@ export default function ContactInfoEditor({
   phone,
   canEdit,
   hasStaleCalendarInvite,
+  hasPriorInterviewEmail,
 }: {
   applicantId: string;
   email: string;
   phone: string;
   canEdit: boolean;
   hasStaleCalendarInvite: boolean;
+  hasPriorInterviewEmail: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const boundAction = updateApplicantContactInfoAction.bind(null, applicantId);
@@ -96,6 +98,12 @@ export default function ContactInfoEditor({
         <p className="text-xs text-amber-700">
           ⚠ This applicant has an existing calendar invitation. Saving here will NOT update
           it — the invite may still show the previous contact details.
+        </p>
+      )}
+      {hasPriorInterviewEmail && (
+        <p className="text-xs text-amber-700">
+          ⚠ An interview invitation, confirmation, or reminder email was already sent to this
+          applicant. Saving a new email here will NOT resend it.
         </p>
       )}
       {state.error && <p className="text-sm text-red-600">{state.error}</p>}

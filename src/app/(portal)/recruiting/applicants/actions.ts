@@ -18,6 +18,7 @@ import {
   releaseBookedInterviewSlot,
   updateOrCreateInterviewCalendarEvent,
   retryInterviewCalendarSync,
+  INTERVIEW_EMAIL_SUBJECT_PREFIXES,
 } from "@/lib/recruiting";
 import { getAvailabilityForInterviewer } from "@/lib/interviewerAvailability";
 import { generateInviteToken } from "@/lib/tokens";
@@ -26,7 +27,7 @@ import { logAudit } from "@/lib/auditLog";
 import { getTrueActorId } from "@/lib/impersonation";
 import { isZoomConfigured } from "@/lib/recruitingZoom";
 import type { InterviewFormat } from "@prisma/client";
-import { formatPhone } from "@/lib/formatPhone";
+import { formatPhone, normalizePhoneDigits } from "@/lib/formatPhone";
 import type {
   ApplicantStage,
   ApplicantSource,
@@ -416,23 +417,46 @@ export async function updateApplicantContactInfoAction(
     return { error: "Enter a valid email address." };
   }
 
-  // Same 10-digit-US-number acceptance rule formatPhone/normalizePhoneDigits
-  // already use elsewhere for this exact phone column (a leading country
-  // code "1" is stripped, anything else that isn't a clean 10 digits is
-  // rejected) — stored as bare digits so every existing display/comparison
-  // helper keeps working on it unchanged.
-  const digits = phoneRaw.replace(/\D/g, "");
-  const phone = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
-  if (phone.length !== 10) {
-    return { error: "Enter a valid 10-digit phone number." };
-  }
-
   const applicant = await prisma.applicant.findUnique({
     where: { id: applicantId },
     include: { bookedSlot: { select: { calendarEventId: true } } },
   });
   if (!applicant) {
     return { error: "Applicant not found." };
+  }
+
+  // Compare via every digit-representation the stored value could already
+  // be in (as-typed, or with a US country code stripped — see
+  // normalizePhoneDigits) rather than a raw string/exact-digits match, so a
+  // resubmission of the applicant's own current number — however it was
+  // originally stored (with punctuation, a leading "1", or any other
+  // legacy format that isn't itself a clean 10 digits) — is never treated
+  // as a change. That matters on two fronts: it never forces this one
+  // field's 10-digit acceptance rule on a phone the staffer isn't actually
+  // touching (editing just the email must keep working even when the
+  // stored phone wouldn't itself pass that rule), and it never records a
+  // false "phone changed" history entry for what's really only a
+  // formatting difference.
+  const submittedPhoneDigits = normalizePhoneDigits(phoneRaw);
+  const storedPhoneDigits = normalizePhoneDigits(applicant.phone);
+  const phoneUnchanged =
+    submittedPhoneDigits.size > 0 && [...submittedPhoneDigits].some((d) => storedPhoneDigits.has(d));
+
+  let phone: string;
+  if (phoneUnchanged) {
+    phone = applicant.phone;
+  } else {
+    // Same 10-digit-US-number acceptance rule formatPhone/normalizePhoneDigits
+    // already use elsewhere for this exact phone column (a leading country
+    // code "1" is stripped, anything else that isn't a clean 10 digits is
+    // rejected) — stored as bare digits so every existing display/comparison
+    // helper keeps working on it unchanged. Only enforced here, on an
+    // actually-changing value — see phoneUnchanged above.
+    const digits = phoneRaw.replace(/\D/g, "");
+    phone = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+    if (phone.length !== 10) {
+      return { error: "Enter a valid 10-digit phone number." };
+    }
   }
 
   // Scoped across every applicant, not just this one's own job posting —
@@ -450,11 +474,21 @@ export async function updateApplicantContactInfoAction(
       return { error: "Another applicant already uses this email address." };
     }
   }
-  if (phone !== applicant.phone) {
-    const conflict = await prisma.applicant.findFirst({
-      where: { phone, id: { not: applicantId } },
-      select: { id: true },
+  if (!phoneUnchanged) {
+    // An exact-string match against the `phone` column would miss another
+    // applicant's own legacy-formatted number (punctuation, a leading
+    // country code) even though it's the same real number — so this
+    // compares every candidate the same normalized way duplicate/change
+    // detection above does, rather than trusting every stored row to
+    // already be in bare-digits form.
+    const otherApplicants = await prisma.applicant.findMany({
+      where: { id: { not: applicantId } },
+      select: { id: true, phone: true },
     });
+    const newPhoneDigits = normalizePhoneDigits(phone);
+    const conflict = otherApplicants.find((other) =>
+      [...normalizePhoneDigits(other.phone)].some((d) => newPhoneDigits.has(d))
+    );
     if (conflict) {
       return { error: "Another applicant already uses this phone number." };
     }
@@ -464,7 +498,7 @@ export async function updateApplicantContactInfoAction(
   if (email !== applicant.email) {
     changeLines.push(`Email changed from ${applicant.email} to ${email}`);
   }
-  if (phone !== applicant.phone) {
+  if (!phoneUnchanged) {
     changeLines.push(`Phone changed from ${formatPhone(applicant.phone)} to ${formatPhone(phone)}`);
   }
   if (changeLines.length === 0) {
@@ -480,6 +514,27 @@ export async function updateApplicantContactInfoAction(
     changeLines.push(
       "Note: this applicant has an existing calendar invitation that was NOT updated — it may still show the previous contact details."
     );
+  }
+  // The email itself is changing and at least one past invitation/
+  // confirmation/reminder email was already delivered to the OLD address —
+  // flag that it was NOT resent, same reasoning as the calendar-invite
+  // note above (never silently reissue a message that already went out).
+  if (email !== applicant.email.toLowerCase()) {
+    const priorInterviewEmail = await prisma.communicationLog.findFirst({
+      where: {
+        applicantId,
+        channel: "EMAIL",
+        direction: "OUTBOUND",
+        status: "SENT",
+        OR: INTERVIEW_EMAIL_SUBJECT_PREFIXES.map((prefix) => ({ subject: { startsWith: prefix } })),
+      },
+      select: { id: true },
+    });
+    if (priorInterviewEmail) {
+      changeLines.push(
+        "Note: an interview invitation/confirmation/reminder email was already sent to this applicant's previous email address — it was NOT resent."
+      );
+    }
   }
 
   await prisma.$transaction([

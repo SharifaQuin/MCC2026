@@ -126,6 +126,87 @@ test.describe.serial("Applicant contact-info editing", () => {
     expect(unchanged.phone).toBe(applicant.phone);
   });
 
+  test("An email-only change succeeds even when the stored phone is a legacy format that wouldn't itself pass the 10-digit rule", async ({
+    page,
+  }) => {
+    // A pre-existing row from before this app had any phone validation at
+    // all (see formatPhone.ts) — short, not a clean 10/11 digits. The form
+    // resubmits this exact value unedited (its defaultValue), so saving an
+    // email change must not force it through the 10-digit acceptance check.
+    const applicant = await makeApplicant("legacy-phone", { phone: "555-0100" });
+    applicantIds.push(applicant.id);
+
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto(`/recruiting/applicants/${applicant.id}`);
+    await page.waitForLoadState("networkidle");
+
+    await page.getByRole("button", { name: "Edit contact info" }).click();
+    const newEmail = `fake-legacy-phone-updated-${RUN_ID}@example.com`;
+    await page.locator('input[name="email"]').fill(newEmail);
+    // Phone field is left exactly as it loaded (the legacy stored value).
+    await page.getByRole("button", { name: "Save" }).click();
+    await page.waitForTimeout(500);
+
+    await expect(page.getByText("Enter a valid 10-digit phone number.")).toHaveCount(0);
+    const updated = await prisma.applicant.findUniqueOrThrow({ where: { id: applicant.id } });
+    expect(updated.email).toBe(newEmail);
+    expect(updated.phone).toBe("555-0100");
+
+    await page.getByRole("button", { name: "Notes" }).click();
+    await expect(page.getByText(`Email changed from ${applicant.email} to ${newEmail}`)).toBeVisible();
+    await expect(page.getByText(/Phone changed/)).toHaveCount(0);
+  });
+
+  test("Resubmitting the stored phone in a different format (punctuation, leading country code) is a no-op — no false history entry", async ({
+    page,
+  }) => {
+    const applicant = await makeApplicant("phone-reformat", { phone: "5555550199" });
+    applicantIds.push(applicant.id);
+
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto(`/recruiting/applicants/${applicant.id}`);
+    await page.waitForLoadState("networkidle");
+
+    await page.getByRole("button", { name: "Edit contact info" }).click();
+    await page.locator('input[name="email"]').fill(applicant.email);
+    // Same number as stored, just with a leading country code and
+    // punctuation — a formatting-only difference, not a real change.
+    await page.locator('input[name="phone"]').fill("+1 (555) 555-0199");
+    await page.getByRole("button", { name: "Save" }).click();
+    await page.waitForTimeout(500);
+
+    const unchanged = await prisma.applicant.findUniqueOrThrow({ where: { id: applicant.id } });
+    expect(unchanged.phone).toBe("5555550199");
+    const notesCount = await prisma.applicantNote.count({ where: { applicantId: applicant.id } });
+    expect(notesCount).toBe(0);
+  });
+
+  test("Duplicate-phone detection catches another applicant's own punctuated, country-code-prefixed stored number", async ({
+    page,
+  }) => {
+    const applicantA = await makeApplicant("phone-conflict-legacy-a", { phone: "5555550177" });
+    applicantIds.push(applicantA.id);
+    // Same real number as what A will try to change to, but stored in a
+    // legacy punctuated format with a leading country code — duplicate
+    // detection must still catch this, not just an exact string match.
+    const applicantB = await makeApplicant("phone-conflict-legacy-b", { phone: "+1-555-555-0188" });
+    applicantIds.push(applicantB.id);
+
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto(`/recruiting/applicants/${applicantA.id}`);
+    await page.waitForLoadState("networkidle");
+
+    await page.getByRole("button", { name: "Edit contact info" }).click();
+    await page.locator('input[name="email"]').fill(applicantA.email);
+    await page.locator('input[name="phone"]').fill("5555550188");
+    await page.getByRole("button", { name: "Save" }).click();
+    await page.waitForTimeout(500);
+
+    await expect(page.getByText("Another applicant already uses this phone number.")).toBeVisible();
+    const freshA = await prisma.applicant.findUniqueOrThrow({ where: { id: applicantA.id } });
+    expect(freshA.phone).toBe("5555550177");
+  });
+
   test("Editing to another applicant's existing email is rejected, without overwriting that applicant", async ({ page }) => {
     const applicantA = await makeApplicant("conflict-a");
     applicantIds.push(applicantA.id);
@@ -199,13 +280,25 @@ test.describe.serial("Applicant contact-info editing", () => {
     expect(notesCount).toBe(0);
   });
 
-  test("Editing contact info never changes stage/scheduledAt or creates any communication", async ({ page }) => {
+  test("Editing contact info never changes stage/scheduledAt/interviewFormat or an existing calendar event, and sends no outgoing messages", async ({
+    page,
+  }) => {
+    const admin = await prisma.user.findFirstOrThrow({ where: { role: "ADMIN" }, select: { id: true } });
     const scheduledAt = new Date(Date.now() + 5 * 86_400_000);
     const applicant = await makeApplicant("no-side-effects", {
       stage: "PHONE_INTERVIEW_SCHEDULED",
       scheduledAt,
+      interviewFormat: "ZOOM",
     });
     applicantIds.push(applicant.id);
+    await prisma.interviewAvailabilitySlot.create({
+      data: {
+        startsAt: scheduledAt,
+        bookedById: applicant.id,
+        calendarEventId: `fake-event-no-side-effects-${RUN_ID}`,
+        createdById: admin.id,
+      },
+    });
 
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
     await page.goto(`/recruiting/applicants/${applicant.id}`);
@@ -217,9 +310,19 @@ test.describe.serial("Applicant contact-info editing", () => {
     await page.getByRole("button", { name: "Save" }).click();
     await page.waitForTimeout(500);
 
-    const updated = await prisma.applicant.findUniqueOrThrow({ where: { id: applicant.id } });
+    const updated = await prisma.applicant.findUniqueOrThrow({
+      where: { id: applicant.id },
+      include: { bookedSlot: true },
+    });
     expect(updated.stage).toBe("PHONE_INTERVIEW_SCHEDULED");
     expect(updated.scheduledAt?.getTime()).toBe(scheduledAt.getTime());
+    expect(updated.interviewFormat).toBe("ZOOM");
+    expect(updated.bookedSlot?.calendarEventId).toBe(`fake-event-no-side-effects-${RUN_ID}`);
+    expect(updated.bookedSlot?.startsAt.getTime()).toBe(scheduledAt.getTime());
+    // No new outgoing message of any kind — only the two rejected email/
+    // phone duplicate-conflict tests ever produce zero here too, but this
+    // applicant has no prior communications at all, so any count above
+    // zero would mean something besides the history note sent something.
     const commCount = await prisma.communicationLog.count({ where: { applicantId: applicant.id } });
     expect(commCount).toBe(0);
   });
@@ -269,6 +372,68 @@ test.describe.serial("Applicant contact-info editing", () => {
     await page.waitForLoadState("networkidle");
     await page.getByRole("button", { name: "Edit contact info" }).click();
     await expect(page.getByText(/has an existing calendar invitation/)).toHaveCount(0);
+  });
+
+  test("The pre-save warning also covers a prior interview invitation/confirmation email, with no calendar event involved", async ({
+    page,
+  }) => {
+    const emailedApplicant = await makeApplicant("warning-prior-email");
+    applicantIds.push(emailedApplicant.id);
+    // Mirrors exactly what sendInterviewConfirmationEmail logs for a real
+    // Zoom confirmation send — same channel/direction/status/subject
+    // prefix the action checks for.
+    await prisma.communicationLog.create({
+      data: {
+        applicantId: emailedApplicant.id,
+        channel: "EMAIL",
+        direction: "OUTBOUND",
+        status: "SENT",
+        subject: "Your interview with Mama's Cleaning Crew — Monday at 10:00 AM Pacific Time",
+        body: "placeholder",
+      },
+    });
+
+    // Same shape, but the send FAILED — must not count as "already sent".
+    const failedSendApplicant = await makeApplicant("warning-failed-email");
+    applicantIds.push(failedSendApplicant.id);
+    await prisma.communicationLog.create({
+      data: {
+        applicantId: failedSendApplicant.id,
+        channel: "EMAIL",
+        direction: "OUTBOUND",
+        status: "FAILED",
+        subject: "Your interview with Mama's Cleaning Crew — Monday at 10:00 AM Pacific Time",
+        body: "placeholder",
+      },
+    });
+
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+
+    await page.goto(`/recruiting/applicants/${emailedApplicant.id}`);
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: "Edit contact info" }).click();
+    await expect(page.getByText(/already sent to this applicant/)).toBeVisible();
+    // No calendar event exists for this applicant — the two warnings are
+    // independent triggers, not one combined condition.
+    await expect(page.getByText(/has an existing calendar invitation/)).toHaveCount(0);
+
+    const newEmail = `fake-warning-prior-email-updated-${RUN_ID}@example.com`;
+    await page.locator('input[name="email"]').fill(newEmail);
+    await page.locator('input[name="phone"]').fill(emailedApplicant.phone);
+    await page.getByRole("button", { name: "Save" }).click();
+    await page.waitForTimeout(500);
+
+    await page.getByRole("button", { name: "Notes" }).click();
+    await expect(page.getByText(/already sent to this applicant's previous email address — it was NOT resent/)).toBeVisible();
+    // Saving the edit itself never sends anything — the fixture row above
+    // is still the only communication on record.
+    const commCount = await prisma.communicationLog.count({ where: { applicantId: emailedApplicant.id } });
+    expect(commCount).toBe(1);
+
+    await page.goto(`/recruiting/applicants/${failedSendApplicant.id}`);
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: "Edit contact info" }).click();
+    await expect(page.getByText(/already sent to this applicant/)).toHaveCount(0);
   });
 
   test("Editing to another applicant's existing phone is rejected, without overwriting that applicant", async ({ page }) => {

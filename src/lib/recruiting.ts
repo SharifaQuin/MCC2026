@@ -1852,6 +1852,21 @@ export async function claimSlotAtomically(params: {
   }
 }
 
+// Every candidate-facing email that invites/confirms/reminds about an
+// interview, keyed by its subject line's fixed prefix (the rest is a
+// per-applicant date/time) — see sendInterviewInvite, below, and
+// sendInterviewConfirmationEmail (both ZOOM and in-person) and
+// sendInterviewReminder above. Used by updateApplicantContactInfoAction
+// (recruiting/applicants/actions.ts) and the applicant detail page only to
+// warn staff that a PAST message already reached the OLD email address
+// before an edit there — never to decide whether to send anything new.
+export const INTERVIEW_EMAIL_SUBJECT_PREFIXES = [
+  "Great news! We'd love to meet you",
+  "Your interview with Mama's Cleaning Crew",
+  "Your in-person interview with Mama's Cleaning Crew",
+  "Reminder: your interview is",
+];
+
 // Fired the moment staff taps "Invite to Interview" (or "self-schedule
 // invite") on a qualified applicant, now that an interviewer + format is
 // always picked up front — both are stored on the applicant and preserved
