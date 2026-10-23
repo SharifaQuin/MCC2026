@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   submitApprovalRequestAction,
@@ -179,13 +179,28 @@ export default function ApprovalRequestControls({
   applicantId,
   canSubmit,
   rows,
+  initialOpenReject,
 }: {
   applicantId: string;
   canSubmit: boolean;
   rows: ApprovalRequestRow[];
+  // StageControls' "Request rejection" link lands here with this true —
+  // opens the composer already on REJECT_APPLICANT instead of making the
+  // Office Assistant find and click "Request Approval" and pick it
+  // themselves.
+  initialOpenReject?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => Boolean(initialOpenReject));
   const [actionType, setActionType] = useState<ApprovalRequestRow["actionType"]>("REJECT_APPLICANT");
+
+  // StageControls' "Request rejection" link only changes the URL's search
+  // params/hash — the same route, so this already-mounted client component
+  // is reused rather than remounted, and the lazy useState initializer
+  // above never fires again on its own. React this prop's later changes
+  // explicitly instead of assuming a fresh mount.
+  useEffect(() => {
+    if (initialOpenReject) setOpen(true);
+  }, [initialOpenReject]);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 

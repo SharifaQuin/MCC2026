@@ -28,6 +28,32 @@ async function loginAs(page: Page, email: string, password: string) {
   await page.waitForURL((url) => !url.pathname.startsWith("/login"));
 }
 
+// Captures the real Next.js Server Action id for whichever action `trigger`
+// invokes, by watching the network while it runs — then that id can be
+// replayed (with a different session's cookies, different arguments, or
+// both) to simulate a forged/direct call against the real server, not a
+// mock. Same technique as e2e/assigned-todos.spec.ts.
+async function captureActionId(page: Page, trigger: () => Promise<void>): Promise<string> {
+  let captured: string | null = null;
+  const listener = (req: import("@playwright/test").Request) => {
+    const header = req.headers()["next-action"];
+    if (header && !captured) captured = header;
+  };
+  page.on("request", listener);
+  await trigger();
+  await page.waitForTimeout(800);
+  page.off("request", listener);
+  if (!captured) throw new Error("Failed to capture a Server Action id — trigger() didn't fire one.");
+  return captured;
+}
+
+async function forgeAction(page: Page, path: string, actionId: string, args: unknown[]) {
+  return page.request.post(path, {
+    headers: { "next-action": actionId, "content-type": "text/plain;charset=UTF-8" },
+    data: JSON.stringify(args),
+  });
+}
+
 test.describe.serial("Office Assistant role", () => {
   let adminId: string;
   let officeAssistantId: string;
@@ -181,17 +207,31 @@ test.describe.serial("Office Assistant role", () => {
     expect(after.stage).toBe("IN_PERSON_PASSED");
   });
 
-  test("Office Assistant cannot reject an applicant", async ({ page }) => {
+  test("Office Assistant's rejection control opens a rejection request instead of rejecting directly", async ({ page }) => {
     await loginAs(page, OA_EMAIL, OA_PASSWORD);
     await page.goto(`/recruiting/applicants/${applicantId}`);
-    await page.click('button:has-text("Move to: Rejected")', { timeout: 5000 }).catch(() => {});
-    const rejectNoEmail = page.locator('button:has-text("Reject (No Email)")');
-    if (await rejectNoEmail.isVisible().catch(() => false)) {
-      await rejectNoEmail.click();
-      await page.waitForTimeout(1000);
-    }
+
+    // The direct control is gone entirely for this role — never rendered,
+    // not just disabled — and rejectApplicantAction's own OFFICE_ASSISTANT
+    // guard is never reached from the UI at all.
+    await expect(page.locator('button:has-text("Move to: Rejected")')).toHaveCount(0);
+    await expect(page.locator('button:has-text("Reject (No Email)")')).toHaveCount(0);
+    await expect(page.locator('button:has-text("Reject & Send Email")')).toHaveCount(0);
+
+    await page.click("text=Request rejection");
+    await page.waitForLoadState("networkidle");
+
+    // Lands on the existing Approval Requests composer, already open and
+    // preset to the right action type — nothing selected manually.
+    await expect(page.locator('select[name="actionType"]')).toHaveValue("REJECT_APPLICANT");
+    await expect(page.locator('textarea[name="rationale"]')).toBeVisible();
+
+    // Navigating here and seeing the open composer never itself mutates or
+    // submits anything.
     const after = await prisma.applicant.findUniqueOrThrow({ where: { id: applicantId } });
     expect(after.stage).not.toBe("REJECTED");
+    const requestCount = await prisma.approvalRequest.count({ where: { applicantId } });
+    expect(requestCount).toBe(0);
   });
 
   test("Office Assistant cannot reach Mark Hired / final actions via a hand-crafted stage override", async ({ page }) => {
@@ -211,11 +251,14 @@ test.describe.serial("Office Assistant role", () => {
     expect(after.stage).not.toBe("HIRED");
   });
 
-  test("Send for approval: submitting a request never mutates the applicant, and routes to the configured manager", async ({ page }) => {
+  test("Request rejection: submitting via the preset composer records the manager-routed request-stage snapshot, without changing the applicant or sending anything", async ({ page }) => {
     await loginAs(page, OA_EMAIL, OA_PASSWORD);
     await page.goto(`/recruiting/applicants/${applicantId}`);
-    await page.click('button:has-text("Request Approval")');
-    await page.selectOption('select[name="actionType"]', "REJECT_APPLICANT");
+    await page.click("text=Request rejection");
+    await page.waitForLoadState("networkidle");
+
+    // Already preset — never picked from the dropdown manually.
+    await expect(page.locator('select[name="actionType"]')).toHaveValue("REJECT_APPLICANT");
     await page.fill('textarea[name="rationale"]', "Did not meet availability requirements.");
     await page.fill('textarea[name="proposedOutcome"]', "Decline — availability mismatch.");
     await page.click('button:has-text("Submit Request")');
@@ -224,13 +267,80 @@ test.describe.serial("Office Assistant role", () => {
     const requests = await prisma.approvalRequest.findMany({ where: { applicantId } });
     expect(requests.length).toBe(1);
     expect(requests[0].status).toBe("PENDING");
+    expect(requests[0].actionType).toBe("REJECT_APPLICANT");
+    // Routed to the requester's configured manager — never anyone else.
     expect(requests[0].managerId).toBe(adminId);
+    // The request-stage snapshot used later to detect drift (see the stale
+    // request test below).
+    expect(requests[0].applicantStageAtRequest).toBe("IN_PERSON_PASSED");
 
     const applicantAfter = await prisma.applicant.findUniqueOrThrow({ where: { id: applicantId } });
     expect(applicantAfter.stage).toBe("IN_PERSON_PASSED");
+    // No rejection — or any other message — was sent as a side effect of
+    // merely submitting the request.
+    const commCount = await prisma.communicationLog.count({ where: { applicantId } });
+    expect(commCount).toBe(0);
   });
 
-  test("Manager sees exactly one queue item and can approve it; approval alone does not change hiring state", async ({ page }) => {
+  test("Office Assistant with no valid approval manager configured gets a clear setup message, not a routed request", async ({
+    page,
+  }) => {
+    const unroutedOa = await prisma.user.create({
+      data: {
+        email: `oa-no-manager-${RUN_ID}@example.com`,
+        name: `OA No Manager ${RUN_ID}`,
+        role: "OFFICE_ASSISTANT",
+        passwordHash: await hashPassword(OA_PASSWORD),
+        mustSetPassword: false,
+        active: true,
+        // No approvalManagerId at all yet.
+        areaAccess: { create: [{ area: "RECRUITING", canEdit: true }] },
+      },
+    });
+    // A manager-sounding name, but a role with no real decision authority —
+    // proves the check is role-based, never a display-title match.
+    const fakeManager = await prisma.user.create({
+      data: {
+        email: `regional-manager-${RUN_ID}@example.com`,
+        name: "Regional Manager",
+        role: "TRAINEE",
+        active: true,
+      },
+    });
+
+    try {
+      await loginAs(page, unroutedOa.email, OA_PASSWORD);
+      await page.goto(`/recruiting/applicants/${applicantId}`);
+      await page.click("text=Request rejection");
+      await page.waitForLoadState("networkidle");
+      await page.fill('textarea[name="rationale"]', "No manager configured yet.");
+      await page.fill('textarea[name="proposedOutcome"]', "Decline.");
+      await page.click('button:has-text("Submit Request")');
+      await page.waitForTimeout(800);
+      await expect(page.getByText(/No approval manager is set up/i)).toBeVisible();
+      expect(await prisma.approvalRequest.count({ where: { requesterId: unroutedOa.id } })).toBe(0);
+
+      // Now "configure" the misleadingly-named but unauthorized manager.
+      await prisma.user.update({ where: { id: unroutedOa.id }, data: { approvalManagerId: fakeManager.id } });
+      await page.goto(`/recruiting/applicants/${applicantId}`);
+      await page.click("text=Request rejection");
+      await page.waitForLoadState("networkidle");
+      await page.fill('textarea[name="rationale"]', "Manager configured, but not authorized.");
+      await page.fill('textarea[name="proposedOutcome"]', "Decline.");
+      await page.click('button:has-text("Submit Request")');
+      await page.waitForTimeout(800);
+      await expect(page.getByText(/configured approval manager is no longer valid/i)).toBeVisible();
+      expect(await prisma.approvalRequest.count({ where: { requesterId: unroutedOa.id } })).toBe(0);
+    } finally {
+      await prisma.areaAccess.deleteMany({ where: { userId: unroutedOa.id } });
+      await prisma.user.delete({ where: { id: unroutedOa.id } });
+      await prisma.user.delete({ where: { id: fakeManager.id } });
+    }
+  });
+
+  test("Manager sees exactly one queue item and can approve it; approval alone does not change hiring state or send anything", async ({
+    page,
+  }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
     await page.goto("/recruiting/approvals");
     await expect(page.locator("text=OAE2E").first()).toBeVisible();
@@ -246,6 +356,99 @@ test.describe.serial("Office Assistant role", () => {
     const applicantAfter = await prisma.applicant.findUniqueOrThrow({ where: { id: applicantId } });
     expect(applicantAfter.stage).toBe("IN_PERSON_PASSED"); // unchanged — approval never executes
     expect(applicantAfter.stage).not.toBe("REJECTED");
+    // Approving a REJECT_APPLICANT request is a decision only — it never
+    // itself sends the rejection email (or anything else).
+    const commCount = await prisma.communicationLog.count({ where: { applicantId } });
+    expect(commCount).toBe(0);
+  });
+
+  test("The manager's own manual rejection (no email) and mark-completed step carry out the approved request", async ({
+    page,
+  }) => {
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const request = await prisma.approvalRequest.findFirstOrThrow({ where: { applicantId, status: "APPROVED" } });
+
+    // The manager retains their own direct reject control — "Move to:
+    // Rejected" is unchanged for anyone but an Office Assistant — and uses
+    // the existing email/no-email choice themselves, same as any other
+    // rejection.
+    await page.goto(`/recruiting/applicants/${applicantId}`);
+    await page.click('button:has-text("Move to: Rejected")');
+    await page.click('button:has-text("Reject (No Email)")');
+    await page.waitForTimeout(1000);
+
+    const applicantAfter = await prisma.applicant.findUniqueOrThrow({ where: { id: applicantId } });
+    expect(applicantAfter.stage).toBe("REJECTED");
+    const commCount = await prisma.communicationLog.count({ where: { applicantId } });
+    expect(commCount).toBe(0); // "No Email" — nothing sent.
+
+    // Then, separately, marks the already-approved request completed —
+    // an audit marker only, never itself the thing that executes anything.
+    await page.goto(`/recruiting/applicants/${applicantId}`);
+    await page.click('button:has-text("I\'ve completed this manually — mark done")');
+    await page.waitForTimeout(1000);
+
+    const requestAfter = await prisma.approvalRequest.findUniqueOrThrow({ where: { id: request.id } });
+    expect(requestAfter.executedById).toBe(adminId);
+    expect(requestAfter.executedAt).not.toBeNull();
+
+    // Restore the shared applicant's stage for the tests that still follow.
+    await prisma.applicant.update({ where: { id: applicantId }, data: { stage: "IN_PERSON_PASSED", rejectedAt: null } });
+  });
+
+  test("Self-approval is blocked even via a direct/forged server-action call, not only through the UI", async ({ page }) => {
+    // Capture decideApprovalRequestAction's real action id off a disposable
+    // request, as the admin (the only role whose UI exposes it) — then
+    // replay it as the Office Assistant themselves against their own
+    // pending request.
+    const idCaptureRequest = await prisma.approvalRequest.create({
+      data: {
+        requesterId: officeAssistantId,
+        managerId: adminId,
+        applicantId,
+        actionType: "SEND_MESSAGE",
+        rationale: "id-capture only",
+        proposedOutcome: "id-capture only",
+        recipientEmail: "nobody@example.com",
+        messageText: "id-capture only",
+        applicantStageAtRequest: "IN_PERSON_PASSED",
+      },
+    });
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto("/recruiting/approvals");
+    const captureRow = page.locator("div.rounded-md.border", { hasText: "id-capture only" }).first();
+    const decideActionId = await captureActionId(page, async () => {
+      await captureRow.locator('button:has-text("Decline")').click();
+    });
+
+    const selfRequest = await prisma.approvalRequest.create({
+      data: {
+        requesterId: officeAssistantId,
+        managerId: adminId,
+        applicantId,
+        actionType: "REJECT_APPLICANT",
+        rationale: "Attempting to self-approve.",
+        proposedOutcome: "Decline.",
+        applicantStageAtRequest: "IN_PERSON_PASSED",
+      },
+    });
+
+    await loginAs(page, OA_EMAIL, OA_PASSWORD);
+    await page.goto(`/recruiting/applicants/${applicantId}`);
+    await forgeAction(page, `/recruiting/applicants/${applicantId}`, decideActionId, [
+      selfRequest.id,
+      "APPROVED",
+      "",
+    ]);
+    await page.waitForTimeout(800);
+
+    const after = await prisma.approvalRequest.findUniqueOrThrow({ where: { id: selfRequest.id } });
+    expect(after.status).toBe("PENDING");
+    expect(after.decidedById).toBeNull();
+    const applicantAfter = await prisma.applicant.findUniqueOrThrow({ where: { id: applicantId } });
+    expect(applicantAfter.stage).toBe("IN_PERSON_PASSED");
+    const commCount = await prisma.communicationLog.count({ where: { applicantId } });
+    expect(commCount).toBe(0);
   });
 
   test("A stale request (record changed after submission) is marked Needs Resubmission instead of being decided", async ({ page }) => {

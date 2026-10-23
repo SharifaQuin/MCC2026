@@ -12,9 +12,15 @@ import ApprovalRequestControls, { type ApprovalRequestRow } from "./ApprovalRequ
 export default async function ApprovalRequestPanel({
   applicantId,
   session,
+  openRejectionRequest,
 }: {
   applicantId: string;
   session: SessionPayload;
+  // Set when StageControls' "Request rejection" link (the Office
+  // Assistant's replacement for the direct Reject controls) navigated here
+  // with ?rejectRequest=1 — opens the composer below already on REJECT_APPLICANT,
+  // rather than making them find and click "Request Approval" themselves.
+  openRejectionRequest?: boolean;
 }) {
   const canSubmit =
     session.role === "OFFICE_ASSISTANT" &&
@@ -61,14 +67,19 @@ export default async function ApprovalRequestPanel({
   }));
 
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white p-4">
+    <div id="approval-requests" className="rounded-lg border border-neutral-200 bg-white p-4">
       <h2 className="mb-3 font-medium text-neutral-900">Approval Requests</h2>
       <p className="mb-3 text-xs text-neutral-500">
         A request here never changes this applicant's stage, sends anything, or hires anyone by
         itself — approving one only records a decision. The blocked action still needs the
         manager's own separate, manual step.
       </p>
-      <ApprovalRequestControls applicantId={applicantId} canSubmit={canSubmit} rows={rows} />
+      <ApprovalRequestControls
+        applicantId={applicantId}
+        canSubmit={canSubmit}
+        rows={rows}
+        initialOpenReject={Boolean(openRejectionRequest)}
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import type { ApplicantStage } from "@prisma/client";
 import { setApplicantStageAction, rejectApplicantAction } from "../actions";
 import { STAGE_LABELS, SCHEDULING_STAGES } from "@/lib/recruiting";
@@ -44,10 +45,16 @@ export default function StageControls({
   applicantId,
   stage,
   scheduledAt,
+  canDirectlyReject,
 }: {
   applicantId: string;
   stage: ApplicantStage;
   scheduledAt?: Date | string | null;
+  // False for an Office Assistant — rejectApplicantAction refuses them
+  // outright (they have no authority to carry out or send a rejection),
+  // so "Move to: Rejected" is replaced with a link into the Approval
+  // Requests composer below instead of a control that would just fail.
+  canDirectlyReject: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [scheduling, setScheduling] = useState<ApplicantStage | null>(null);
@@ -81,31 +88,49 @@ export default function StageControls({
       )}
       {options.length > 0 && (
         <div className="flex flex-wrap gap-2">
-          {options.map((next) => (
-            <button
-              key={next}
-              type="button"
-              disabled={pending}
-              onClick={() => {
-                if (next === "REJECTED") {
-                  setRejecting(true);
-                } else if ((SCHEDULING_STAGES as string[]).includes(next)) {
-                  setScheduling(next);
-                } else {
-                  startTransition(() => setApplicantStageAction(applicantId, next));
-                }
-              }}
-              className={`rounded-md px-3 py-2 text-sm font-medium disabled:opacity-60 ${
-                next === "REJECTED"
-                  ? "border border-red-300 text-red-700 hover:bg-red-50"
-                  : next === "BENCH"
-                    ? "border border-neutral-300 text-neutral-700 hover:bg-neutral-50"
-                    : "bg-brand-600 text-white hover:bg-brand-700"
-              }`}
-            >
-              {stage === "HIRED" && next === "OFFER_SENT" ? "Undo Hire" : `Move to: ${STAGE_LABELS[next]}`}
-            </button>
-          ))}
+          {options.map((next) => {
+            if (next === "REJECTED" && !canDirectlyReject) {
+              // Same-page navigation (no full reload needed) into the
+              // Approval Requests composer below, already open and preset
+              // to REJECT_APPLICANT (see ApprovalRequestControls) — never
+              // a control that would just fail against rejectApplicantAction's
+              // own OFFICE_ASSISTANT guard.
+              return (
+                <Link
+                  key={next}
+                  href="?rejectRequest=1#approval-requests"
+                  className="rounded-md border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                >
+                  Request rejection
+                </Link>
+              );
+            }
+            return (
+              <button
+                key={next}
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  if (next === "REJECTED") {
+                    setRejecting(true);
+                  } else if ((SCHEDULING_STAGES as string[]).includes(next)) {
+                    setScheduling(next);
+                  } else {
+                    startTransition(() => setApplicantStageAction(applicantId, next));
+                  }
+                }}
+                className={`rounded-md px-3 py-2 text-sm font-medium disabled:opacity-60 ${
+                  next === "REJECTED"
+                    ? "border border-red-300 text-red-700 hover:bg-red-50"
+                    : next === "BENCH"
+                      ? "border border-neutral-300 text-neutral-700 hover:bg-neutral-50"
+                      : "bg-brand-600 text-white hover:bg-brand-700"
+                }`}
+              >
+                {stage === "HIRED" && next === "OFFER_SENT" ? "Undo Hire" : `Move to: ${STAGE_LABELS[next]}`}
+              </button>
+            );
+          })}
         </div>
       )}
       {stage === "HIRED" && (
