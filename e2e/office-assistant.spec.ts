@@ -552,7 +552,11 @@ test.describe.serial("Office Assistant role", () => {
     await loginAs(page, OA_EMAIL, OA_PASSWORD);
     await page.goto(`/recruiting/applicants/${applicantId}`);
     await page.click('button:has-text("Correct the stage manually")');
-    await page.locator('select[name="targetStage"]').selectOption("IN_PERSON_SCHEDULED");
+    // PHONE_INTERVIEW_PASSED — any still-available override target works
+    // here; IN_PERSON_SCHEDULED itself is no longer offered to this role at
+    // all (see OFFICE_ASSISTANT_BLOCKED_STAGES), which is exactly correct
+    // and unrelated to what this test is actually checking.
+    await page.locator('select[name="targetStage"]').selectOption("PHONE_INTERVIEW_PASSED");
 
     // Revoke edit access without a fresh page load — the already-rendered
     // form has no way to know this happened until it actually submits, the

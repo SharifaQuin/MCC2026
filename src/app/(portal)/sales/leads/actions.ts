@@ -4,16 +4,132 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
-import { assertSalesLeadsEditAccess } from "@/lib/requireSalesLeadsAccess";
+import { assertSalesLeadsEditAccess, assertLeadContactEditAccess } from "@/lib/requireSalesLeadsAccess";
 import { getSession } from "@/lib/session";
 import { sendEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
 import { syncQuoteStatusForLead } from "@/lib/leads";
 import { logAudit } from "@/lib/auditLog";
 import { getTrueActorId } from "@/lib/impersonation";
+import { formatPhone, normalizePhoneDigits } from "@/lib/formatPhone";
 import type { LeadStage, LeadSource } from "@prisma/client";
 
 const VALID_LEAD_SOURCES = new Set(["PHONE_CALL", "WALK_IN", "REFERRAL", "OTHER"]);
+
+export interface LeadContactInfoFormState {
+  error?: string;
+  success?: boolean;
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Inline email/phone correction for lead records — office-wide (including
+// a view-only Office Assistant like Pedro; see assertLeadContactEditAccess),
+// not a general Sales edit grant. Mirrors
+// updateApplicantContactInfoAction's exact safeguards (validate only
+// changed fields, detect normalized duplicates/no-ops, atomic save +
+// actor-history note, warn-don't-block on an associated quote) — made
+// symmetric here: BOTH email and phone skip their own validation when
+// unchanged (the applicant version only ever did this for phone), so an
+// email-only correction can never fail on an untouched, already-bad
+// legacy phone number, and a phone-only correction can never fail on an
+// untouched, already-invalid legacy email. Never touches stage,
+// assignment, quoteKey, or sends anything — a correction here is never a
+// follow-up action.
+export async function updateLeadContactInfoAction(
+  leadId: string,
+  _prevState: LeadContactInfoFormState,
+  formData: FormData
+): Promise<LeadContactInfoFormState> {
+  const session = await assertLeadContactEditAccess();
+
+  const emailRaw = String(formData.get("email") ?? "").trim();
+  const phoneRaw = String(formData.get("phone") ?? "").trim();
+
+  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (!lead) return { error: "Lead not found." };
+
+  const submittedEmail = emailRaw.toLowerCase();
+  const emailUnchanged = submittedEmail.length > 0 && submittedEmail === lead.email.toLowerCase();
+  let email: string;
+  if (emailUnchanged) {
+    email = lead.email;
+  } else {
+    if (!submittedEmail || !EMAIL_PATTERN.test(submittedEmail)) {
+      return { error: "Enter a valid email address." };
+    }
+    email = submittedEmail;
+  }
+
+  // Same digit-set comparison updateApplicantContactInfoAction already
+  // uses — a resubmission of the lead's own current number, however it
+  // was originally stored (punctuation, a leading "1"), is never treated
+  // as a change, so this field's 10-digit rule is only ever enforced on a
+  // genuinely changing value.
+  const submittedPhoneDigits = normalizePhoneDigits(phoneRaw);
+  const storedPhoneDigits = normalizePhoneDigits(lead.phone);
+  const phoneUnchanged =
+    submittedPhoneDigits.size > 0 && [...submittedPhoneDigits].some((d) => storedPhoneDigits.has(d));
+
+  let phone: string;
+  if (phoneUnchanged) {
+    phone = lead.phone;
+  } else {
+    const digits = phoneRaw.replace(/\D/g, "");
+    phone = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+    if (phone.length !== 10) {
+      return { error: "Enter a valid 10-digit phone number." };
+    }
+  }
+
+  // Scoped across every lead, not just this one — reusing another lead's
+  // email/phone would conflate two different people's communication
+  // threads/history.
+  if (!emailUnchanged) {
+    const conflict = await prisma.lead.findFirst({
+      where: { email: { equals: email, mode: "insensitive" }, id: { not: leadId } },
+      select: { id: true },
+    });
+    if (conflict) return { error: "Another lead already uses this email address." };
+  }
+  if (!phoneUnchanged) {
+    const otherLeads = await prisma.lead.findMany({ where: { id: { not: leadId } }, select: { id: true, phone: true } });
+    const newPhoneDigits = normalizePhoneDigits(phone);
+    const conflict = otherLeads.find((other) =>
+      [...normalizePhoneDigits(other.phone)].some((d) => newPhoneDigits.has(d))
+    );
+    if (conflict) return { error: "Another lead already uses this phone number." };
+  }
+
+  const changeLines: string[] = [];
+  if (!emailUnchanged && email !== lead.email) {
+    changeLines.push(`Email changed from ${lead.email} to ${email}`);
+  }
+  if (!phoneUnchanged) {
+    changeLines.push(`Phone changed from ${formatPhone(lead.phone)} to ${formatPhone(phone)}`);
+  }
+  if (changeLines.length === 0) {
+    return { success: true };
+  }
+
+  // A quote was generated against this lead's current contact details
+  // (quoteKey — see src/lib/leads.ts) — this correction never alters or
+  // regenerates it, just flags that it won't reflect a changed address
+  // going forward.
+  if (lead.quoteKey) {
+    changeLines.push("Note: this lead has a saved quote that was NOT regenerated — it may still show the previous contact details.");
+  }
+
+  await prisma.$transaction([
+    prisma.lead.update({ where: { id: leadId }, data: { email, phone } }),
+    prisma.leadNote.create({
+      data: { leadId, authorId: getTrueActorId(session), body: changeLines.join("\n") },
+    }),
+  ]);
+
+  revalidatePath(`/sales/leads/${leadId}`);
+  return { success: true };
+}
 
 // Office Assistant may only record that an inquiry was contacted — moving a
 // lead to Quoted or Won means pricing/booking confirmation, which stays

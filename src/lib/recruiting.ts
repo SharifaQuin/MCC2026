@@ -985,7 +985,22 @@ export const SCHEDULING_STAGES: ApplicantStage[] = [
 // Shared between the server-side enforcement (assertRoutineStageTransition
 // in recruiting/applicants/actions.ts) and every client component that
 // hides the corresponding controls for this role, so the two can't drift.
-export const OFFICE_ASSISTANT_BLOCKED_STAGES: ApplicantStage[] = ["OFFER_SENT", "HIRED", "REJECTED", "BENCH"];
+//
+// IN_PERSON_SCHEDULED joined this list so Pedro can no longer book an
+// in-person interview directly (he keeps direct Zoom/phone-interview
+// booking, which this stage-based list never touches since
+// PHONE_INTERVIEW_SCHEDULED stays off it) — he must submit a
+// SCHEDULE_IN_PERSON_INTERVIEW approval request instead (see
+// src/app/actions/approvals.ts and src/lib/approvalExecution.ts), which
+// executes through this exact same booking machinery once a manager
+// approves it, just under the manager's own session rather than Pedro's.
+export const OFFICE_ASSISTANT_BLOCKED_STAGES: ApplicantStage[] = [
+  "OFFER_SENT",
+  "HIRED",
+  "REJECTED",
+  "BENCH",
+  "IN_PERSON_SCHEDULED",
+];
 
 // The format is the actual scheduling fact (what to send/where to point the
 // candidate); `stage` is just the pipeline-board label. Every *new*
