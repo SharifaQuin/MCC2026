@@ -167,7 +167,11 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
             <dt className="text-neutral-400">Phone</dt>
             <dd>{formatPhone(lead.phone)}</dd>
           </div>
-          {session.role === "ADMIN" && (
+          {/* Reaching this branch already implies real SALES lead-view
+              access (requireSalesLeadsAccess redirected away otherwise) —
+              contact-correction authority (assertLeadContactEditAccess)
+              excludes only the two field roles from there, by name. */}
+          {session.role !== "TRAINEE" && session.role !== "TRAINER" && (
             <div className="col-span-2">
               <LeadContactEditor leadId={lead.id} email={lead.email} phone={lead.phone} hasQuote={lead.quoteKey != null} />
             </div>

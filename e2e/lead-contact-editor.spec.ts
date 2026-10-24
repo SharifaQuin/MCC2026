@@ -2,11 +2,14 @@ import { test, expect, type Page } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/lib/password";
 
-// Coverage for the lead email/phone inline contact editor: office-wide
-// access including a VIEW-ONLY Office Assistant (Pedro), non-office denial,
-// changed-field-only validation (symmetric for both email and phone),
-// normalized duplicate/no-op detection, atomic save + actor history, and
-// the quote-on-file warning that never blocks the save or touches quoteKey.
+// Coverage for the lead email/phone inline contact editor: access for any
+// non-field role with real lead-view access (a VIEW-ONLY Office Assistant
+// i.e. Pedro, and a SERVICE_MANAGER with a real granted SALES view/edit
+// grant), field-role (Trainee/Trainer) denial even when one is given a
+// (deliberately contrived) real SALES grant, changed-field-only validation
+// (symmetric for both email and phone), normalized duplicate/no-op
+// detection, atomic save + actor history, and the quote-on-file warning
+// that never blocks the save or touches quoteKey.
 // Fixtures only — disposable users/leads tagged with a unique run id,
 // removed in afterAll.
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "shar@mamascleaningcrew.com";
@@ -70,14 +73,10 @@ test.describe.serial("Lead contact editor: access, validation, dedup, history, q
     traineeId = trainee.id;
 
     // A SERVICE_MANAGER with REAL, granted SALES department access (not a
-    // hypothetical) — this role CAN already view/edit leads generally on
-    // the full admin page via requireSalesLeadsAccess, which is exactly
-    // the case assertLeadContactEditAccess deliberately does NOT trust as
-    // "office staff" on its own (see its own comment): nothing confirms a
-    // SERVICE_MANAGER with SALES access is office-based rather than
-    // field-based, so contact-correction authority stays refused for them
-    // until the owner has an explicit, reviewed way to mark an account as
-    // office staff.
+    // hypothetical) — under the owner's decided rule (see
+    // assertLeadContactEditAccess's own comment), any non-field role with
+    // real lead-view access qualifies for contact-correction too, so this
+    // account should get it.
     const serviceManager = await prisma.user.create({
       data: {
         email: SERVICE_MANAGER_EMAIL,
@@ -155,7 +154,7 @@ test.describe.serial("Lead contact editor: access, validation, dedup, history, q
     expect(after.email).toBe(lead.email);
   });
 
-  test("A SERVICE_MANAGER with real, granted SALES access can still view/edit the lead generally, but gets no contact-correction control — that authority isn't inferred from SALES access alone", async ({
+  test("A SERVICE_MANAGER with real, granted SALES access can view/edit the lead generally AND gets the contact-correction control — a non-field role with real lead-view access qualifies", async ({
     page,
   }) => {
     const lead = await makeLead("sm-real-access");
@@ -166,14 +165,49 @@ test.describe.serial("Lead contact editor: access, validation, dedup, history, q
     await expect(page).toHaveURL(`/sales/leads/${lead.id}`);
     await expect(page.getByText(lead.email)).toBeVisible();
 
-    // But no "Edit contact info" control — contact-correction authority is
-    // deliberately NOT inferred from general SALES access, since nothing
-    // confirms this role is office- rather than field-based (see
-    // assertLeadContactEditAccess's own comment).
+    await page.click("text=Edit contact info");
+    const newEmail = `sm-corrected-${RUN_ID}@example.com`;
+    await contactForm(page).locator('input[name="email"]').fill(newEmail);
+    await contactForm(page).locator('input[name="phone"]').fill(lead.phone);
+    await contactForm(page).locator('button:has-text("Save")').click();
+    await page.waitForTimeout(800);
+
+    const after = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(after.email).toBe(newEmail);
+    const note = await prisma.leadNote.findFirstOrThrow({ where: { leadId: lead.id } });
+    expect(note.authorId).toBe(serviceManagerId);
+  });
+
+  test("A TRAINEE/TRAINER with a (deliberately contrived) real SALES view grant still cannot reach the contact editor — field roles are excluded by name, not inferred from access", async ({
+    page,
+  }) => {
+    const grantedTrainee = await prisma.user.create({
+      data: {
+        email: `trainee-sales-grant-${RUN_ID}@example.com`,
+        name: `Trainee With Sales Grant ${RUN_ID}`,
+        role: "TRAINEE",
+        passwordHash: await hashPassword("Test-Password-123!"),
+        mustSetPassword: false,
+        active: true,
+        departmentAccess: { create: [{ department: "SALES", canEdit: true }] },
+      },
+    });
+    const lead = await makeLead("trainee-sales-grant");
+
+    await loginAs(page, grantedTrainee.email, "Test-Password-123!");
+    await page.goto(`/sales/leads/${lead.id}`);
+    // Their real SALES grant lets them view/edit the lead generally...
+    await expect(page).toHaveURL(`/sales/leads/${lead.id}`);
+    await expect(page.getByText(lead.email)).toBeVisible();
+    // ...but never the contact-correction control — TRAINEE is excluded by
+    // role name in assertLeadContactEditAccess regardless of access.
     await expect(page.getByText("Edit contact info")).toHaveCount(0);
 
     const after = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(after.email).toBe(lead.email);
+
+    await prisma.departmentAccess.deleteMany({ where: { userId: grantedTrainee.id } });
+    await prisma.user.delete({ where: { id: grantedTrainee.id } });
   });
 
   test("An email-only correction never fails because of an untouched, already-bad legacy phone number", async ({ page }) => {
