@@ -167,9 +167,11 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
             <dt className="text-neutral-400">Phone</dt>
             <dd>{formatPhone(lead.phone)}</dd>
           </div>
-          <div className="col-span-2">
-            <LeadContactEditor leadId={lead.id} email={lead.email} phone={lead.phone} hasQuote={lead.quoteKey != null} />
-          </div>
+          {session.role === "ADMIN" && (
+            <div className="col-span-2">
+              <LeadContactEditor leadId={lead.id} email={lead.email} phone={lead.phone} hasQuote={lead.quoteKey != null} />
+            </div>
+          )}
           {lead.address && (
             <div>
               <dt className="text-neutral-400">Address</dt>

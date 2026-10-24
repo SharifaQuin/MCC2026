@@ -64,9 +64,13 @@ export default async function ApprovalsQueuePage() {
         </Link>
         <h1 className="mt-1 text-2xl font-semibold">Pending Approvals</h1>
         <p className="mt-1 text-sm text-neutral-500">
-          Requests from Office Assistants awaiting your decision. Approving one only records a
-          decision — the blocked action (a final hiring stage, an offer, or sending a message)
-          still needs your own separate, manual step afterward.
+          Requests from Office Assistants awaiting your decision. Approving a rejection, an offer,
+          or a message only ever records a decision — you still carry out that final hiring stage
+          or send yourself, as a separate, manual step. Approving an in-person interview request is
+          different: it books the interview and sends the candidate's usual confirmation
+          automatically. Approving a working session request saves the approved date/time to the
+          working session record automatically, but never contacts the candidate — that stays
+          manual for now.
         </p>
       </div>
 

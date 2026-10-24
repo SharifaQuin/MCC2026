@@ -226,6 +226,75 @@ test.describe.serial("Pedro's next-step requests: submission, decision, executio
     expect(await prisma.workingSessionRecord.findUnique({ where: { applicantId: applicant.id } })).toBeNull();
   });
 
+  test("Date/time inputs are explicitly labeled with the business timezone, and a PDT-dated request stores the correct UTC instant end to end", async ({
+    page,
+  }) => {
+    // Oct 28, 2026 is before the Nov 1, 2026 DST-end transition — Pacific
+    // Daylight Time, UTC-7. 2:00 PM PDT is independently known to be
+    // 9:00 PM UTC the same day; this is a hardcoded expectation, not a
+    // round-trip of the app's own zonedTimeToUtc/display logic against
+    // itself (which would trivially agree with itself even if both sides
+    // shared the same systematic offset bug).
+    const applicant = await makeApplicant("dst-pdt");
+    await loginAs(page, OA_EMAIL, OA_PASSWORD);
+    await page.goto(`/recruiting/applicants/${applicant.id}`);
+    await page.click('button:has-text("Request Approval")');
+    await page.locator('select[name="actionType"]').selectOption("SCHEDULE_IN_PERSON_INTERVIEW");
+    await expect(page.getByText("Proposed date and time (Pacific Time)")).toBeVisible();
+    await page.fill('input[name="proposedScheduledAt"]', "2026-10-28T14:00");
+    await page.fill('textarea[name="rationale"]', "DST (PDT) boundary check.");
+    await page.click('button:has-text("Submit Request")');
+    await page.waitForTimeout(800);
+
+    const request = await prisma.approvalRequest.findFirstOrThrow({ where: { applicantId: applicant.id } });
+    expect(request.proposedScheduledAt?.toISOString()).toBe("2026-10-28T21:00:00.000Z");
+
+    await page.evaluate(() => fetch("/logout", { method: "POST" }));
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto("/recruiting/approvals");
+    await page.waitForLoadState("networkidle");
+    const row = page.locator("div.rounded-md.border", { hasText: `NS dst-pdt-${RUN_ID}` });
+    await expect(row.getByText("Approved date and time (Pacific Time)")).toBeVisible();
+    // Unedited — the prefilled business-timezone value must round-trip back
+    // to the exact same UTC instant that was proposed.
+    await row.locator('button:has-text("Approve")').click();
+    await page.waitForTimeout(1200);
+
+    const after = await prisma.approvalRequest.findUniqueOrThrow({ where: { id: request.id } });
+    expect(after.decidedScheduledAt?.toISOString()).toBe("2026-10-28T21:00:00.000Z");
+  });
+
+  test("A PST-dated request (after the DST-end transition) stores the correct UTC instant", async ({ page }) => {
+    // Nov 5, 2026 is after the Nov 1, 2026 transition — Pacific Standard
+    // Time, UTC-8. 2:00 PM PST is independently known to be 10:00 PM UTC
+    // the same day, one hour offset from the PDT case above.
+    const applicant = await makeApplicant("dst-pst");
+    await loginAs(page, OA_EMAIL, OA_PASSWORD);
+    await page.goto(`/recruiting/applicants/${applicant.id}`);
+    await page.click('button:has-text("Request Approval")');
+    await page.locator('select[name="actionType"]').selectOption("SCHEDULE_WORKING_SESSION");
+    await page.fill('input[name="proposedScheduledAt"]', "2026-11-05T14:00");
+    await page.fill('textarea[name="rationale"]', "DST (PST) boundary check.");
+    await page.click('button:has-text("Submit Request")');
+    await page.waitForTimeout(800);
+
+    const request = await prisma.approvalRequest.findFirstOrThrow({ where: { applicantId: applicant.id } });
+    expect(request.proposedScheduledAt?.toISOString()).toBe("2026-11-05T22:00:00.000Z");
+
+    await page.evaluate(() => fetch("/logout", { method: "POST" }));
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto("/recruiting/approvals");
+    await page.waitForLoadState("networkidle");
+    const row = page.locator("div.rounded-md.border", { hasText: `NS dst-pst-${RUN_ID}` });
+    await row.locator('button:has-text("Approve")').click();
+    await page.waitForTimeout(1200);
+
+    const after = await prisma.approvalRequest.findUniqueOrThrow({ where: { id: request.id } });
+    expect(after.decidedScheduledAt?.toISOString()).toBe("2026-11-05T22:00:00.000Z");
+    const ws = await prisma.workingSessionRecord.findUniqueOrThrow({ where: { applicantId: applicant.id } });
+    expect(ws.scheduledAt?.toISOString()).toBe("2026-11-05T22:00:00.000Z");
+  });
+
   test("Approving an in-person request as proposed executes the booking: stage, slot, and one confirmation", async ({
     page,
   }) => {
@@ -567,6 +636,58 @@ test.describe.serial("Pedro's next-step requests: submission, decision, executio
     }
   });
 
+  test("Retrying a FAILED request whose applicant has since moved to a different stage is refused as stale — no booking, status becomes Needs Resubmission", async ({
+    page,
+  }) => {
+    const applicant = await makeApplicant("retry-stale");
+    const conflictDate = new Date(`${futureLocalDatetime(21, 13)}:00`);
+    const request = await prisma.approvalRequest.create({
+      data: {
+        requesterId: officeAssistantId,
+        managerId: adminId,
+        applicantId: applicant.id,
+        actionType: "SCHEDULE_IN_PERSON_INTERVIEW",
+        rationale: "Requesting.",
+        proposedOutcome: "Schedule an in-person interview at the proposed date/time.",
+        proposedScheduledAt: conflictDate,
+        applicantStageAtRequest: "IN_PERSON_PASSED",
+        status: "APPROVED",
+        decidedById: adminId,
+        decidedAt: new Date(),
+        decidedScheduledAt: conflictDate,
+        executionStatus: "FAILED",
+        executionError: "That time conflicts with another interview — please pick another.",
+        executedById: adminId,
+        executedAt: new Date(),
+      },
+    });
+    // The applicant moved on through a completely different control since
+    // this request was approved — e.g. a manager rejected them directly —
+    // before anyone got around to retrying the failed booking attempt.
+    await prisma.applicant.update({ where: { id: applicant.id }, data: { stage: "REJECTED" } });
+
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto("/recruiting/approvals");
+    const row = page.locator("div.rounded-md.border", { hasText: `NS retry-stale-${RUN_ID}` }).first();
+    await row.locator('button:has-text("Retry")').click();
+    await page.waitForTimeout(1000);
+
+    const after = await prisma.approvalRequest.findUniqueOrThrow({ where: { id: request.id } });
+    expect(after.status).toBe("NEEDS_RESUBMISSION");
+    expect(after.executionStatus).toBeNull();
+
+    const applicantAfter = await prisma.applicant.findUniqueOrThrow({ where: { id: applicant.id } });
+    expect(applicantAfter.stage).toBe("REJECTED"); // never dragged back to IN_PERSON_SCHEDULED
+    expect(applicantAfter.scheduledAt).toBeNull();
+    expect(await prisma.interviewAvailabilitySlot.findUnique({ where: { bookedById: applicant.id } })).toBeNull();
+    expect(await prisma.communicationLog.count({ where: { applicantId: applicant.id } })).toBe(0);
+
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByText("Needs resubmission").first()).toBeVisible();
+    await expect(page.locator("div.rounded-md.border", { hasText: `NS retry-stale-${RUN_ID}` }).locator('button:has-text("Retry")')).toHaveCount(0);
+  });
+
   test("Pedro gains no evaluation/scoring authority from this feature — the Working Session tab offers no save control for him", async ({
     page,
   }) => {
@@ -648,7 +769,7 @@ test.describe("Pedro's next-step request execution internals (direct library cal
     const request = await makeRequest(applicant.id, "SCHEDULE_IN_PERSON_INTERVIEW", when);
 
     await claimExecutionAttempt(request.id);
-    await executeApprovedInPersonInterview(request.id, applicant.id, when, adminId);
+    await executeApprovedInPersonInterview(request.id, applicant.id, when, adminId, "IN_PERSON_PASSED");
 
     const after = await prisma.approvalRequest.findUniqueOrThrow({ where: { id: request.id } });
     expect(after.executionStatus).toBe("SUCCEEDED");
@@ -673,6 +794,7 @@ test.describe("Pedro's next-step request execution internals (direct library cal
       applicant.id,
       when,
       adminId,
+      "IN_PERSON_PASSED",
       fakeFailingCalendar as never,
       undefined
     );
@@ -708,7 +830,7 @@ test.describe("Pedro's next-step request execution internals (direct library cal
     const request = await makeRequest(applicant.id, "SCHEDULE_IN_PERSON_INTERVIEW", when);
 
     await claimExecutionAttempt(request.id);
-    await executeApprovedInPersonInterview(request.id, applicant.id, when, adminId);
+    await executeApprovedInPersonInterview(request.id, applicant.id, when, adminId, "IN_PERSON_PASSED");
 
     const after = await prisma.approvalRequest.findUniqueOrThrow({ where: { id: request.id } });
     expect(after.executionStatus).toBe("FAILED");
@@ -735,7 +857,7 @@ test.describe("Pedro's next-step request execution internals (direct library cal
     const request = await makeRequest(applicant.id, "SCHEDULE_WORKING_SESSION", when);
 
     await claimExecutionAttempt(request.id);
-    await executeApprovedWorkingSession(request.id, applicant.id, when, adminId);
+    await executeApprovedWorkingSession(request.id, applicant.id, when, adminId, "IN_PERSON_PASSED");
 
     const after = await prisma.approvalRequest.findUniqueOrThrow({ where: { id: request.id } });
     expect(after.executionStatus).toBe("SUCCEEDED");
@@ -762,8 +884,8 @@ test.describe("Pedro's next-step request execution internals (direct library cal
 
     // The loser must never also execute — simulate exactly that discipline:
     // only the winner proceeds.
-    if (claimedA) await executeApprovedInPersonInterview(request.id, applicant.id, when, adminId);
-    if (claimedB) await executeApprovedInPersonInterview(request.id, applicant.id, when, adminId);
+    if (claimedA) await executeApprovedInPersonInterview(request.id, applicant.id, when, adminId, "IN_PERSON_PASSED");
+    if (claimedB) await executeApprovedInPersonInterview(request.id, applicant.id, when, adminId, "IN_PERSON_PASSED");
 
     expect(await prisma.communicationLog.count({ where: { applicantId: applicant.id } })).toBe(1);
     const slot = await prisma.interviewAvailabilitySlot.findUnique({ where: { bookedById: applicant.id } });
@@ -790,7 +912,7 @@ test.describe("Pedro's next-step request execution internals (direct library cal
     const request = await makeRequest(applicant.id, "SCHEDULE_IN_PERSON_INTERVIEW", badTime);
 
     await claimExecutionAttempt(request.id);
-    await executeApprovedInPersonInterview(request.id, applicant.id, badTime, adminId);
+    await executeApprovedInPersonInterview(request.id, applicant.id, badTime, adminId, "IN_PERSON_PASSED");
     expect((await prisma.approvalRequest.findUniqueOrThrow({ where: { id: request.id } })).executionStatus).toBe(
       "FAILED"
     );
@@ -799,12 +921,74 @@ test.describe("Pedro's next-step request execution internals (direct library cal
     // legitimate retry target), and execute exactly once more.
     const reclaimed = await claimExecutionAttempt(request.id);
     expect(reclaimed).toBe(true);
-    await executeApprovedInPersonInterview(request.id, applicant.id, goodTime, adminId);
+    await executeApprovedInPersonInterview(request.id, applicant.id, goodTime, adminId, "IN_PERSON_PASSED");
 
     const after = await prisma.approvalRequest.findUniqueOrThrow({ where: { id: request.id } });
     expect(after.executionStatus).toBe("SUCCEEDED");
     const applicantAfter = await prisma.applicant.findUniqueOrThrow({ where: { id: applicant.id } });
     expect(applicantAfter.scheduledAt?.toISOString()).toBe(goodTime.toISOString());
     expect(await prisma.communicationLog.count({ where: { applicantId: applicant.id } })).toBe(1);
+  });
+
+  test("executeApprovedInPersonInterview refuses a stale request whose applicant moved to a different stage — no booking, no stage change, reported as Needs Resubmission", async () => {
+    const applicant = await makeApplicant("inperson-stage-drift");
+    const when = new Date(`${futureLocalDatetime(37, 10)}:00`);
+    const request = await makeRequest(applicant.id, "SCHEDULE_IN_PERSON_INTERVIEW", when);
+    // The applicant moved on through a completely different control (e.g. a
+    // manager rejected them) after this request was approved but before
+    // execution ran — exactly the gap a Retry click bridges.
+    await prisma.applicant.update({ where: { id: applicant.id }, data: { stage: "REJECTED" } });
+
+    await claimExecutionAttempt(request.id);
+    const result = await executeApprovedInPersonInterview(request.id, applicant.id, when, adminId, "IN_PERSON_PASSED");
+    expect(result.stale).toBe(true);
+
+    const after = await prisma.approvalRequest.findUniqueOrThrow({ where: { id: request.id } });
+    expect(after.status).toBe("NEEDS_RESUBMISSION");
+    expect(after.executionStatus).toBeNull();
+    expect(after.executionError).toBeNull();
+
+    const applicantAfter = await prisma.applicant.findUniqueOrThrow({ where: { id: applicant.id } });
+    expect(applicantAfter.stage).toBe("REJECTED"); // untouched — never dragged back to IN_PERSON_SCHEDULED
+    expect(applicantAfter.scheduledAt).toBeNull();
+    expect(await prisma.interviewAvailabilitySlot.findUnique({ where: { bookedById: applicant.id } })).toBeNull();
+    expect(await prisma.communicationLog.count({ where: { applicantId: applicant.id } })).toBe(0);
+  });
+
+  test("executeApprovedWorkingSession refuses a stale request whose applicant moved to a different stage — no record written", async () => {
+    const applicant = await makeApplicant("ws-stage-drift");
+    const when = new Date(`${futureLocalDatetime(38, 9)}:00`);
+    const request = await makeRequest(applicant.id, "SCHEDULE_WORKING_SESSION", when);
+    await prisma.applicant.update({ where: { id: applicant.id }, data: { stage: "BENCH" } });
+
+    await claimExecutionAttempt(request.id);
+    const result = await executeApprovedWorkingSession(request.id, applicant.id, when, adminId, "IN_PERSON_PASSED");
+    expect(result.stale).toBe(true);
+
+    const after = await prisma.approvalRequest.findUniqueOrThrow({ where: { id: request.id } });
+    expect(after.status).toBe("NEEDS_RESUBMISSION");
+    expect(after.executionStatus).toBeNull();
+    expect(await prisma.workingSessionRecord.findUnique({ where: { applicantId: applicant.id } })).toBeNull();
+  });
+
+  test("A slot claimed just before a stage-drift is detected is released, not left as an orphaned booking", async () => {
+    const applicant = await makeApplicant("inperson-drift-after-claim");
+    const when = new Date(`${futureLocalDatetime(39, 10)}:00`);
+    const request = await makeRequest(applicant.id, "SCHEDULE_IN_PERSON_INTERVIEW", when);
+
+    // Simulate the race the second (write-time) lock check exists for: the
+    // applicant's stage changes in the narrow window after the up-front
+    // check passes but before the conditional write. We can't inject
+    // exactly into that window from outside, so this instead proves the
+    // same guarantee holds when the drift happens before either check runs
+    // at all — the up-front check catches it, and critically, no slot is
+    // left behind from this attempt.
+    await prisma.applicant.update({ where: { id: applicant.id }, data: { stage: "HIRED" } });
+    await claimExecutionAttempt(request.id);
+    await executeApprovedInPersonInterview(request.id, applicant.id, when, adminId, "IN_PERSON_PASSED");
+
+    expect(await prisma.interviewAvailabilitySlot.findUnique({ where: { bookedById: applicant.id } })).toBeNull();
+    const applicantAfter = await prisma.applicant.findUniqueOrThrow({ where: { id: applicant.id } });
+    expect(applicantAfter.stage).toBe("HIRED");
   });
 });

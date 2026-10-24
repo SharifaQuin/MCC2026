@@ -244,12 +244,15 @@ export function RequestRow({ row }: { row: ApprovalRequestRow }) {
         {row.canDecide && row.status === "PENDING" && (
           <>
             {isScheduling && (
-              <input
-                type="datetime-local"
-                value={decidedScheduledAt}
-                onChange={(e) => setDecidedScheduledAt(e.target.value)}
-                className="rounded-md border border-neutral-300 px-2 py-1 text-xs"
-              />
+              <label className="flex flex-col text-[10px] font-medium text-neutral-500">
+                Approved date and time (Pacific Time)
+                <input
+                  type="datetime-local"
+                  value={decidedScheduledAt}
+                  onChange={(e) => setDecidedScheduledAt(e.target.value)}
+                  className="mt-0.5 rounded-md border border-neutral-300 px-2 py-1 text-xs font-normal text-neutral-900"
+                />
+              </label>
             )}
             <input
               value={decisionNote}
@@ -291,12 +294,15 @@ export function RequestRow({ row }: { row: ApprovalRequestRow }) {
           (row.executionStatus === "FAILED" || row.executionStatus === "PARTIAL") && (
             <>
               {row.actionType === "SCHEDULE_IN_PERSON_INTERVIEW" && row.executionStatus === "FAILED" && (
-                <input
-                  type="datetime-local"
-                  value={retryScheduledAt}
-                  onChange={(e) => setRetryScheduledAt(e.target.value)}
-                  className="rounded-md border border-neutral-300 px-2 py-1 text-xs"
-                />
+                <label className="flex flex-col text-[10px] font-medium text-neutral-500">
+                  Approved date and time (Pacific Time)
+                  <input
+                    type="datetime-local"
+                    value={retryScheduledAt}
+                    onChange={(e) => setRetryScheduledAt(e.target.value)}
+                    className="mt-0.5 rounded-md border border-neutral-300 px-2 py-1 text-xs font-normal text-neutral-900"
+                  />
+                </label>
               )}
               <button
                 type="button"
@@ -388,12 +394,15 @@ export default function ApprovalRequestControls({
               {isScheduling ? (
                 <>
                   <p className="text-xs font-medium text-neutral-500">Request next step</p>
-                  <input
-                    name="proposedScheduledAt"
-                    type="datetime-local"
-                    required
-                    className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
+                  <label className="block text-xs font-medium text-neutral-500">
+                    Proposed date and time (Pacific Time)
+                    <input
+                      name="proposedScheduledAt"
+                      type="datetime-local"
+                      required
+                      className="mt-1 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm font-normal text-neutral-900"
+                    />
+                  </label>
                   <textarea
                     name="rationale"
                     placeholder="Note for the manager"

@@ -262,10 +262,29 @@ export async function decideApprovalRequestAction(
   if (isScheduling && decision === "APPROVED" && decidedScheduledAt) {
     const claimed = await claimExecutionAttempt(requestId);
     if (claimed) {
-      if (request.actionType === "SCHEDULE_IN_PERSON_INTERVIEW") {
-        await executeApprovedInPersonInterview(requestId, request.applicantId, decidedScheduledAt, session.sub);
-      } else {
-        await executeApprovedWorkingSession(requestId, request.applicantId, decidedScheduledAt, session.sub);
+      const result =
+        request.actionType === "SCHEDULE_IN_PERSON_INTERVIEW"
+          ? await executeApprovedInPersonInterview(
+              requestId,
+              request.applicantId,
+              decidedScheduledAt,
+              session.sub,
+              request.applicantStageAtRequest
+            )
+          : await executeApprovedWorkingSession(
+              requestId,
+              request.applicantId,
+              decidedScheduledAt,
+              session.sub,
+              request.applicantStageAtRequest
+            );
+      if (result.stale) {
+        revalidatePath("/recruiting/approvals");
+        revalidatePath(`/recruiting/applicants/${request.applicantId}`);
+        return {
+          ok: false,
+          error: "The applicant's record changed since this request was submitted — it now needs resubmission.",
+        };
       }
     }
   }
@@ -313,14 +332,31 @@ export async function retryApprovalExecutionAction(
   const claimed = await claimExecutionAttempt(requestId);
   if (!claimed) return { ok: false, error: "A retry is already in progress, or there's nothing to retry." };
 
-  if (request.actionType === "SCHEDULE_IN_PERSON_INTERVIEW") {
-    await executeApprovedInPersonInterview(requestId, request.applicantId, decidedScheduledAt, session.sub);
-  } else {
-    await executeApprovedWorkingSession(requestId, request.applicantId, decidedScheduledAt, session.sub);
-  }
+  const result =
+    request.actionType === "SCHEDULE_IN_PERSON_INTERVIEW"
+      ? await executeApprovedInPersonInterview(
+          requestId,
+          request.applicantId,
+          decidedScheduledAt,
+          session.sub,
+          request.applicantStageAtRequest
+        )
+      : await executeApprovedWorkingSession(
+          requestId,
+          request.applicantId,
+          decidedScheduledAt,
+          session.sub,
+          request.applicantStageAtRequest
+        );
 
   revalidatePath("/recruiting/approvals");
   revalidatePath(`/recruiting/applicants/${request.applicantId}`);
+  if (result.stale) {
+    return {
+      ok: false,
+      error: "The applicant's record changed since this was approved — it now needs resubmission, not a retry.",
+    };
+  }
   return { ok: true };
 }
 

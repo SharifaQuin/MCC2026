@@ -16,6 +16,8 @@ const OA_VIEW_ONLY_EMAIL = `pedro-leadview-${RUN_ID}@example.com`;
 const OA_VIEW_ONLY_PASSWORD = "Test-Password-123!";
 const TRAINEE_EMAIL = `trainee-leadview-${RUN_ID}@example.com`;
 const TRAINEE_PASSWORD = "Test-Password-123!";
+const SERVICE_MANAGER_EMAIL = `sm-leadview-${RUN_ID}@example.com`;
+const SERVICE_MANAGER_PASSWORD = "Test-Password-123!";
 
 const prisma = new PrismaClient();
 
@@ -37,6 +39,7 @@ function contactForm(page: Page) {
 test.describe.serial("Lead contact editor: access, validation, dedup, history, quote safety", () => {
   let oaViewOnlyId: string;
   let traineeId: string;
+  let serviceManagerId: string;
 
   test.beforeAll(async () => {
     const oa = await prisma.user.create({
@@ -65,6 +68,28 @@ test.describe.serial("Lead contact editor: access, validation, dedup, history, q
       },
     });
     traineeId = trainee.id;
+
+    // A SERVICE_MANAGER with REAL, granted SALES department access (not a
+    // hypothetical) — this role CAN already view/edit leads generally on
+    // the full admin page via requireSalesLeadsAccess, which is exactly
+    // the case assertLeadContactEditAccess deliberately does NOT trust as
+    // "office staff" on its own (see its own comment): nothing confirms a
+    // SERVICE_MANAGER with SALES access is office-based rather than
+    // field-based, so contact-correction authority stays refused for them
+    // until the owner has an explicit, reviewed way to mark an account as
+    // office staff.
+    const serviceManager = await prisma.user.create({
+      data: {
+        email: SERVICE_MANAGER_EMAIL,
+        name: `SM LeadView ${RUN_ID}`,
+        role: "SERVICE_MANAGER",
+        passwordHash: await hashPassword(SERVICE_MANAGER_PASSWORD),
+        mustSetPassword: false,
+        active: true,
+        departmentAccess: { create: [{ department: "SALES", canEdit: true }] },
+      },
+    });
+    serviceManagerId = serviceManager.id;
   });
 
   test.afterAll(async () => {
@@ -73,6 +98,8 @@ test.describe.serial("Lead contact editor: access, validation, dedup, history, q
     await prisma.areaAccess.deleteMany({ where: { userId: oaViewOnlyId } });
     await prisma.user.delete({ where: { id: oaViewOnlyId } });
     await prisma.user.delete({ where: { id: traineeId } });
+    await prisma.departmentAccess.deleteMany({ where: { userId: serviceManagerId } });
+    await prisma.user.delete({ where: { id: serviceManagerId } });
     await prisma.$disconnect();
   });
 
@@ -128,20 +155,25 @@ test.describe.serial("Lead contact editor: access, validation, dedup, history, q
     expect(after.email).toBe(lead.email);
   });
 
-  test("Even a (hypothetical, never granted in practice) SALES department row would not help a Trainee — the action's own role check runs first", async () => {
-    // Documents the defense-in-depth decision directly against the source
-    // of truth: assertLeadContactEditAccess refuses role TRAINEE/TRAINER
-    // unconditionally, before ever consulting DepartmentAccess grants (see
-    // src/lib/requireSalesLeadsAccess.ts) — there is no schema constraint
-    // preventing this grant from existing, which is exactly the gap that
-    // guard closes.
-    await prisma.departmentAccess.create({ data: { userId: traineeId, department: "SALES", canEdit: true } });
-    try {
-      const grants = await prisma.departmentAccess.findMany({ where: { userId: traineeId } });
-      expect(grants.some((g) => g.department === "SALES" && g.canEdit)).toBe(true);
-    } finally {
-      await prisma.departmentAccess.deleteMany({ where: { userId: traineeId, department: "SALES" } });
-    }
+  test("A SERVICE_MANAGER with real, granted SALES access can still view/edit the lead generally, but gets no contact-correction control — that authority isn't inferred from SALES access alone", async ({
+    page,
+  }) => {
+    const lead = await makeLead("sm-real-access");
+    await loginAs(page, SERVICE_MANAGER_EMAIL, SERVICE_MANAGER_PASSWORD);
+    await page.goto(`/sales/leads/${lead.id}`);
+    // Not redirected — their real SALES department grant still works for
+    // everything it always has (this page's other existing edit controls).
+    await expect(page).toHaveURL(`/sales/leads/${lead.id}`);
+    await expect(page.getByText(lead.email)).toBeVisible();
+
+    // But no "Edit contact info" control — contact-correction authority is
+    // deliberately NOT inferred from general SALES access, since nothing
+    // confirms this role is office- rather than field-based (see
+    // assertLeadContactEditAccess's own comment).
+    await expect(page.getByText("Edit contact info")).toHaveCount(0);
+
+    const after = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(after.email).toBe(lead.email);
   });
 
   test("An email-only correction never fails because of an untouched, already-bad legacy phone number", async ({ page }) => {

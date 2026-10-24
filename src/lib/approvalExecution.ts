@@ -14,12 +14,13 @@
 import { prisma } from "@/lib/prisma";
 import {
   claimSlotAtomically,
+  releaseBookedInterviewSlot,
   updateOrCreateInterviewCalendarEvent,
   sendInterviewConfirmationEmail,
 } from "@/lib/recruiting";
 import { getAvailabilityForInterviewer } from "@/lib/interviewerAvailability";
 import { generateInviteToken } from "@/lib/tokens";
-import type { ApprovalExecutionStatus } from "@prisma/client";
+import { Prisma, type ApplicantStage, type ApprovalExecutionStatus } from "@prisma/client";
 
 export interface ExecutionOutcome {
   status: ApprovalExecutionStatus;
@@ -63,6 +64,45 @@ async function recordExecutionOutcome(
   });
 }
 
+// The applicant moved to a different stage since this request was
+// submitted (someone rejected them, hired them, or otherwise advanced
+// things through a completely different control) between approval and
+// execution — most plausibly during the window a FAILED/PARTIAL attempt
+// sat waiting for a manual Retry. Executing anyway would silently drag
+// them back to IN_PERSON_SCHEDULED (or stamp working-session scheduling
+// details) against a record that's since moved on, exactly the kind of
+// stale decision decideApprovalRequestAction's own staleness check
+// already refuses to act on at decision time — this is that same
+// protection, re-applied right before the actual write, since real time
+// elapses between an approval and its (possibly retried) execution.
+// Supersedes any IN_PROGRESS marker claimExecutionAttempt just set: the
+// whole request goes back to NEEDS_RESUBMISSION, with execution state
+// cleared rather than left showing a misleading FAILED/PARTIAL from an
+// attempt that was never really executable in the first place.
+async function markRequestStale(requestId: string): Promise<void> {
+  await prisma.approvalRequest.updateMany({
+    where: { id: requestId, status: "APPROVED" },
+    data: { status: "NEEDS_RESUBMISSION", executionStatus: null, executionError: null },
+  });
+}
+
+// True only if the applicant's CURRENT stage still matches what this
+// request was approved against, taking a row lock for the duration of the
+// surrounding transaction so a concurrent stage change (any other control
+// updating this exact Applicant row) is forced to wait until this check
+// — and the write that depends on it — has completed, rather than racing
+// in between the read and the write.
+async function stageStillMatchesLocked(
+  tx: Prisma.TransactionClient,
+  applicantId: string,
+  expectedStage: ApplicantStage
+): Promise<boolean> {
+  const rows = await tx.$queryRaw<{ stage: ApplicantStage }[]>`
+    SELECT "stage" FROM "Applicant" WHERE "id" = ${applicantId} FOR UPDATE
+  `;
+  return rows.length > 0 && rows[0].stage === expectedStage;
+}
+
 // Books the approved in-person interview through the exact same
 // slot-claim + calendar-sync + confirmation-email sequence
 // setApplicantStageAction (recruiting/applicants/actions.ts) uses for a
@@ -83,25 +123,54 @@ async function recordExecutionOutcome(
 // calendar-sync failure without a live network call, which the real
 // updateOrCreateInterviewCalendarEvent can only otherwise exhibit when
 // Microsoft Graph is actually configured and actually fails.
+//
+// applicantStageAtRequest is the stage this request was approved
+// against — re-verified twice: once up front (so a plainly stale request
+// never even claims a slot), and once more, atomically with a row lock,
+// immediately before the stage-changing write (closing the narrow race
+// where the applicant's stage changes in the gap between the first check
+// and the slot claim finishing). A failure at either point is reported as
+// NEEDS_RESUBMISSION, never a FAILED/PARTIAL execution outcome, and never
+// books anything or sends a message.
 export async function executeApprovedInPersonInterview(
   requestId: string,
   applicantId: string,
   decidedScheduledAt: Date,
   interviewerId: string,
+  applicantStageAtRequest: ApplicantStage,
   calendarFn: typeof updateOrCreateInterviewCalendarEvent = updateOrCreateInterviewCalendarEvent,
   emailFn: typeof sendInterviewConfirmationEmail = sendInterviewConfirmationEmail
-): Promise<void> {
-  const outcome = await runInPersonExecution(applicantId, decidedScheduledAt, interviewerId, calendarFn, emailFn);
+): Promise<{ stale: boolean }> {
+  const stillCurrent = await prisma.$transaction((tx) => stageStillMatchesLocked(tx, applicantId, applicantStageAtRequest));
+  if (!stillCurrent) {
+    await markRequestStale(requestId);
+    return { stale: true };
+  }
+
+  const outcome = await runInPersonExecution(
+    applicantId,
+    decidedScheduledAt,
+    interviewerId,
+    applicantStageAtRequest,
+    calendarFn,
+    emailFn
+  );
+  if (outcome === "STALE") {
+    await markRequestStale(requestId);
+    return { stale: true };
+  }
   await recordExecutionOutcome(requestId, interviewerId, outcome);
+  return { stale: false };
 }
 
 async function runInPersonExecution(
   applicantId: string,
   decidedScheduledAt: Date,
   interviewerId: string,
+  applicantStageAtRequest: ApplicantStage,
   calendarFn: typeof updateOrCreateInterviewCalendarEvent,
   emailFn: typeof sendInterviewConfirmationEmail
-): Promise<ExecutionOutcome> {
+): Promise<ExecutionOutcome | "STALE"> {
   const previous = await prisma.applicant.findUnique({
     where: { id: applicantId },
     select: { bookedSlot: true },
@@ -124,19 +193,40 @@ async function runInPersonExecution(
   });
   if (!claim.ok) return { status: "FAILED", error: claim.error };
 
-  const applicant = await prisma.applicant.update({
+  // Closes the race the up-front check above can't: the applicant's stage
+  // could still have changed in the time claimSlotAtomically's own
+  // transaction took to run. The write itself is the second, final check
+  // — conditioned on the stage being exactly what it was re-verified as a
+  // moment ago, inside the SAME row lock that guarded that re-check.
+  const stillCurrentAtWrite = await prisma.$transaction(async (tx) => {
+    const matches = await stageStillMatchesLocked(tx, applicantId, applicantStageAtRequest);
+    if (!matches) return false;
+    await tx.applicant.update({
+      where: { id: applicantId },
+      data: {
+        stage: "IN_PERSON_SCHEDULED",
+        scheduledAt: decidedScheduledAt,
+        interviewerId,
+        interviewFormat: "IN_PERSON",
+        interviewConfirmToken: generateInviteToken(),
+        interviewConfirmedAt: null,
+        interviewCantMakeItAt: null,
+        interviewReminderDaySentAt: null,
+        interviewReminderHourSentAt: null,
+      },
+    });
+    return true;
+  });
+  if (!stillCurrentAtWrite) {
+    // The slot was already claimed above — release it rather than leave a
+    // booking behind for a decision that's no longer valid. Never a
+    // partial "slot held but nothing else happened" state.
+    await releaseBookedInterviewSlot(applicantId);
+    return "STALE";
+  }
+
+  const applicant = await prisma.applicant.findUniqueOrThrow({
     where: { id: applicantId },
-    data: {
-      stage: "IN_PERSON_SCHEDULED",
-      scheduledAt: decidedScheduledAt,
-      interviewerId,
-      interviewFormat: "IN_PERSON",
-      interviewConfirmToken: generateInviteToken(),
-      interviewConfirmedAt: null,
-      interviewCantMakeItAt: null,
-      interviewReminderDaySentAt: null,
-      interviewReminderHourSentAt: null,
-    },
     include: { jobPosting: { select: { titleEn: true, titleEs: true } } },
   });
 
@@ -191,23 +281,41 @@ async function runInPersonExecution(
 // no email, no SMS — this record has never sent any of those and this PR
 // doesn't start; candidate communication for a working session stays
 // manual, exactly as today.
+//
+// applicantStageAtRequest is re-verified, with a row lock, in the SAME
+// transaction as the upsert — the applicant's stage can't change out from
+// under this between the check and the write, the same guarantee the
+// in-person path above gets from its two-step check. A mismatch writes
+// nothing and the request is reported NEEDS_RESUBMISSION instead.
 export async function executeApprovedWorkingSession(
   requestId: string,
   applicantId: string,
   decidedScheduledAt: Date,
-  executedById: string
-): Promise<void> {
+  executedById: string,
+  applicantStageAtRequest: ApplicantStage
+): Promise<{ stale: boolean }> {
   try {
-    await prisma.workingSessionRecord.upsert({
-      where: { applicantId },
-      create: { applicantId, scheduledAt: decidedScheduledAt },
-      update: { scheduledAt: decidedScheduledAt },
+    const stillCurrent = await prisma.$transaction(async (tx) => {
+      const matches = await stageStillMatchesLocked(tx, applicantId, applicantStageAtRequest);
+      if (!matches) return false;
+      await tx.workingSessionRecord.upsert({
+        where: { applicantId },
+        create: { applicantId, scheduledAt: decidedScheduledAt },
+        update: { scheduledAt: decidedScheduledAt },
+      });
+      return true;
     });
+    if (!stillCurrent) {
+      await markRequestStale(requestId);
+      return { stale: true };
+    }
     await recordExecutionOutcome(requestId, executedById, { status: "SUCCEEDED", error: null });
+    return { stale: false };
   } catch (err) {
     await recordExecutionOutcome(requestId, executedById, {
       status: "FAILED",
       error: err instanceof Error ? err.message : "Couldn't save the working session's scheduled time.",
     });
+    return { stale: false };
   }
 }

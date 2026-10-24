@@ -1,9 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSession, type SessionPayload } from "@/lib/session";
-import { prisma } from "@/lib/prisma";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
 import { getAreaAccessForUser } from "@/lib/officeAssistant";
-import { hasDepartmentAccess } from "@/lib/departments";
 
 // The app has one Lead model/page, not separate "Sales Leads" and
 // "Callback Queue" systems — the owner's two area grants both unlock this
@@ -39,15 +37,34 @@ export async function requireSalesLeadsAccess() {
 // *which* leads someone can see — only what a role already views, they may
 // now also correct contact info on.
 //
-// "Office staff" has no dedicated role or flag in this schema (no
-// contractor marker exists at all — see Role enum) — TRAINEE/TRAINER are
-// excluded explicitly below as defense in depth, on top of requiring real
-// SALES department or Office-Assistant lead-area access, since nothing in
-// the schema itself hard-blocks a TRAINEE/TRAINER DepartmentAccess grant.
+// Deliberately narrower than requireSalesLeadsAccess's own canView: this
+// schema has NO field that reliably marks a user as "office staff" versus
+// field/contractor — no contractor flag exists at all, Role is only
+// TRAINEE | ADMIN | TRAINER | SERVICE_MANAGER | OFFICE_ASSISTANT, and
+// DepartmentAccess (the mechanism requireSalesLeadsAccess falls back to for
+// every non-Office-Assistant role) has no constraint stopping a TRAINEE or
+// TRAINER from being granted SALES view access, nor any signal that a
+// SERVICE_MANAGER with SALES access is actually office-based rather than
+// field-based (see STAFF_ROLES in src/lib/staff.ts, which bundles
+// SERVICE_MANAGER with TRAINEE/TRAINER for payroll/headcount purposes —
+// the opposite grouping this access check would need to trust). Treating
+// "has a SALES department grant" as "is office staff" would be unverified.
+//
+// So this intentionally recognizes only the two cases that ARE reliably
+// office-bound by construction: ADMIN (the owner, always "office"), and
+// OFFICE_ASSISTANT with an existing, owner-curated SALES_LEADS/
+// CALLBACK_QUEUE view grant (Pedro's actual case — narrow, per-user, and
+// already the exact mechanism this feature was built for). Every other
+// role (including SERVICE_MANAGER, even with real SALES department access)
+// is refused here until the owner has an explicit, reviewed way to mark an
+// account as office staff — see the PR description for the gap this closes
+// and a proposed follow-up (a dedicated per-user flag or area grant) for
+// approval before widening past these two cases.
 export async function assertLeadContactEditAccess(): Promise<SessionPayload> {
   const session = await getSession();
   if (!session) throw new Error("Not authorized.");
-  if (session.role === "TRAINEE" || session.role === "TRAINER") throw new Error("Not authorized.");
+
+  if (session.role === "ADMIN") return session;
 
   if (session.role === "OFFICE_ASSISTANT") {
     const [leadsAccess, callbackAccess] = await Promise.all([
@@ -58,13 +75,7 @@ export async function assertLeadContactEditAccess(): Promise<SessionPayload> {
     return session;
   }
 
-  const grants = await prisma.departmentAccess.findMany({
-    where: { userId: session.sub },
-    select: { department: true, canEdit: true },
-  });
-  const { canView } = hasDepartmentAccess(session.role, grants, "SALES");
-  if (!canView) throw new Error("Not authorized.");
-  return session;
+  throw new Error("Not authorized.");
 }
 
 export async function assertSalesLeadsEditAccess() {
