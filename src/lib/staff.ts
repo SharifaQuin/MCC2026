@@ -93,6 +93,28 @@ export async function getOfficeAssistantAccounts() {
   }));
 }
 
+// Sales Rep accounts, shown to the Owner in their own Directory section —
+// deliberately a separate query, never folded into STAFF_ROLES. Mirrors
+// getOfficeAssistantAccounts above: a Sales Rep is a non-field role, never a
+// technician headcount, pairing, or training candidate, and this never
+// silently affects the payroll/turnover/technician stats those draw from
+// STAFF_ROLES.
+export async function getSalesRepAccounts() {
+  const accounts = await prisma.user.findMany({
+    where: { role: "SALES_REP", active: true, isTestAccount: false },
+    orderBy: { name: "asc" },
+    select: { id: true, employeeId: true, name: true, email: true, hireDate: true },
+  });
+
+  return accounts.map((a) => ({
+    id: a.id,
+    employeeId: a.employeeId,
+    name: a.name,
+    email: a.email,
+    hireDate: a.hireDate,
+  }));
+}
+
 // Departed employees are anyone with lastDay set (see Roster Status), not
 // limited to STAFF_ROLES — turnover should count anyone who left, including
 // a departed ADMIN/manager — but the headcount denominator stays STAFF_ROLES

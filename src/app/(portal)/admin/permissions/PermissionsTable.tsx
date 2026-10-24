@@ -15,7 +15,7 @@ export interface PermissionUserRow {
   id: string;
   name: string;
   email: string;
-  role: "TRAINEE" | "TRAINER" | "SERVICE_MANAGER" | "OFFICE_ASSISTANT";
+  role: "TRAINEE" | "TRAINER" | "SERVICE_MANAGER" | "OFFICE_ASSISTANT" | "SALES_REP";
   access: Record<"SALES" | "OPERATIONS" | "MANAGEMENT", AccessLevel>;
   areaAccess: Record<PermissionArea, AccessLevel>;
   approvalManagerId: string | null;
@@ -57,6 +57,7 @@ function RoleSelect({
       <option value="TRAINER">Trainer / Field Supervisor</option>
       <option value="SERVICE_MANAGER">Service Manager</option>
       <option value="OFFICE_ASSISTANT">Office Assistant</option>
+      <option value="SALES_REP">Sales Rep</option>
     </select>
   );
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { inviteAction, InviteState } from "@/app/actions/employeeInvite";
+import { ASSIGNABLE_ROLE_LABELS, type AssignableRole } from "@/lib/roleAssignment";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -17,7 +18,7 @@ function SubmitButton() {
   );
 }
 
-export default function InviteEmployeeForm() {
+export default function InviteEmployeeForm({ assignableRoles }: { assignableRoles: AssignableRole[] }) {
   const [state, formAction] = useFormState<InviteState, FormData>(inviteAction, {});
   const [copied, setCopied] = useState(false);
 
@@ -44,9 +45,16 @@ export default function InviteEmployeeForm() {
         <div>
           <label className="mb-1 block text-sm font-medium">Role</label>
           <select name="role" className="w-full rounded-md border border-neutral-300 px-3 py-2">
-            <option value="TRAINEE">Trainee</option>
-            <option value="TRAINER">Trainer / Field Supervisor</option>
+            {assignableRoles.map((role) => (
+              <option key={role} value={role}>
+                {ASSIGNABLE_ROLE_LABELS[role]}
+              </option>
+            ))}
           </select>
+          <p className="mt-1 text-xs text-neutral-500">
+            A fixed set of roles — not a custom role builder. Full Owner/Admin access is never
+            granted here.
+          </p>
         </div>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" name="sendInviteNow" defaultChecked className="h-4 w-4" />

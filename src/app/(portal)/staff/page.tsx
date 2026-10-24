@@ -5,6 +5,7 @@ import {
   getStaffDashboardStats,
   getStaffDirectory,
   getOfficeAssistantAccounts,
+  getSalesRepAccounts,
   getTurnoverStats,
   yearsOfService,
 } from "@/lib/staff";
@@ -13,6 +14,7 @@ import { getActingAsCandidates, ROLE_LABELS as ACTING_AS_ROLE_LABELS } from "@/l
 import { actAsStaffMemberAction } from "./actingAsActions";
 import AddEmployeePanel from "@/components/AddEmployeePanel";
 import OfficeAssistantStaffDirectory from "@/components/OfficeAssistantStaffDirectory";
+import { getAssignableRolesForInviter } from "@/lib/roleAssignment";
 
 function Stat({
   label,
@@ -53,13 +55,15 @@ export default async function StaffDashboardPage() {
     );
   }
 
-  const [stats, directory, officeAssistants, turnover, actingAsCandidates] = await Promise.all([
+  const [stats, directory, officeAssistants, salesReps, turnover, actingAsCandidates] = await Promise.all([
     getStaffDashboardStats(),
     getStaffDirectory(),
     getOfficeAssistantAccounts(),
+    getSalesRepAccounts(),
     getTurnoverStats(90),
     session.role === "ADMIN" ? getActingAsCandidates() : Promise.resolve([]),
   ]);
+  const assignableRoles = getAssignableRolesForInviter(session.role);
 
   return (
     <div className="space-y-8">
@@ -193,7 +197,7 @@ export default async function StaffDashboardPage() {
           </Link>
         </div>
         <div className="mb-4">
-          <AddEmployeePanel />
+          <AddEmployeePanel assignableRoles={assignableRoles} />
         </div>
         <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
           <table className="w-full text-left text-sm">
@@ -291,6 +295,54 @@ export default async function StaffDashboardPage() {
                 <tr>
                   <td colSpan={session.role === "ADMIN" ? 4 : 3} className="px-4 py-8 text-center text-neutral-500">
                     No Office Assistant accounts yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <h2 className="mb-3 text-lg font-medium">Sales Reps</h2>
+        <p className="mb-3 text-sm text-neutral-500">
+          A non-field sales role, not counted in the technician stats or tables above. Manage
+          what each one can see or do on the Permissions screen (Sales department access).
+        </p>
+        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-neutral-200 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
+              <tr>
+                <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Employee ID</th>
+                <th className="px-4 py-3">Years of Service</th>
+                {session.role === "ADMIN" && <th className="px-4 py-3">Account Access</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {salesReps.map((rep) => (
+                <tr key={rep.id} className="border-b border-neutral-100 last:border-0">
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-neutral-900">{rep.name}</p>
+                    <p className="text-xs text-neutral-500">{rep.email}</p>
+                  </td>
+                  <td className="px-4 py-3 text-neutral-600">{rep.employeeId ?? "—"}</td>
+                  <td className="px-4 py-3 text-neutral-600">
+                    {rep.hireDate ? yearsOfService(new Date(rep.hireDate)) : "—"}
+                  </td>
+                  {session.role === "ADMIN" && (
+                    <td className="px-4 py-3">
+                      <Link href="/admin/permissions" className="font-medium text-brand-700 hover:underline">
+                        Manage Access →
+                      </Link>
+                    </td>
+                  )}
+                </tr>
+              ))}
+              {salesReps.length === 0 && (
+                <tr>
+                  <td colSpan={session.role === "ADMIN" ? 4 : 3} className="px-4 py-8 text-center text-neutral-500">
+                    No Sales Rep accounts yet.
                   </td>
                 </tr>
               )}

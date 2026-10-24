@@ -3,8 +3,9 @@
 import { useState } from "react";
 import InviteEmployeeForm from "@/components/InviteEmployeeForm";
 import BulkInviteEmployeeForm from "@/components/BulkInviteEmployeeForm";
+import type { AssignableRole } from "@/lib/roleAssignment";
 
-export default function AddEmployeePanel() {
+export default function AddEmployeePanel({ assignableRoles }: { assignableRoles: AssignableRole[] }) {
   const [open, setOpen] = useState(false);
 
   if (!open) {
@@ -34,7 +35,7 @@ export default function AddEmployeePanel() {
 
       <div>
         <h3 className="mb-3 text-sm font-semibold text-neutral-700">One at a Time</h3>
-        <InviteEmployeeForm />
+        <InviteEmployeeForm assignableRoles={assignableRoles} />
       </div>
 
       <div className="border-t border-neutral-200 pt-6">

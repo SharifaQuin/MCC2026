@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 
 export const SESSION_COOKIE = "mcc_session";
 
-export type Role = "TRAINEE" | "ADMIN" | "TRAINER" | "SERVICE_MANAGER" | "OFFICE_ASSISTANT";
+export type Role = "TRAINEE" | "ADMIN" | "TRAINER" | "SERVICE_MANAGER" | "OFFICE_ASSISTANT" | "SALES_REP";
 export type Language = "EN" | "ES";
 
 // Service Manager has Trainer abilities plus certify/decline and

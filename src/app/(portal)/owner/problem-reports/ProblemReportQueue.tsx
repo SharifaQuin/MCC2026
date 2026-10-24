@@ -26,6 +26,7 @@ const ROLE_LABELS: Record<Role, string> = {
   SERVICE_MANAGER: "Service Manager",
   ADMIN: "Admin / Owner",
   OFFICE_ASSISTANT: "Office Assistant",
+  SALES_REP: "Sales Rep",
 };
 
 const EMAIL_STATUS_LABELS: Record<ProblemReportEmailStatus, string> = {

@@ -64,6 +64,13 @@ export default async function HomePage() {
   const hasSalesAccess = hasDepartmentAccess(session.role, grants, "SALES").canView;
   const isAdmin = session.role === "ADMIN";
   const isOfficeAssistant = session.role === "OFFICE_ASSISTANT";
+  // Goals (getTeamGoals) is ADMIN/SERVICE_MANAGER only (requireManagementAccess)
+  // — matches that function's own real authorization boundary exactly, so
+  // every role this general Home branch is ever reached by (currently ADMIN,
+  // SERVICE_MANAGER, OFFICE_ASSISTANT, SALES_REP — TRAINEE/TRAINER return
+  // earlier above) is handled correctly without special-casing each one by
+  // name as a new role is added.
+  const canViewGoals = isAdminOrServiceManager(session.role);
   // Home shows cross-department $ figures (Goals) and HR headline counts
   // (Training/Recruiting) that no other non-admin role sees today — gate
   // both behind this role's own HR_SUMMARY grant rather than leaving them
@@ -97,10 +104,10 @@ export default async function HomePage() {
       loadRecruitingDashboard(),
       hasSalesAccess ? loadSalesDashboard() : Promise.resolve(null),
       isAdmin ? getLatestMonthlyFinancials() : Promise.resolve(null),
-      // getTeamGoals() is ADMIN/SERVICE_MANAGER only (requireManagementAccess)
-      // — the Goals section that uses it is already hidden outright for
-      // Office Assistant, so skip the call entirely rather than let it throw.
-      isOfficeAssistant ? Promise.resolve({} as Record<string, unknown>) : getTeamGoals(),
+      // The Goals section that uses this is hidden outright for anyone this
+      // isn't true for (see canViewGoals above) — skip the call entirely
+      // rather than let it throw.
+      canViewGoals ? getTeamGoals() : Promise.resolve({} as Record<string, unknown>),
       assignedTasksAccess.canView
         ? getChecklistTasksForRole(session.role, isAdmin ? undefined : session.sub)
         : Promise.resolve([]),
@@ -200,7 +207,7 @@ export default async function HomePage() {
             </section>
           )}
 
-          {!isOfficeAssistant && (
+          {canViewGoals && (
           <section className="rounded-lg border border-neutral-200 bg-white p-6">
             <h2 className="text-lg font-medium text-neutral-900">Goals</h2>
             {growthStaircase.length > 0 && (

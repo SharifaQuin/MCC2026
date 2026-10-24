@@ -45,7 +45,7 @@ export default async function PermissionsPage() {
       id: u.id,
       name: u.name,
       email: u.email,
-      role: u.role as "TRAINEE" | "TRAINER" | "SERVICE_MANAGER" | "OFFICE_ASSISTANT",
+      role: u.role as "TRAINEE" | "TRAINER" | "SERVICE_MANAGER" | "OFFICE_ASSISTANT" | "SALES_REP",
       access,
       areaAccess,
       approvalManagerId: u.approvalManagerId,

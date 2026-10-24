@@ -18,6 +18,14 @@ enum Role {
   // Everything this role can see/do is owner-configured per-area via
   // AreaAccess (src/lib/officeAssistant.ts), not baked into the role itself.
   OFFICE_ASSISTANT
+  // A non-field sales role. Deliberately excluded from STAFF_ROLES
+  // (src/lib/staff.ts) — never a technician headcount, pairing, or training
+  // candidate — and gets no implicit Sales/Operations/Management access of
+  // its own: like every other non-ADMIN, non-OFFICE_ASSISTANT role it falls
+  // through resolveUserDepartments to HR (view-only) plus whatever
+  // DepartmentAccess grants the owner has explicitly made (see the
+  // Permissions screen's existing Sales None/View/Edit control).
+  SALES_REP
 }
 
 // One owner-configurable area this narrow role can be given None/View/Edit

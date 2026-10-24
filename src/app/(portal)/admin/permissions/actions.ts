@@ -17,7 +17,13 @@ async function requireAdmin() {
 
 // Granting full ADMIN/Owner access is deliberately not exposed here — that
 // stays a manual, out-of-band decision rather than a dropdown pick.
-const ASSIGNABLE_ROLES = new Set<Role>(["TRAINEE", "TRAINER", "SERVICE_MANAGER", "OFFICE_ASSISTANT"]);
+const ASSIGNABLE_ROLES = new Set<Role>([
+  "TRAINEE",
+  "TRAINER",
+  "SERVICE_MANAGER",
+  "OFFICE_ASSISTANT",
+  "SALES_REP",
+]);
 
 export async function updateUserRoleAction(userId: string, role: string) {
   const session = await requireAdmin();
