@@ -58,6 +58,18 @@ export function resolveUserDepartments(
     return [{ department: "HR", canEdit: false }];
   }
 
+  // Sales Rep is a deliberately sales-only account — unlike every other
+  // non-admin, non-Office-Assistant role, it does NOT get the automatic HR
+  // (training/onboarding portal) view that would otherwise apply here. It
+  // still gets whatever the owner explicitly grants via DepartmentAccess
+  // (almost always SALES), just never HR by default.
+  if (role === "SALES_REP") {
+    return grants
+      .filter((grant) => grant.department !== "HR")
+      .map((grant) => ({ department: grant.department, canEdit: grant.canEdit }))
+      .sort((a, b) => DEPARTMENT_ORDER.indexOf(a.department) - DEPARTMENT_ORDER.indexOf(b.department));
+  }
+
   const result: AccessibleDepartment[] = [
     { department: "HR", canEdit: role === "SERVICE_MANAGER" },
   ];

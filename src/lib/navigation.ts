@@ -56,7 +56,7 @@ export function buildNavGroups({
   const labels = t(language);
   const groups: NavGroup[] = [];
 
-  if (departments.length > 1) {
+  if (departments.length > 1 && role !== "SALES_REP") {
     groups.push({
       key: "departments",
       label: labels.navDepartments,
@@ -91,6 +91,26 @@ export function buildNavGroups({
       links: [
         { href: "/trainer/employees", label: labels.employees },
         { href: "/payroll", label: labels.payroll },
+      ],
+    });
+  }
+
+  // A Sales Rep's whole job is these four pages — give her a dedicated group
+  // rather than relying on the generic "departments" group above, which only
+  // ever shows once more than one department is accessible and would
+  // otherwise leave her with an empty nav menu on a sales-only account that
+  // has exactly one. Still gated on actually having that access, though: a
+  // freshly-created account the owner hasn't granted Sales to yet gets no
+  // Sales links at all, same as every other role with zero department access.
+  if (role === "SALES_REP" && departments.length > 0) {
+    groups.push({
+      key: "sales-work",
+      label: labels.navDepartments,
+      links: [
+        { href: "/sales", label: "Sales Dashboard" },
+        { href: "/sales/leads", label: "Leads & Callbacks" },
+        { href: "/sales/quotes", label: "Quotes" },
+        { href: "/sales/open-slots", label: "Open Slots" },
       ],
     });
   }

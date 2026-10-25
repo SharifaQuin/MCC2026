@@ -488,7 +488,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 <div class="tab-nav">
   <button class="tab-btn active" id="tabbtn-pricing" onclick="switchTab('pricing')">Pricing Calculator<span class="tab-sub">Internal Tool</span></button>
   <button class="tab-btn" id="tabbtn-quote" onclick="switchTab('quote')">Client Quote Page<span class="tab-sub">Branded / Sendable</span></button>
-  <button class="tab-btn" id="tabbtn-profit" onclick="switchTab('profit')">Profitability &amp; Performance<span class="tab-sub">Internal Only</span></button>
+  <!-- ADMIN-ONLY:START --><button class="tab-btn" id="tabbtn-profit" onclick="switchTab('profit')">Profitability &amp; Performance<span class="tab-sub">Internal Only</span></button><!-- ADMIN-ONLY:END -->
 </div>
 
 <div id="tab-pricing" class="tab-panel active">
@@ -504,6 +504,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
   </div>
 </header>
 
+<!-- ADMIN-ONLY:START -->
 <div class="assume-wrap">
   <div class="assume-hdr" onclick="toggleAssumptions()">
     <div class="assume-hdr-txt"><strong>All values below are now real, decided, or owner-confirmed</strong> — tap to see the full history of what changed and why</div>
@@ -528,6 +529,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
     </div>
   </div>
 </div>
+<!-- ADMIN-ONLY:END -->
 
 <div class="main">
 
@@ -602,7 +604,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
   <!-- RIGHT: OUTPUT -->
   <div>
     <div class="rdp-card" id="rdp-card">
-      <div class="rdp-title">Route Day Planner</div>
+      <div class="rdp-title"><a href="/sales/open-slots" target="_top" style="color:inherit;text-decoration:none;">Route Day Planner ↗</a></div>
       <div id="rdp-result"></div>
 
       <div class="rdp-override-row">
@@ -700,6 +702,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
       </div>
       <div class="walkthrough-load-status" id="walkthrough-load-status"></div>
     </div>
+    <!-- ADMIN-ONLY:START -->
     <div class="tear"><span class="tear-label">Internal Only — Do Not Share</span></div>
     <div class="biz-view">
       <div class="biz-hdr">
@@ -722,6 +725,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
       <div class="schedule-box" id="schedule-box"></div>
       <div class="hours-note" id="hours-note"></div>
     </div>
+    <!-- ADMIN-ONLY:END -->
   </div>
 
 </div>
@@ -907,6 +911,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 
 </div>
 
+<!-- ADMIN-ONLY:START -->
 <div id="tab-profit" class="tab-panel">
 
 <header class="pf-hdr">
@@ -1161,6 +1166,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 
 </div>
 </div>
+<!-- ADMIN-ONLY:END -->
 
 <script>
 
@@ -1365,10 +1371,10 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 function switchTab(name){
   document.getElementById('tab-pricing').classList.toggle('active', name==='pricing');
   document.getElementById('tab-quote').classList.toggle('active', name==='quote');
-  document.getElementById('tab-profit').classList.toggle('active', name==='profit');
+  document.getElementById('tab-profit')?.classList.toggle('active', name==='profit');
   document.getElementById('tabbtn-pricing').classList.toggle('active', name==='pricing');
   document.getElementById('tabbtn-quote').classList.toggle('active', name==='quote');
-  document.getElementById('tabbtn-profit').classList.toggle('active', name==='profit');
+  document.getElementById('tabbtn-profit')?.classList.toggle('active', name==='profit');
   if(name==='quote' && typeof refreshPreviousQuotesList === 'function') refreshPreviousQuotesList();
   if (name==='profit' && !window.__profitInited){ window.__profitInited = true; initProfitTab(); }
   // Refresh the embedded Route Day Planner in case a quote was marked Won
@@ -2250,6 +2256,10 @@ function recalc(){
   if(document.getElementById('pet-fee') && document.getElementById('pet-fee').checked) chips.push('Pet +$25');
   document.getElementById('cv-chips').innerHTML = chips.map(c=>`<span class="cv-chip">${c}</span>`).join('');
 
+  // Owner-only internal cost/margin ledger — these elements don't exist in
+  // the non-admin response at all (see /api/sales/pricing-tool), so this
+  // whole block is skipped rather than throwing on a null element.
+  if (document.getElementById('ledger-body')) {
   const marginCls = b.margin < 0 ? 'margin-bad' : (b.marginPct < 20 ? '' : 'margin-good');
   document.getElementById('ledger-body').innerHTML = `
     <tr><td>Cleaning wage (${r.teamSize} tech${r.teamSize>1?'s':''} × ${r.hours.toFixed(2)} hrs)</td><td>$${b.cleaningWage.toFixed(2)}</td></tr>
@@ -2295,6 +2305,7 @@ function recalc(){
     <div class="schedule-row block"><span>Client time window</span><span class="sr-val">${formatTimeRange(cleanMin, bufferedMin)}</span></div>
     <div class="schedule-note">Low end = actual estimated cleaning time. High end = cleaning time + 1hr scheduling buffer. Buffer is not billed to the client.</div>
   `;
+  }
 }
 
 function toggleAssumptions(){
@@ -3355,6 +3366,7 @@ async function sendQuoteToClient(){
   sendBtn.disabled = !currentQuote.clientEmail;
 }
 
+/* ADMIN-ONLY:START */
 // ============================================================
 // ===== PROFITABILITY & PERFORMANCE TAB (INTERNAL ONLY) =====
 // ============================================================
@@ -4247,6 +4259,7 @@ pfShowView = function(name){
   _origPfShowView(name);
   if (name === 'route') pfRenderRoutePicker();
 };
+/* ADMIN-ONLY:END */
 
 </script>
 
