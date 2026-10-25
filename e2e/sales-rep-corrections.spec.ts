@@ -380,6 +380,19 @@ test.describe.serial("Sales-rep corrections (browser)", () => {
     expect(repHtml).not.toMatch(/function\s+costBreakdown/);
     expect(repHtml).not.toMatch(/function\s+fixedCostFor/);
     expect(repHtml).not.toMatch(/function\s+minAcceptablePrice/);
+    // Second follow-up: the Route Day Planner's Top-3 day/window ranking
+    // used the same real margin figures to both rank AND narrate ("runs 81%
+    // margin") — visible to every viewer regardless of role. The real
+    // {marginPct, revPerHr} table (WINDOW_STATS) and every place that reads
+    // it are now ADMIN-ONLY, while ranking itself runs off a separate public,
+    // pre-normalized weight table (WINDOW_RANK_WEIGHTS) that never touches
+    // the real figures — see the architecture comment above WINDOW_STATS.
+    expect(repHtml).not.toContain("% margin");
+    expect(repHtml).not.toContain("marginPct");
+    expect(repHtml).not.toContain("revPerHr");
+    expect(repHtml).not.toContain("WINDOW_STATS");
+    expect(repHtml).not.toContain("0.812");
+    expect(repHtml).not.toContain("133.03");
     // The city-note div itself, and its (now Sales-Rep-safe) driving-time
     // text, still render for her — only the income/hot-zone commentary
     // the first pass missed is gone.
@@ -403,6 +416,11 @@ test.describe.serial("Sales-rep corrections (browser)", () => {
     expect(adminHtml).toContain("TECH_WAGE");
     expect(adminHtml).toContain("AUDIT_OVERHEAD_PER_TECH_HR");
     expect(adminHtml).toMatch(/function\s+costBreakdown/);
+    expect(adminHtml).toContain("% margin");
+    expect(adminHtml).toContain("marginPct");
+    expect(adminHtml).toContain("revPerHr");
+    expect(adminHtml).toContain("WINDOW_STATS");
+    expect(adminHtml).toContain("0.812");
     await logout(page);
   });
 
@@ -427,6 +445,45 @@ test.describe.serial("Sales-rep corrections (browser)", () => {
     await expect(frame.locator("#cv-price")).toContainText("$");
     await expect(frame.locator("#city-note")).toBeVisible();
     await expect(frame.locator("#city-note")).not.toContainText("Median household income");
+    await logout(page);
+  });
+
+  test("The Route Day Planner's Top-3 day/window ranking is in the SAME order for a Sales Rep as for ADMIN, with no margin figures in her reasons", async ({
+    page,
+  }) => {
+    // rdpCombinedScore/rdpTopCombos rank purely off the public, pre-normalized
+    // WINDOW_RANK_WEIGHTS table, which both roles receive identically — the
+    // real {marginPct, revPerHr} WINDOW_STATS table that's now ADMIN-ONLY is
+    // never read by the ranking functions, only by the narration text. This
+    // proves that split didn't change the order a Sales Rep is shown.
+    await loginAs(page, SALES_REP_EMAIL, SALES_REP_PASSWORD);
+    await page.goto("/sales/pricing-tool");
+    let frame = page.frameLocator("iframe");
+    await frame.locator(".svc-btn", { hasText: "Standard" }).first().click();
+    await frame.locator("#city-select").selectOption("Corona Del Mar");
+    await expect(frame.locator(".rdp-combo-title").first()).toBeVisible({ timeout: 5000 });
+    const repOrder = await frame.locator(".rdp-combo-title").allTextContents();
+    const repReasons = await frame.locator(".rdp-combo-reason").allTextContents();
+    expect(repOrder.length).toBeGreaterThanOrEqual(3);
+    for (const reason of repReasons) {
+      expect(reason).not.toContain("% margin");
+      // The day-count justification still shows for her — only the margin
+      // clause is gone, not the whole reason.
+      expect(reason).toMatch(/already run|no routing history yet/);
+    }
+    await logout(page);
+
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto("/sales/pricing-tool");
+    frame = page.frameLocator("iframe");
+    await frame.locator(".svc-btn", { hasText: "Standard" }).first().click();
+    await frame.locator("#city-select").selectOption("Corona Del Mar");
+    await expect(frame.locator(".rdp-combo-title").first()).toBeVisible({ timeout: 5000 });
+    const adminOrder = await frame.locator(".rdp-combo-title").allTextContents();
+    const adminReasons = await frame.locator(".rdp-combo-reason").allTextContents();
+    expect(adminOrder).toEqual(repOrder);
+    // Regression-proof: ADMIN's reasons still carry the real margin figure.
+    expect(adminReasons.some((r) => r.includes("% margin"))).toBe(true);
     await logout(page);
   });
 

@@ -2432,13 +2432,37 @@ const BASELINE = {
   "Newport Beach":       {Monday:0, Tuesday:0, Wednesday:0, Thursday:0, Friday:0},
 };
 
+// Public/shared per-window data — used for ranking day/window combos AND
+// for the compare view's price/job-count context. `weight` is a derived,
+// already-normalized (0..1) relative strength for ranking only — not a
+// margin percentage, and not reversible to one (it has no units and no
+// reference to cost, revenue, or dollar figures) — computed once from the
+// real internal margin data below and hardcoded here; if that data is ever
+// revised, recompute weight to match (same relative order/spacing) so a
+// Sales Rep's "find the best day" ranking stays IDENTICAL to ADMIN's,
+// rather than drifting out of sync with two independently-maintained
+// copies. avgPrice (a historical average SELLING price — not a cost or
+// margin figure) and jobs (a historical booking-volume count) are kept
+// public too, for the compare view's non-admin context.
+const WINDOW_RANK_WEIGHTS = [
+  {window:'10:00 AM – 1:00 PM', weight:1,   jobs:62, avgPrice:232.08},
+  {window:'8:00 – 9:00 AM',     weight:0.3, jobs:31, avgPrice:205.16},
+  {window:'8:00 – 11:00 AM',   weight:0,   jobs:33, avgPrice:194.03},
+  {window:'12:00 – 4:00 PM',   weight:0.2, jobs:19, avgPrice:164.37},
+];
+const BEST_WINDOW = WINDOW_RANK_WEIGHTS[0].window;
+// The admin-only table below holds performance figures that never reach a
+// non-admin response — every read site has its own admin-only block with a
+// public fallback, so stripping this table never changes the Top-3 order a
+// Sales Rep sees (that ranking is driven entirely by the weights above).
+/* ADMIN-ONLY:START */
 const WINDOW_STATS = [
   {window:'10:00 AM – 1:00 PM', jobs:62, avgPrice:232.08, marginPct:0.812, revPerHr:133.03},
   {window:'8:00 – 9:00 AM',     jobs:31, avgPrice:205.16, marginPct:0.770, revPerHr:108.63},
   {window:'8:00 – 11:00 AM',   jobs:33, avgPrice:194.03, marginPct:0.752, revPerHr:100.86},
   {window:'12:00 – 4:00 PM',   jobs:19, avgPrice:164.37, marginPct:0.764, revPerHr:105.86},
 ];
-const BEST_WINDOW = WINDOW_STATS[0].window;
+/* ADMIN-ONLY:END */
 
 const ROUTE_STORAGE_KEY = 'route-planner:logged-leads';
 let loggedLeads = [];
@@ -2468,11 +2492,11 @@ function rdpBestDay(city){
   return {day, max, total};
 }
 
-function rdpCombinedScore(dayRatio, windowMarginPct){
-  const minMargin = Math.min(...WINDOW_STATS.map(w=>w.marginPct));
-  const maxMargin = Math.max(...WINDOW_STATS.map(w=>w.marginPct));
-  const normWindow = maxMargin > minMargin ? (windowMarginPct - minMargin)/(maxMargin - minMargin) : 1;
-  return 0.65*dayRatio + 0.35*normWindow;
+// windowWeight is already normalized 0..1 (see WINDOW_RANK_WEIGHTS above) —
+// no min/max rescaling needed, and nothing here ever touches the
+// ADMIN-ONLY real margin figures, so ranking is identical for every role.
+function rdpCombinedScore(dayRatio, windowWeight){
+  return 0.65*dayRatio + 0.35*windowWeight;
 }
 
 function rdpTopCombos(city, n){
@@ -2485,11 +2509,11 @@ function rdpTopCombos(city, n){
   DAYS.forEach(day=>{
     const dayCount = hasData ? (counts[day]||0) : 0;
     const dayRatio = hasData && maxDayCount>0 ? dayCount/maxDayCount : 0.5;
-    WINDOW_STATS.forEach(w=>{
+    WINDOW_RANK_WEIGHTS.forEach(w=>{
       combos.push({
         day, window: w.window, dayCount, totalJobs, dayRatio,
-        windowMarginPct: w.marginPct,
-        score: rdpCombinedScore(dayRatio, w.marginPct)
+        windowWeight: w.weight,
+        score: rdpCombinedScore(dayRatio, w.weight)
       });
     });
   });
@@ -2501,7 +2525,14 @@ function rdpComboReason(c, hasData){
   const dayPart = hasData
     ? `${c.dayCount} of ${c.totalJobs} jobs (${c.totalJobs?Math.round(c.dayCount/c.totalJobs*100):0}%) already run ${c.day}`
     : `no routing history yet for this day`;
-  return `${dayPart} · ${c.window} runs ${Math.round(c.windowMarginPct*100)}% margin`;
+  // The block below is physically absent (not just unreachable) from a
+  // non-admin response, which falls through to the day-only reason below,
+  // never a softened approximation or a dangling reference.
+  /* ADMIN-ONLY:START */
+  const stats = WINDOW_STATS.find(w => w.window === c.window);
+  if (stats) return `${dayPart} · ${c.window} runs ${Math.round(stats.marginPct*100)}% margin`;
+  /* ADMIN-ONLY:END */
+  return `${dayPart} · ${c.window}`;
 }
 
 function rdpSurchargeTier(city, day){
@@ -2786,9 +2817,22 @@ function renderRdpWindowCompare(){
     box.innerHTML = '';
     return;
   }
+  // avgPrice/jobs (historical selling-price average and booking-volume
+  // count — neither a cost nor margin figure) come from the public table
+  // and render for every role. The real margin % is physically absent from
+  // this block for a non-admin viewer (admin-only block below).
+  const bestPublic = WINDOW_RANK_WEIGHTS.find(w=>w.window === BEST_WINDOW);
+  const reqPublic = WINDOW_RANK_WEIGHTS.find(w=>w.window === reqWindow);
+  const priceDiff = bestPublic.avgPrice - reqPublic.avgPrice;
+
+  let bestMarginLine = '';
+  let reqMarginLine = '';
+  /* ADMIN-ONLY:START */
   const best = WINDOW_STATS.find(w=>w.window === BEST_WINDOW);
   const req = WINDOW_STATS.find(w=>w.window === reqWindow);
-  const priceDiff = best.avgPrice - req.avgPrice;
+  bestMarginLine = `${Math.round(best.marginPct*100)}% margin · `;
+  reqMarginLine = `${Math.round(req.marginPct*100)}% margin · `;
+  /* ADMIN-ONLY:END */
 
   box.innerHTML = `
     <div class="rdp-compare">
@@ -2796,13 +2840,13 @@ function renderRdpWindowCompare(){
       <div class="rdp-compare-grid">
         <div class="rdp-compare-col">
           <div class="rdp-cc-label">Best window (${BEST_WINDOW})</div>
-          <div class="rdp-cc-value">$${best.avgPrice.toFixed(0)} avg</div>
-          <div class="rdp-cc-stat">${Math.round(best.marginPct*100)}% margin · ${best.jobs} jobs</div>
+          <div class="rdp-cc-value">$${bestPublic.avgPrice.toFixed(0)} avg</div>
+          <div class="rdp-cc-stat">${bestMarginLine}${bestPublic.jobs} jobs</div>
         </div>
         <div class="rdp-compare-col">
           <div class="rdp-cc-label">Client wants (${reqWindow})</div>
-          <div class="rdp-cc-value">$${req.avgPrice.toFixed(0)} avg</div>
-          <div class="rdp-cc-stat">${Math.round(req.marginPct*100)}% margin · ${req.jobs} jobs</div>
+          <div class="rdp-cc-value">$${reqPublic.avgPrice.toFixed(0)} avg</div>
+          <div class="rdp-cc-stat">${reqMarginLine}${reqPublic.jobs} jobs</div>
         </div>
       </div>
       <div class="rdp-cc-stat" style="margin-top:8px;">
