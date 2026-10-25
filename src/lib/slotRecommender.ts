@@ -163,6 +163,11 @@ export interface RecommendInput {
   };
   geo?: GeoAdapter;
   config?: Partial<typeof DEFAULT_CONFIG>;
+  // Earnings/performance data (windowValuePerHour, and the "this window
+  // earns $X/hr" clause in reason) is owner-only — never emitted into a
+  // RecommendCard at all unless the caller is ADMIN. Defaults to false so
+  // a caller that forgets to pass it fails closed, not open.
+  includeInternal?: boolean;
 }
 
 export interface RecommendCard {
@@ -278,6 +283,7 @@ export async function recommendSlots(input: RecommendInput): Promise<RecommendRe
   const geo = input.geo || fallbackGeo;
   const quote = input.quote || {};
   const constraints = input.constraints || {};
+  const includeInternal = input.includeInternal ?? false;
 
   const feed = await loadFeed(input.month);
   if (!feed) {
@@ -379,7 +385,7 @@ export async function recommendSlots(input: RecommendInput): Promise<RecommendRe
             ? `${Math.round(added)} min from ${nearest.city === "office" ? "the office" : `a ${nearest.city} job`}${nearest.window ? ` at ${nearest.window}` : ""}`
             : `${Math.round(added)} min — no other jobs running this day to route around`
         );
-        if (typeof wPerHr === "number") reasonParts.push(`this window earns $${Math.round(wPerHr)}/hr`);
+        if (includeInternal && typeof wPerHr === "number") reasonParts.push(`this window earns $${Math.round(wPerHr)}/hr`);
         if (cityHistory > 0) reasonParts.push(`${leadCity} runs ${cityHistory} job${cityHistory === 1 ? "" : "s"} on ${d.weekday}s`);
 
         candidates.push({
@@ -393,7 +399,7 @@ export async function recommendSlots(input: RecommendInput): Promise<RecommendRe
           nearestJobCity: nearest ? nearest.city : null,
           nearestJobWindow: nearest ? nearest.window : null,
           estDriveCost: Math.round(driveCost * 100) / 100,
-          windowValuePerHour: wPerHr ?? null,
+          windowValuePerHour: includeInternal ? (wPerHr ?? null) : null,
           dayStatus: d.status,
           dayOpenHours: d.openPersonHours,
           repeatNote,

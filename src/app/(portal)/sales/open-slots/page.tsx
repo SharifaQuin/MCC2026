@@ -24,13 +24,14 @@ export default async function OpenSlotsPage({
 }: {
   searchParams: { month?: string };
 }) {
-  await requireDepartmentAccess("SALES");
+  const { session } = await requireDepartmentAccess("SALES");
+  const isAdmin = session.role === "ADMIN";
 
   const loadedMonths = await listLoadedSlotMonths();
   const requestedMonth = searchParams.month;
   const activeSlotMonth =
     requestedMonth && loadedMonths.includes(requestedMonth) ? requestedMonth : await resolveActiveSlotMonth();
-  const slots = activeSlotMonth ? await getNextOpenSlots(activeSlotMonth, 500) : [];
+  const slots = activeSlotMonth ? await getNextOpenSlots(activeSlotMonth, 500, undefined, isAdmin) : [];
 
   const currentIndex = activeSlotMonth ? loadedMonths.indexOf(activeSlotMonth) : -1;
   const prevMonth = currentIndex > 0 ? loadedMonths[currentIndex - 1] : null;

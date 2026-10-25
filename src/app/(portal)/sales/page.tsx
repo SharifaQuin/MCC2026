@@ -37,7 +37,7 @@ export default async function SalesPage() {
   ]);
 
   const activeSlotMonth = await resolveActiveSlotMonth();
-  const nextOpenSlots = activeSlotMonth ? await getNextOpenSlots(activeSlotMonth, 5) : [];
+  const nextOpenSlots = activeSlotMonth ? await getNextOpenSlots(activeSlotMonth, 5, undefined, isAdmin) : [];
 
   const goalHit = dash.goal > 0 && dash.revenueTowardGoal >= dash.goal;
 
