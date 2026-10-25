@@ -22,6 +22,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   SERVICE_MANAGER: "Service Manager",
   ADMIN: "Admin / Owner",
   OFFICE_ASSISTANT: "Office Assistant",
+  SALES_REP: "Sales Rep",
 };
 
 const STASH_COOKIE_OPTS = {
@@ -140,12 +141,13 @@ export function getTrueActorName(session: SessionPayload): string {
 }
 
 // Every real, active, non-Admin dashboard user an Owner can act as —
-// broader than lib/staff.ts's STAFF_ROLES (which excludes Office
-// Assistant), since an Owner needs to be able to act as one (e.g. Pedro).
+// broader than lib/staff.ts's STAFF_ROLES (which excludes Office Assistant
+// and Sales Rep), since an Owner needs to be able to act as one (e.g. Pedro,
+// or a Sales Rep troubleshooting their own Sales access).
 export async function getActingAsCandidates() {
   return prisma.user.findMany({
     where: {
-      role: { in: ["TRAINEE", "TRAINER", "SERVICE_MANAGER", "OFFICE_ASSISTANT"] },
+      role: { in: ["TRAINEE", "TRAINER", "SERVICE_MANAGER", "OFFICE_ASSISTANT", "SALES_REP"] },
       active: true,
       isTestAccount: false,
     },

@@ -8,18 +8,13 @@ import { isAdminOrServiceManager } from "@/lib/session";
 import { assignDefaultOnboardingDocuments } from "@/lib/onboarding";
 import { generateNextEmployeeId } from "@/lib/employeeId";
 import { getTrueActorId } from "@/lib/impersonation";
+import { getAssignableRolesForInviter, type AssignableRole } from "@/lib/roleAssignment";
 
 export interface InviteState {
   error?: string;
   inviteUrl?: string;
   addedWithoutInvite?: boolean;
 }
-
-// Same allow-list as the bulk-CSV invite path — the raw form value must
-// never be trusted with a bare type cast, since that's compile-time-only
-// and lets a caller submit any string (e.g. "ADMIN") that Prisma would
-// happily accept as a valid Role.
-const VALID_ROLES = new Set(["TRAINEE", "TRAINER"]);
 
 export async function inviteAction(
   _prevState: InviteState,
@@ -30,12 +25,36 @@ export async function inviteAction(
     return { error: "Not authorized." };
   }
 
+  // The raw form value must never be trusted with a bare type cast — that's
+  // compile-time-only and lets a caller submit any string (e.g. "ADMIN")
+  // that Prisma would happily accept as a valid Role. Beyond that, the set
+  // of roles even considered valid here is scoped to what *this* inviter is
+  // authorized to grant.
+  const assignableRoles = getAssignableRolesForInviter(session.role);
   const email = String(formData.get("email") ?? "")
     .trim()
     .toLowerCase();
   const name = String(formData.get("name") ?? "").trim();
-  const roleRaw = String(formData.get("role") ?? "TRAINEE").toUpperCase();
-  const role = VALID_ROLES.has(roleRaw) ? (roleRaw as "TRAINEE" | "TRAINER") : "TRAINEE";
+
+  // The role field being genuinely absent (no "role" key at all — e.g. a
+  // caller that never sends one) keeps its long-standing Trainee default.
+  // But once a value IS present, whether from the real <select>, a tampered
+  // one, or a forged direct call, it must be one this inviter is actually
+  // authorized to grant — an unrecognized string or a role outside their
+  // allowed set is refused outright, with nothing created, rather than
+  // silently downgraded to Trainee (which would create an account under a
+  // role nobody chose and no error anyone would see).
+  const roleField = formData.get("role");
+  let role: AssignableRole;
+  if (roleField === null) {
+    role = "TRAINEE";
+  } else {
+    const roleRaw = String(roleField).trim().toUpperCase();
+    if (!assignableRoles.includes(roleRaw as AssignableRole)) {
+      return { error: "You aren't authorized to assign that role." };
+    }
+    role = roleRaw as AssignableRole;
+  }
   // Unchecked checkboxes submit nothing at all (not "off"), so presence is
   // the signal. Unchecked = add them to the roster now, send the actual
   // invite link later (e.g. once they've completed paperwork) via "Send

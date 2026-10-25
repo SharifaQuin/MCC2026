@@ -117,11 +117,11 @@ export async function getChecklistTasksForRole(
 // Every active, real (non-test) staff member who can be handed a checklist
 // task — every role except ADMIN (the owner does the assigning, not the
 // other way around). Broader than lib/staff.ts's STAFF_ROLES, which
-// excludes Office Assistant.
+// excludes Office Assistant and Sales Rep.
 export async function getChecklistAssigneeCandidates() {
   return prisma.user.findMany({
     where: {
-      role: { in: ["TRAINEE", "TRAINER", "SERVICE_MANAGER", "OFFICE_ASSISTANT"] },
+      role: { in: ["TRAINEE", "TRAINER", "SERVICE_MANAGER", "OFFICE_ASSISTANT", "SALES_REP"] },
       active: true,
       isTestAccount: false,
     },
