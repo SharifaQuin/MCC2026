@@ -730,9 +730,11 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 
 </div>
 
+<!-- ADMIN-ONLY:START -->
 <div style="max-width:1300px;margin:0 auto;padding:0 32px;">
   <div class="disclaimer">This is a working internal tool. All core pricing inputs — sqft pacing, rates, frequency/volume discounts, add-ons, overhead, mileage, and hot-zone pricing — now reflect real data or owner-confirmed decisions (July 2026), with drive time, mileage and overhead updated from the Sep 2026 client audit. Competitor pricing research is the one open item not yet incorporated. Review the assumptions banner above for the full history of what changed.</div>
 </div>
+<!-- ADMIN-ONLY:END -->
 
 
 </div>
@@ -1385,6 +1387,15 @@ function switchTab(name){
 // ===== PRICING TAB LOGIC =====
 
 // ── CONSTANTS (placeholders flagged in banner above) ──
+// Internal cost-model constants — ADMIN-ONLY. The customer-facing sell
+// price (computeCurrent(), below) is driven entirely by RATE_PER_TECH/
+// TEAM_RATE/FREQUENCY_DISCOUNTS/etc. and never reads any of these; they
+// exist only to feed the owner's cost ledger / margin check / Profitability
+// tab (fixedCostFor/costBreakdown/minAcceptablePrice, further down, and the
+// Profitability tab's own script later in this file). Stripped from a
+// non-ADMIN response along with every function that reads them, so none of
+// these numbers ever reach a Sales Rep's browser in any form.
+/* ADMIN-ONLY:START */
 const TECH_WAGE = 25;
 const WC_RATE = 0.15;
 const TAX_RATE = 0.105;
@@ -1414,6 +1425,7 @@ const AUDIT_OVERHEAD_PER_TECH_HR = 20.52;
 function currentOverheadPerHr(){
   return {rate:AUDIT_OVERHEAD_PER_TECH_HR, label:'Sep 2026 audit', real:true};
 }
+/* ADMIN-ONLY:END */
 const RATE_PER_TECH = 75.00; // Updated July 2026: confirmed client rate (was $65.45 aspirational-vs-current test; now decided at $150/hr team)
 const TEAM_RATE = RATE_PER_TECH * 2;
 
@@ -1426,36 +1438,86 @@ const AIRBNB_EXTRA_LOAD_FEE = 10;     // per load beyond the 2 included
 const AIRBNB_VOLUME_DISCOUNTS = { 1:0, 2:0.05, 3:0.10 }; // turnovers/week
 const FIRST_TIME_DISCOUNT = 0.20; // owner decision (July 2026) — inspired by competitor SoCal Cleaners' 20% first-clean offer, softens the one-time quote price at the moment that matters most for conversion
 
+// Per-city hot-zone PRICE PREMIUM only — this is the one piece of the city
+// pricing model the customer-facing calculator actually needs (getCityPremium()
+// below, read by computeCurrent() to produce the quoted price). The research
+// that originally justified these premiums is a separate, ADMIN-ONLY dataset
+// further below — a Sales Rep gets the resulting price adjustment, never the
+// benchmarking behind it.
+const CITY_DATA = {
+  'Corona Del Mar': {premium:0.05},
+  'Rancho Santa Margarita': {premium:0.05},
+  'Laguna Beach': {premium:0.03},
+  'Laguna Niguel': {premium:0.03},
+  'Irvine': {premium:0.03},
+  'Huntington Beach': {premium:0},
+  'Costa Mesa': {premium:0},
+  'Newport Beach': {premium:0},
+  'Dana Point': {premium:0},
+  'Mission Viejo': {premium:0},
+  'Lake Forest': {premium:0},
+  'San Clemente': {premium:0},
+  'Aliso Viejo': {premium:0},
+  'San Juan Capistrano': {premium:0},
+  'Laguna Hills': {premium:0},
+  'Tustin': {premium:0},
+  'Laguna Woods': {premium:0},
+  'Ladera Ranch': {premium:0},
+  'Rancho Mission Viejo': {premium:0},
+  'Newport Coast': {premium:0},
+  'Santa Ana': {premium:0},
+  'Anaheim': {premium:0},
+  'Long Beach': {premium:0},
+  'Other': {premium:0},
+};
+// ADMIN-ONLY from here down: the median-household-income benchmarking data
+// and writeCityIncomeNote (which renders it into #city-note) must never
+// reach a non-admin browser, including in comments — recalc() further below
+// calls writeCityIncomeNote only when it exists, falling back to a neutral
+// placeholder otherwise.
+/* ADMIN-ONLY:START */
 // REAL DATA (July 2026) — median household income, 2024 Census/ACS, vs Orange County median ($116,300).
 // Hot-zone premium tiers are a business decision (owner-confirmed): +25%+ vs OC median -> +5%, +15-25% -> +3%, below -> base rate.
 // Only the 7 named hot zones carry a premium; all other Southern OC cities are base rate regardless of income.
 const OC_MEDIAN_INCOME = 116300;
-const CITY_DATA = {
-  'Corona Del Mar': {income:174904, hot:true, premium:0.05},
-  'Rancho Santa Margarita': {income:150146, hot:true, premium:0.05},
-  'Laguna Beach': {income:143843, hot:true, premium:0.03},
-  'Laguna Niguel': {income:140452, hot:true, premium:0.03},
-  'Irvine': {income:136719, hot:true, premium:0.03},
-  'Huntington Beach': {income:120919, hot:true, premium:0},
-  'Costa Mesa': {income:111505, hot:true, premium:0},
-  'Newport Beach': {income:153990, hot:false, premium:0},
-  'Dana Point': {income:141520, hot:false, premium:0},
-  'Mission Viejo': {income:136123, hot:false, premium:0},
-  'Lake Forest': {income:135175, hot:false, premium:0},
-  'San Clemente': {income:133049, hot:false, premium:0},
-  'Aliso Viejo': {income:132217, hot:false, premium:0},
-  'San Juan Capistrano': {income:129457, hot:false, premium:0},
-  'Laguna Hills': {income:128851, hot:false, premium:0},
-  'Tustin': {income:101499, hot:false, premium:0},
-  'Laguna Woods': {income:null, hot:false, premium:0},
-  'Ladera Ranch': {income:null, hot:false, premium:0},
-  'Rancho Mission Viejo': {income:null, hot:false, premium:0},
-  'Newport Coast': {income:null, hot:false, premium:0},
-  'Santa Ana': {income:null, hot:false, premium:0},
-  'Anaheim': {income:null, hot:false, premium:0},
-  'Long Beach': {income:null, hot:false, premium:0},
-  'Other': {income:null, hot:false, premium:0},
+const CITY_INCOME_DATA = {
+  'Corona Del Mar': {income:174904, hot:true},
+  'Rancho Santa Margarita': {income:150146, hot:true},
+  'Laguna Beach': {income:143843, hot:true},
+  'Laguna Niguel': {income:140452, hot:true},
+  'Irvine': {income:136719, hot:true},
+  'Huntington Beach': {income:120919, hot:true},
+  'Costa Mesa': {income:111505, hot:true},
+  'Newport Beach': {income:153990, hot:false},
+  'Dana Point': {income:141520, hot:false},
+  'Mission Viejo': {income:136123, hot:false},
+  'Lake Forest': {income:135175, hot:false},
+  'San Clemente': {income:133049, hot:false},
+  'Aliso Viejo': {income:132217, hot:false},
+  'San Juan Capistrano': {income:129457, hot:false},
+  'Laguna Hills': {income:128851, hot:false},
+  'Tustin': {income:101499, hot:false},
+  'Laguna Woods': {income:null, hot:false},
+  'Ladera Ranch': {income:null, hot:false},
+  'Rancho Mission Viejo': {income:null, hot:false},
+  'Newport Coast': {income:null, hot:false},
+  'Santa Ana': {income:null, hot:false},
+  'Anaheim': {income:null, hot:false},
+  'Long Beach': {income:null, hot:false},
+  'Other': {income:null, hot:false},
 };
+function writeCityIncomeNote(el, city){
+  const info = CITY_INCOME_DATA[city];
+  if(info && info.income){
+    const vsOC = ((info.income/OC_MEDIAN_INCOME-1)*100).toFixed(0);
+    el.textContent = info.hot
+      ? `Median household income: $${info.income.toLocaleString()} (${vsOC>0?'+':''}${vsOC}% vs OC median) — hot-zone premium applied above.`
+      : `Median household income: $${info.income.toLocaleString()} (${vsOC>0?'+':''}${vsOC}% vs OC median) — base rate, no premium.`;
+  } else {
+    el.textContent = 'Tagged for reference only — no income data / no price adjustment.';
+  }
+}
+/* ADMIN-ONLY:END */
 
 // REAL DATA (Sep 2026 client audit) — TCS drive logs, Jul 1–Sep 28, 2026.
 // drive = avg drive hours PER TECH per visit (includes share of the drive back to the office)
@@ -1760,11 +1822,13 @@ function updateGlassDoors(v){
   recalc();
 }
 function setAirbnbFreq(n){ state.airbnbFreq = n; buildDynamicFields(); recalc(); }
+/* ADMIN-ONLY:START */
 function updateTargetMargin(v){
   const n = parseFloat(v);
   state.targetMargin = isNaN(n) ? 21 : clamp(n, 0, 90);
   recalc();
 }
+/* ADMIN-ONLY:END */
 function updateAirbnbLoads(v){
   const n = parseInt(v);
   state.airbnbExtraLoads = isNaN(n) ? 0 : clamp(n, 0, 10);
@@ -1911,7 +1975,13 @@ function computeCurrent(){
   return r;
 }
 
-// ── COST / MARGIN LEDGER ──
+// ── COST / MARGIN LEDGER ── ADMIN-ONLY: this whole internal cost model
+// (fixedCostFor/costBreakdown/minAcceptablePrice and the constants they use)
+// is never needed by the customer-facing calculator above — computeCurrent()
+// and its service-specific compute* functions never call any of it — so it's
+// safe to strip entirely from a non-ADMIN response. recalc() below only
+// calls costBreakdown when it exists.
+/* ADMIN-ONLY:START */
 // REAL DATA (July 2026) — Housekeeping mileage, from payroll mileage log + CA minimum wage
 // UPDATED (Aug 2026, owner-confirmed) — drive time wage is $16.90/hr (CA min wage) PER TECHNICIAN,
 // 1 hour each, for every team size (was previously only applied to solo/Housekeeping jobs).
@@ -1956,6 +2026,7 @@ function minAcceptablePrice(hours, teamSize, targetMarginPct){
   if(denom <= 0) return null; // target margin too high to solve for
   return fixed/denom;
 }
+/* ADMIN-ONLY:END */
 
 // ── RENDER ──
 function formatTimeRange(lowMin, highMin){
@@ -2209,7 +2280,11 @@ async function saveQuoteForClient(){
 
 function recalc(){
   const r = computeCurrent();
-  const b = costBreakdown(r.price, r.hours, r.teamSize);
+  // costBreakdown doesn't exist in a non-ADMIN response (see its ADMIN-ONLY
+  // wrap above) — b is only ever read below inside the ledger-body-guarded
+  // block, which likewise only runs for ADMIN, so null here is never
+  // dereferenced for a Sales Rep.
+  const b = typeof costBreakdown === 'function' ? costBreakdown(r.price, r.hours, r.teamSize) : null;
 
   document.getElementById('cv-price').innerHTML = (r.lowPrice!=null) ? `$${r.lowPrice.toFixed(0)}–$${r.highPrice.toFixed(0)}` : `$${r.price.toFixed(2)}`;
   document.getElementById('cv-price-sub').textContent = SERVICES.find(s=>s.id===state.service).label;
@@ -2229,13 +2304,13 @@ function recalc(){
   const chips = [cityInfo && cityInfo.premium > 0 ? `${city} +${(cityInfo.premium*100).toFixed(0)}%` : city];
   const cityNote = document.getElementById('city-note');
   if(cityNote){
-    if(cityInfo && cityInfo.income){
-      const vsOC = ((cityInfo.income/OC_MEDIAN_INCOME-1)*100).toFixed(0);
-      cityNote.textContent = cityInfo.hot
-        ? `Median household income: $${cityInfo.income.toLocaleString()} (${vsOC>0?'+':''}${vsOC}% vs OC median) — hot-zone premium applied above.`
-        : `Median household income: $${cityInfo.income.toLocaleString()} (${vsOC>0?'+':''}${vsOC}% vs OC median) — base rate, no premium.`;
+    // writeCityIncomeNote only exists in an ADMIN response (see its
+    // ADMIN-ONLY wrap above) — a Sales Rep gets a neutral placeholder
+    // instead, never the income/hot-zone commentary.
+    if (typeof writeCityIncomeNote === 'function') {
+      writeCityIncomeNote(cityNote, city);
     } else {
-      cityNote.textContent = 'Tagged for reference only — no income data / no price adjustment.';
+      cityNote.textContent = 'Tagged for reference only — no price adjustment applied yet.';
     }
     const cdn = getCityDrive();
     const driveTxt = cdn.fallback
@@ -2256,9 +2331,11 @@ function recalc(){
   if(document.getElementById('pet-fee') && document.getElementById('pet-fee').checked) chips.push('Pet +$25');
   document.getElementById('cv-chips').innerHTML = chips.map(c=>`<span class="cv-chip">${c}</span>`).join('');
 
-  // Owner-only internal cost/margin ledger — these elements don't exist in
-  // the non-admin response at all (see /api/sales/pricing-tool), so this
-  // whole block is skipped rather than throwing on a null element.
+  // Owner-only internal cost/margin ledger — this whole block (not just the
+  // rendered panel) is ADMIN-ONLY and physically absent from a non-admin
+  // response, not merely dead code behind a DOM check: it references cost
+  // constants and functions that don't exist in that response either.
+  /* ADMIN-ONLY:START */
   if (document.getElementById('ledger-body')) {
   const marginCls = b.margin < 0 ? 'margin-bad' : (b.marginPct < 20 ? '' : 'margin-good');
   document.getElementById('ledger-body').innerHTML = `
@@ -2306,6 +2383,7 @@ function recalc(){
     <div class="schedule-note">Low end = actual estimated cleaning time. High end = cleaning time + 1hr scheduling buffer. Buffer is not billed to the client.</div>
   `;
   }
+  /* ADMIN-ONLY:END */
 }
 
 function toggleAssumptions(){

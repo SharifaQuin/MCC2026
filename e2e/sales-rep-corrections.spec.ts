@@ -358,6 +358,32 @@ test.describe.serial("Sales-rep corrections (browser)", () => {
     expect(repHtml).not.toContain("Walk-away floor");
     expect(repHtml).not.toContain("hot-zone pricing:");
     expect(repHtml).not.toContain("mcc:profit:");
+    // Follow-up fix: these three leaked through the first pass because they
+    // lived outside any ADMIN-ONLY region — a static disclaimer div, a
+    // dynamic income/hot-zone note written by shared JS, and the internal
+    // cost-model constants themselves (shipped as real values in the shared
+    // script regardless of role, independent of whether any UI rendered
+    // them). Assert the actual response body, not a DOM query — a value or
+    // sentence present anywhere in this text is shipped to her browser.
+    expect(repHtml).not.toContain("This is a working internal tool");
+    expect(repHtml).not.toContain("Median household income");
+    expect(repHtml).not.toContain("174,904"); // Corona Del Mar's income — any one real figure proves the dataset leaked
+    expect(repHtml).not.toContain("116,300"); // OC median income
+    expect(repHtml).not.toContain("116300");
+    expect(repHtml).not.toContain("OC_MEDIAN_INCOME");
+    expect(repHtml).not.toContain("CITY_INCOME_DATA");
+    expect(repHtml).not.toContain("TECH_WAGE");
+    expect(repHtml).not.toContain("WC_RATE");
+    expect(repHtml).not.toContain("AUDIT_OVERHEAD_PER_TECH_HR");
+    expect(repHtml).not.toContain("20.52");
+    expect(repHtml).not.toContain("MONTHLY_OVERHEAD_PER_HR");
+    expect(repHtml).not.toMatch(/function\s+costBreakdown/);
+    expect(repHtml).not.toMatch(/function\s+fixedCostFor/);
+    expect(repHtml).not.toMatch(/function\s+minAcceptablePrice/);
+    // The city-note div itself, and its (now Sales-Rep-safe) driving-time
+    // text, still render for her — only the income/hot-zone commentary
+    // the first pass missed is gone.
+    expect(repHtml).toContain('id="city-note"');
     // Core calculator markup stays present for her.
     expect(repHtml).toContain("Job Details");
     expect(repHtml).toContain("svc-grid");
@@ -369,6 +395,38 @@ test.describe.serial("Sales-rep corrections (browser)", () => {
     expect(adminHtml).toContain("Profitability &amp; Performance");
     expect(adminHtml).toContain("PF_DEFAULTS");
     expect(adminHtml).toContain("Walk-away floor");
+    // Regression-proof the positive case: ADMIN still gets every piece of
+    // content/data the follow-up fix stripped from the Sales Rep response.
+    expect(adminHtml).toContain("This is a working internal tool");
+    expect(adminHtml).toContain("OC_MEDIAN_INCOME");
+    expect(adminHtml).toContain("174904");
+    expect(adminHtml).toContain("TECH_WAGE");
+    expect(adminHtml).toContain("AUDIT_OVERHEAD_PER_TECH_HR");
+    expect(adminHtml).toMatch(/function\s+costBreakdown/);
+    await logout(page);
+  });
+
+  test("A Sales Rep's quote, including a city hot-zone premium, still prices correctly end to end even though the income/cost data behind it is gone from her response", async ({
+    page,
+  }) => {
+    await loginAs(page, SALES_REP_EMAIL, SALES_REP_PASSWORD);
+    await page.goto("/sales/pricing-tool");
+    const frame = page.frameLocator("iframe");
+    await frame.locator(".svc-btn", { hasText: "Standard" }).first().click();
+    await expect(frame.locator("#cv-price")).not.toHaveText("$0", { timeout: 5000 });
+    // Corona Del Mar is a hot zone with a +5% premium — the one piece of
+    // CITY_DATA that's still legitimately shared (getCityPremium(), read by
+    // computeCurrent() to produce the quoted price). Selecting it must still
+    // show the premium chip and leave the price well-formed, proving the
+    // customer quote keeps working without the now-stripped income dataset
+    // it never actually depended on — and the city-note must update without
+    // throwing (writeCityIncomeNote is entirely absent from her response)
+    // and without ever showing the income commentary that used to leak.
+    await frame.locator("#city-select").selectOption("Corona Del Mar");
+    await expect(frame.locator("#cv-chips")).toContainText("+5%");
+    await expect(frame.locator("#cv-price")).toContainText("$");
+    await expect(frame.locator("#city-note")).toBeVisible();
+    await expect(frame.locator("#city-note")).not.toContainText("Median household income");
     await logout(page);
   });
 
