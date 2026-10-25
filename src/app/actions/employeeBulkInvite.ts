@@ -89,9 +89,10 @@ export async function bulkInviteAction(
 
   // Scoped to what *this* inviter is authorized to grant — same boundary as
   // the single-invite form. A SERVICE_MANAGER's CSV can't smuggle in a
-  // SERVICE_MANAGER or OFFICE_ASSISTANT row any more than their dropdown can;
-  // an unauthorized or unrecognized role value in the role column falls back
-  // to TRAINEE per-row, exactly as before.
+  // SERVICE_MANAGER or OFFICE_ASSISTANT row any more than their dropdown
+  // can: an unauthorized or unrecognized role value in the role column
+  // rejects that one row outright (see the per-row check below), rather
+  // than silently downgrading it to Trainee and reporting it as added.
   const assignableRoles = getAssignableRolesForInviter(session.role);
 
   // Avoid a bare `instanceof File` check — the global File constructor
@@ -136,8 +137,16 @@ export async function bulkInviteAction(
   for (const row of rows) {
     const name = row[0] ?? "";
     const email = (row[1] ?? "").toLowerCase();
-    const roleRaw = (row[2] ?? "TRAINEE").toUpperCase();
-    const role = assignableRoles.includes(roleRaw as AssignableRole) ? (roleRaw as AssignableRole) : "TRAINEE";
+    // A blank role cell (column omitted or left empty for a row) keeps the
+    // long-standing Trainee default. A cell that HAS something in it, but
+    // isn't a role this inviter is authorized to grant — an unrecognized
+    // string or a real role outside their allowed set — rejects just this
+    // row below, rather than silently downgrading it to Trainee and
+    // reporting it as added.
+    const roleCell = (row[2] ?? "").trim();
+    const roleRaw = roleCell === "" ? "TRAINEE" : roleCell.toUpperCase();
+    const roleIsValid = roleCell === "" || assignableRoles.includes(roleRaw as AssignableRole);
+    const role = roleRaw as AssignableRole;
     const hireDateRaw = (row[3] ?? "").trim();
     const hireDate = hireDateRaw ? new Date(hireDateRaw) : null;
     const phone = (row[4] ?? "").trim() || null;
@@ -153,6 +162,14 @@ export async function bulkInviteAction(
     }
     if (!email.includes("@")) {
       results.push({ name, email, error: `"${email}" doesn't look like a valid email address.` });
+      continue;
+    }
+    if (!roleIsValid) {
+      results.push({
+        name,
+        email,
+        error: `"${roleCell}" isn't a role you're authorized to assign — this row was not added.`,
+      });
       continue;
     }
     if (hireDateRaw && Number.isNaN(hireDate?.getTime())) {

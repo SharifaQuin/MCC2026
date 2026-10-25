@@ -228,7 +228,7 @@ test.describe.serial("Role selector + Sales Rep role (browser)", () => {
     await logout(page);
   });
 
-  test("SERVICE_MANAGER tampering the dropdown to grant Service Manager or Office Assistant falls back to Trainee, server-side", async ({
+  test("SERVICE_MANAGER tampering the dropdown to grant Service Manager or Office Assistant is refused — no account created", async ({
     page,
   }) => {
     await loginAs(page, MANAGER_EMAIL, MANAGER_PASSWORD);
@@ -242,15 +242,16 @@ test.describe.serial("Role selector + Sales Rep role (browser)", () => {
       await selectRoleIncludingUnlisted(page, attempted);
       await singleInviteForm(page).locator('input[name="sendInviteNow"]').uncheck();
       await page.click('button:has-text("Create Invite")');
-      await expect(page.getByText("Added to the roster")).toBeVisible();
+      await expect(page.getByText("You aren't authorized to assign that role.")).toBeVisible();
+      await expect(page.getByText("Added to the roster")).toHaveCount(0);
 
-      const created = await prisma.user.findUniqueOrThrow({ where: { email } });
-      expect(created.role).toBe("TRAINEE");
+      const created = await prisma.user.findUnique({ where: { email } });
+      expect(created).toBeNull();
     }
     await logout(page);
   });
 
-  test("ADMIN tampering the dropdown to grant ADMIN falls back to Trainee, server-side", async ({ page }) => {
+  test("ADMIN tampering the dropdown to grant ADMIN is refused — no account created", async ({ page }) => {
     const email = `rolesel-admin-escalate-${RUN_ID}@example.com`;
     createdEmails.push(email);
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
@@ -260,10 +261,32 @@ test.describe.serial("Role selector + Sales Rep role (browser)", () => {
     await selectRoleIncludingUnlisted(page, "ADMIN");
     await singleInviteForm(page).locator('input[name="sendInviteNow"]').uncheck();
     await page.click('button:has-text("Create Invite")');
-    await expect(page.getByText("Added to the roster")).toBeVisible();
+    await expect(page.getByText("You aren't authorized to assign that role.")).toBeVisible();
+    await expect(page.getByText("Added to the roster")).toHaveCount(0);
 
-    const created = await prisma.user.findUniqueOrThrow({ where: { email } });
-    expect(created.role).toBe("TRAINEE");
+    const created = await prisma.user.findUnique({ where: { email } });
+    expect(created).toBeNull();
+    await logout(page);
+  });
+
+  test("An unrecognized role string on the single-invite form is refused — no account created", async ({
+    page,
+  }) => {
+    const email = `rolesel-unknown-role-${RUN_ID}@example.com`;
+    createdEmails.push(email);
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await openAddEmployeePanel(page);
+    await page.fill('input[name="name"]', "Unknown Role E2E");
+    await page.fill('input[name="email"]', email);
+    await selectRoleIncludingUnlisted(page, "SUPERADMIN");
+    await singleInviteForm(page).locator('input[name="sendInviteNow"]').uncheck();
+    await page.click('button:has-text("Create Invite")');
+    await expect(page.getByText("You aren't authorized to assign that role.")).toBeVisible();
+
+    const created = await prisma.user.findUnique({ where: { email } });
+    expect(created).toBeNull();
+    const assignments = created ? await prisma.onboardingAssignment.findMany({ where: { userId: created.id } }) : [];
+    expect(assignments.length).toBe(0);
     await logout(page);
   });
 
@@ -296,7 +319,7 @@ test.describe.serial("Role selector + Sales Rep role (browser)", () => {
     }
   });
 
-  test("Bulk CSV invite: SERVICE_MANAGER cannot grant Service Manager or Office Assistant via a CSV row — falls back to Trainee", async ({
+  test("Bulk CSV invite: SERVICE_MANAGER cannot grant Service Manager or Office Assistant via a CSV row — the row is rejected, nothing created", async ({
     page,
   }) => {
     await loginAs(page, MANAGER_EMAIL, MANAGER_PASSWORD);
@@ -313,11 +336,36 @@ test.describe.serial("Role selector + Sales Rep role (browser)", () => {
       });
       await bulkInviteForm(page).locator('input[name="sendInviteNow"]').uncheck();
       await page.click('button:has-text("Upload & Create Invites")');
-      await expect(page.getByText("Added to roster (no invite sent)")).toBeVisible();
+      await expect(
+        page.getByText(`"${attempted}" isn't a role you're authorized to assign`)
+      ).toBeVisible();
+      await expect(page.getByText("Added to roster (no invite sent)")).toHaveCount(0);
 
-      const created = await prisma.user.findUniqueOrThrow({ where: { email: rowEmail } });
-      expect(created.role).toBe("TRAINEE");
+      const created = await prisma.user.findUnique({ where: { email: rowEmail } });
+      expect(created).toBeNull();
     }
+    await logout(page);
+  });
+
+  test("Bulk CSV invite: an unrecognized role string rejects just that row, nothing created", async ({
+    page,
+  }) => {
+    const rowEmail = `rolesel-csv-unknown-role-${RUN_ID}@example.com`;
+    createdEmails.push(rowEmail);
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await openAddEmployeePanel(page);
+    const csv = `name,email,role\nCSV Unknown Role,${rowEmail},SUPERADMIN\n`;
+    await page.setInputFiles('input[name="csvFile"]', {
+      name: "unknown-role.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from(csv),
+    });
+    await bulkInviteForm(page).locator('input[name="sendInviteNow"]').uncheck();
+    await page.click('button:has-text("Upload & Create Invites")');
+    await expect(page.getByText(`"SUPERADMIN" isn't a role you're authorized to assign`)).toBeVisible();
+
+    const created = await prisma.user.findUnique({ where: { email: rowEmail } });
+    expect(created).toBeNull();
     await logout(page);
   });
 

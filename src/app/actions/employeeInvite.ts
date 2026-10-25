@@ -29,17 +29,32 @@ export async function inviteAction(
   // compile-time-only and lets a caller submit any string (e.g. "ADMIN")
   // that Prisma would happily accept as a valid Role. Beyond that, the set
   // of roles even considered valid here is scoped to what *this* inviter is
-  // authorized to grant — a SERVICE_MANAGER submitting "OFFICE_ASSISTANT" or
-  // "SERVICE_MANAGER" (whether from a tampered select or a forged direct
-  // call) falls back to TRAINEE below, exactly as an unrecognized role
-  // string already did before this role list grew.
+  // authorized to grant.
   const assignableRoles = getAssignableRolesForInviter(session.role);
   const email = String(formData.get("email") ?? "")
     .trim()
     .toLowerCase();
   const name = String(formData.get("name") ?? "").trim();
-  const roleRaw = String(formData.get("role") ?? "TRAINEE").toUpperCase();
-  const role = assignableRoles.includes(roleRaw as AssignableRole) ? (roleRaw as AssignableRole) : "TRAINEE";
+
+  // The role field being genuinely absent (no "role" key at all — e.g. a
+  // caller that never sends one) keeps its long-standing Trainee default.
+  // But once a value IS present, whether from the real <select>, a tampered
+  // one, or a forged direct call, it must be one this inviter is actually
+  // authorized to grant — an unrecognized string or a role outside their
+  // allowed set is refused outright, with nothing created, rather than
+  // silently downgraded to Trainee (which would create an account under a
+  // role nobody chose and no error anyone would see).
+  const roleField = formData.get("role");
+  let role: AssignableRole;
+  if (roleField === null) {
+    role = "TRAINEE";
+  } else {
+    const roleRaw = String(roleField).trim().toUpperCase();
+    if (!assignableRoles.includes(roleRaw as AssignableRole)) {
+      return { error: "You aren't authorized to assign that role." };
+    }
+    role = roleRaw as AssignableRole;
+  }
   // Unchecked checkboxes submit nothing at all (not "off"), so presence is
   // the signal. Unchecked = add them to the roster now, send the actual
   // invite link later (e.g. once they've completed paperwork) via "Send

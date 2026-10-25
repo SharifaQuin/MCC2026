@@ -35,13 +35,14 @@ export default function BulkInviteEmployeeForm() {
           />
           <p className="mt-1 text-xs text-neutral-500">
             Columns: name, email, role, hireDate, phone, address, employmentType, officeLocation,
-            crewType, managerName. Only name and email are required — role defaults to Trainee,
-            employmentType is Full-time or Part-time. The role column accepts only the roles
-            you're authorized to grant; anything else (including an attempt to grant a role you
-            aren't allowed to, like Service Manager or Office Assistant) falls back to Trainee for
-            that row. A header row is fine and will be skipped automatically. Re-uploading a row
-            whose email already exists fills in any of those extra columns on their existing
-            profile instead of erroring (it never changes their name, role, or hire date).
+            crewType, managerName. Only name and email are required — leaving role blank defaults
+            that row to Trainee, employmentType is Full-time or Part-time. The role column accepts
+            only the roles you're authorized to grant; anything else (an unrecognized value, or an
+            attempt to grant a role you aren't allowed to, like Service Manager or Office
+            Assistant) rejects just that row — it's reported as an error, not added. A header row
+            is fine and will be skipped automatically. Re-uploading a row whose email already
+            exists fills in any of those extra columns on their existing profile instead of
+            erroring (it never changes their name, role, or hire date).
           </p>
         </div>
         <label className="flex items-center gap-2 text-sm">
