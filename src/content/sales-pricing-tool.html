@@ -1179,7 +1179,8 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 // Priority order:
 //   0. The MCC Training Portal's own database (Railway Postgres) — used when this file
 //      is being served through the portal's authenticated /api/sales/pricing-tool route,
-//      so quotes/settings/profitability data sync for everyone with Sales access.
+//      so data syncs automatically for everyone with Sales access (see syncScope below
+//      for exactly what that means for the current viewer).
 //   1. Real Claude storage (window.storage) — used as-is when present.
 //   2. Firebase (Firestore) — if FIREBASE_CONFIG below has been filled in, this syncs
 //      saves/loads automatically across every computer/browser that opens this file.
@@ -1230,7 +1231,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
         catch(e){ console.error('Portal storage list error:', e); return null; }
       }
     };
-    showBanner('#2E5A38', `☁️ Connected — ${syncScope} sync automatically for everyone with Sales access.`);
+    showBanner('#2E5A38', `☁️ Connected — ${syncScope} sync automatically.`);
     return;
   }
 
