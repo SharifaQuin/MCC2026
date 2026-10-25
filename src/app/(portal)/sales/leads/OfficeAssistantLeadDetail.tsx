@@ -3,6 +3,7 @@ import { LEAD_SOURCE_LABELS, LEAD_STAGE_LABELS } from "@/lib/leads";
 import { formatPhone } from "@/lib/formatPhone";
 import type { LeadSource, LeadStage } from "@prisma/client";
 import OfficeAssistantLeadCallLogForm from "./OfficeAssistantLeadCallLogForm";
+import LeadContactEditor from "./LeadContactEditor";
 
 export interface OfficeAssistantLeadDetailData {
   id: string;
@@ -21,6 +22,11 @@ export interface OfficeAssistantLeadDetailData {
   followUpDueAt: string | null;
   createdAt: string;
   assignedToName: string | null;
+  // Whether a pricing-tool quote is on file — never the key itself, same
+  // narrowing this view already applies to every other quote-adjacent
+  // field (see the file comment below). Only drives the contact editor's
+  // "don't regenerate the quote" warning.
+  hasQuote: boolean;
   notes: { id: string; body: string; authorName: string | null; createdAt: string }[];
 }
 
@@ -66,6 +72,9 @@ export default function OfficeAssistantLeadDetail({
           <div>
             <dt className="text-neutral-400">Phone</dt>
             <dd>{formatPhone(lead.phone)}</dd>
+          </div>
+          <div className="col-span-2">
+            <LeadContactEditor leadId={lead.id} email={lead.email} phone={lead.phone} hasQuote={lead.hasQuote} />
           </div>
           {lead.address && (
             <div>

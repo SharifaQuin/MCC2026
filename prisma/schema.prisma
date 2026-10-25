@@ -2717,6 +2717,15 @@ enum ApprovalActionType {
   REJECT_APPLICANT
   OFFER_APPLICANT
   SEND_MESSAGE
+  // Pedro's "Request next step" flow — unlike the three above, approving
+  // one of these DOES automatically execute (see src/lib/approvalExecution.ts),
+  // through the exact same machinery a manager's own direct booking/save
+  // already uses. executionStatus/executionError below track that separate
+  // outcome; executedById/executedAt are reused for these two kinds only as
+  // an automatic "when did execution run" marker — never a manual marker
+  // the way they remain for the three kinds above.
+  SCHEDULE_IN_PERSON_INTERVIEW
+  SCHEDULE_WORKING_SESSION
 }
 
 enum ApprovalStatus {
@@ -2728,6 +2737,19 @@ enum ApprovalStatus {
   // submission and decision — the manager is shown this instead of being
   // allowed to approve/decline a request that no longer matches reality.
   NEEDS_RESUBMISSION
+}
+
+// The outcome of auto-executing an APPROVED SCHEDULE_IN_PERSON_INTERVIEW or
+// SCHEDULE_WORKING_SESSION request — deliberately distinct from
+// ApprovalStatus, so "the manager approved this" and "the booking actually
+// went through" are never conflated into one field. IN_PROGRESS exists
+// purely as a compare-and-swap claim marker (see executeApprovedScheduling)
+// so a double-click or a retry can never run execution twice.
+enum ApprovalExecutionStatus {
+  IN_PROGRESS
+  SUCCEEDED
+  PARTIAL
+  FAILED
 }
 
 // Pedro's "Send for approval" request — deliberately request-only: approving
@@ -2759,6 +2781,15 @@ model ApprovalRequest {
   // of running against a stale snapshot.
   applicantStageAtRequest ApplicantStage
 
+  // SCHEDULE_IN_PERSON_INTERVIEW / SCHEDULE_WORKING_SESSION only — Pedro's
+  // proposed date/time, and (set at decision time, defaulting to this one)
+  // the date/time the manager actually reviewed and approved, which may
+  // differ if they edited it before approving. Kept as two separate fields
+  // deliberately, so "what Pedro asked for" and "what was actually approved
+  // and executed" are both always visible, never overwritten by each other.
+  proposedScheduledAt DateTime?
+  decidedScheduledAt  DateTime?
+
   status       ApprovalStatus @default(PENDING)
   decisionNote String?        @db.Text
   decidedById  String?
@@ -2767,10 +2798,20 @@ model ApprovalRequest {
 
   // Set when the manager marks their own separate, manual action (the real
   // stage change / send) as done — an audit marker only, never written by
-  // anything in this model's own action code.
+  // anything in this model's own action code, EXCEPT for
+  // SCHEDULE_IN_PERSON_INTERVIEW/SCHEDULE_WORKING_SESSION, where
+  // executeApprovedScheduling (src/lib/approvalExecution.ts) sets both
+  // automatically the moment it runs — those two kinds auto-execute on
+  // approval, so there's no separate manual step left to mark.
   executedById String?
   executedBy   User?     @relation("ApprovalExecutedBy", fields: [executedById], references: [id])
   executedAt   DateTime?
+
+  // Auto-execution's own outcome — see ApprovalExecutionStatus. Null for
+  // the three manual-only action types (always), and for either new kind
+  // before its approval has actually been decided.
+  executionStatus ApprovalExecutionStatus?
+  executionError  String?                   @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

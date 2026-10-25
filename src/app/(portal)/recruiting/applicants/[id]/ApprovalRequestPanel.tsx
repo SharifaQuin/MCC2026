@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { SessionPayload } from "@/lib/session";
 import { getAreaAccessForUser } from "@/lib/officeAssistant";
+import { formatInBusinessTimezone } from "@/lib/timezone";
 import ApprovalRequestControls, { type ApprovalRequestRow } from "./ApprovalRequestControls";
 
 // Shown to two different audiences on the same applicant page: an Office
@@ -57,6 +58,12 @@ export default async function ApprovalRequestPanel({
     proposedOutcome: r.proposedOutcome,
     recipientEmail: r.recipientEmail,
     messageText: r.messageText,
+    proposedScheduledAt: r.proposedScheduledAt ? r.proposedScheduledAt.toISOString() : null,
+    proposedScheduledAtDisplay: r.proposedScheduledAt ? formatInBusinessTimezone(r.proposedScheduledAt, undefined, true) : null,
+    decidedScheduledAt: r.decidedScheduledAt ? r.decidedScheduledAt.toISOString() : null,
+    decidedScheduledAtDisplay: r.decidedScheduledAt ? formatInBusinessTimezone(r.decidedScheduledAt, undefined, true) : null,
+    executionStatus: r.executionStatus,
+    executionError: r.executionError,
     status: r.status,
     decisionNote: r.decisionNote,
     decidedByName: r.decidedBy?.name ?? null,
@@ -64,15 +71,19 @@ export default async function ApprovalRequestPanel({
     isMine: r.requesterId === session.sub,
     canDecide: canDecideAsManager && r.managerId === session.sub && r.requesterId !== session.sub,
     canMarkExecuted: r.decidedById === session.sub,
+    canRetryExecution: r.decidedById === session.sub,
   }));
 
   return (
     <div id="approval-requests" className="rounded-lg border border-neutral-200 bg-white p-4">
       <h2 className="mb-3 font-medium text-neutral-900">Approval Requests</h2>
       <p className="mb-3 text-xs text-neutral-500">
-        A request here never changes this applicant's stage, sends anything, or hires anyone by
-        itself — approving one only records a decision. The blocked action still needs the
-        manager's own separate, manual step.
+        Rejecting, offering, or sending a message only ever records a decision here — the manager
+        still carries that out themselves, manually, afterward. An in-person interview request is
+        different: approving it books the interview and sends the candidate's usual confirmation
+        automatically. A working session request is different too: approving it saves the
+        approved date/time to the working session record automatically, but never contacts the
+        candidate — that stays a manual step for now.
       </p>
       <ApprovalRequestControls
         applicantId={applicantId}
