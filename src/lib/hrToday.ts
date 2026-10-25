@@ -103,6 +103,28 @@ export interface TodayPendingPayroll {
   payPeriodLabel: string;
 }
 
+// A Sales Rep's own "what needs a look today" list — sales lead follow-ups
+// (the /sales page's existing "Needs attention" section already covers
+// those) plus overdue SALES-category checklist tasks, in place of the
+// general TodayCard's interviews/payroll/cross-department view, which is
+// HR/recruiting/staffing content she never sees (see the Home page's
+// redirect for a Sales Rep to /sales instead).
+export async function getOverdueSalesChecklistTasks(now: Date = new Date()): Promise<TodayOverdueTask[]> {
+  const tasks = await prisma.checklistTask.findMany({
+    where: { category: "SALES", visibility: "TEAM" },
+    select: { id: true, task: true, frequency: true, status: true, updatedAt: true, targetDate: true, dueFridayOfWeek: true },
+  });
+
+  return tasks
+    .map((t) => ({ ...t, effectiveStatus: effectiveChecklistStatus(t, now) }))
+    .filter((t) => getDueStatus(t, now) === "OVERDUE")
+    .map((t) => ({
+      id: t.id,
+      task: t.task,
+      targetDate: t.targetDate ? t.targetDate.toISOString() : null,
+    }));
+}
+
 export interface TodayCardData {
   interviews: TodayInterview[];
   followUpsDue: TodayFollowUp[];
@@ -122,6 +144,10 @@ export interface TodayCardAccess {
   // (ADMIN or SERVICE_MANAGER), since that's who can already open the full
   // /staff/payroll page. Pass isAdminOrServiceManager(session.role).
   canViewPayroll: boolean;
+  // A Sales Rep's account is sales-only: no Interviews Today (recruiting
+  // data), and her Overdue Tasks are scoped to SALES-category tasks only —
+  // never queried for her otherwise, not merely hidden after the fact.
+  isSalesRep?: boolean;
 }
 
 // Read-only "what's on deck today" card for the Home page — none of the
@@ -137,17 +163,19 @@ export async function getTodayCardData(
   now: Date = new Date()
 ): Promise<TodayCardData> {
   const { start, end } = businessDayRangeUtc(now);
-  const { isAdmin, hasSalesAccess, canViewPayroll } = access;
+  const { isAdmin, hasSalesAccess, canViewPayroll, isSalesRep } = access;
 
   const [interviews, followUps, checklistTasks, pendingPayrollEntries] = await Promise.all([
-    prisma.applicant.findMany({
-      where: {
-        stage: { in: SCHEDULING_STAGES },
-        scheduledAt: { gte: start, lt: end },
-      },
-      select: { id: true, firstName: true, lastName: true, stage: true, scheduledAt: true },
-      orderBy: { scheduledAt: "asc" },
-    }),
+    isSalesRep
+      ? Promise.resolve([])
+      : prisma.applicant.findMany({
+          where: {
+            stage: { in: SCHEDULING_STAGES },
+            scheduledAt: { gte: start, lt: end },
+          },
+          select: { id: true, firstName: true, lastName: true, stage: true, scheduledAt: true },
+          orderBy: { scheduledAt: "asc" },
+        }),
     hasSalesAccess
       ? prisma.lead.findMany({
           where: {
@@ -159,7 +187,11 @@ export async function getTodayCardData(
         })
       : Promise.resolve([]),
     prisma.checklistTask.findMany({
-      where: isAdmin ? undefined : { visibility: "TEAM" },
+      where: isSalesRep
+        ? { visibility: "TEAM", category: "SALES" }
+        : isAdmin
+          ? undefined
+          : { visibility: "TEAM" },
       select: { id: true, task: true, frequency: true, status: true, updatedAt: true, targetDate: true, dueFridayOfWeek: true },
     }),
     canViewPayroll

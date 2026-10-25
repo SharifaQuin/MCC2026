@@ -457,7 +457,10 @@ test.describe.serial("Role selector + Sales Rep role (browser)", () => {
     await loginAs(page, SALES_REP_EMAIL, SALES_REP_PASSWORD);
     await page.goto("/sales/leads");
     await expect(page).toHaveURL("/sales/leads");
-    await expect(page.getByText("Lead Pipeline")).toBeVisible();
+    // A Sales Rep gets the Callbacks-first "Leads & Callbacks" view (see the
+    // sales-rep corrections suite) rather than the pipeline board every
+    // other granted role sees — same access gating, different page for her.
+    await expect(page.getByRole("heading", { name: "Leads & Callbacks", level: 1 })).toBeVisible();
     await expect(page.getByRole("button", { name: "+ Add Lead" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Form Settings" })).toHaveCount(0);
     await logout(page);

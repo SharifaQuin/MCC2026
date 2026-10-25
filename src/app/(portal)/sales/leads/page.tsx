@@ -10,6 +10,7 @@ import {
 import LeadPipelineBoard from "./LeadPipelineBoard";
 import AddLeadPanel from "./AddLeadPanel";
 import OfficeAssistantLeadsList from "./OfficeAssistantLeadsList";
+import SalesRepLeadsList from "./SalesRepLeadsList";
 import type { LeadSource } from "@prisma/client";
 
 const VALID_LEAD_SOURCES = new Set(Object.keys(LEAD_SOURCE_LABELS));
@@ -95,6 +96,22 @@ export default async function LeadsPage({
       })),
   }));
 
+  // A Sales Rep gets a callbacks-first "Leads & Callbacks" list instead of
+  // the owner's Kanban pipeline board (unchanged below for every other
+  // role) — same underlying query, same search/filter/export/Add Lead/
+  // Mine-All chrome around it.
+  const salesRepLeadRows = leads.map((l) => ({
+    id: l.id,
+    firstName: l.firstName,
+    lastName: l.lastName,
+    serviceInterest: l.serviceInterest,
+    estimatedValue: l.estimatedValue,
+    stage: l.stage,
+    source: l.source,
+    followUpDueAt: l.followUpDueAt ? l.followUpDueAt.toISOString() : null,
+    assignedToName: l.assignedTo?.name ?? null,
+  }));
+
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -102,7 +119,9 @@ export default async function LeadsPage({
           <Link href="/sales" className="text-sm text-brand-700 hover:underline">
             ← Back to Sales
           </Link>
-          <h1 className="mt-1 text-2xl font-semibold">Lead Pipeline</h1>
+          <h1 className="mt-1 text-2xl font-semibold">
+            {session.role === "SALES_REP" ? "Leads & Callbacks" : "Lead Pipeline"}
+          </h1>
         </div>
         <div className="flex items-center gap-3">
           <a
@@ -187,7 +206,11 @@ export default async function LeadsPage({
         </div>
       </form>
 
-      <LeadPipelineBoard columns={columns} />
+      {session.role === "SALES_REP" ? (
+        <SalesRepLeadsList leads={salesRepLeadRows} />
+      ) : (
+        <LeadPipelineBoard columns={columns} />
+      )}
 
       {lostCount > 0 && (
         <p className="mt-6 text-sm text-neutral-400">

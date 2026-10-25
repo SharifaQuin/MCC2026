@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSalesApiAccess } from "@/lib/requireSalesApiAccess";
 import { syncLeadFromQuote } from "@/lib/leads";
 import { getTrueActorId } from "@/lib/impersonation";
+import { isProfitabilityStorageKey, isSalesFinancialWriteKey } from "@/lib/salesPricingToolAccess";
 
 // Backs the pricing/quotes tool's window.storage abstraction (get/set/
 // delete/list by key) with the shared Postgres database instead of browser
@@ -23,12 +24,22 @@ export async function POST(request: Request) {
   if (!session) {
     return Response.json({ error: "Not authorized" }, { status: 403 });
   }
+  // The authenticated session's own role is the only thing that decides
+  // this — never a client-supplied field, and this check applies
+  // regardless of which `op` is used to reach a protected key, closing the
+  // bypass a generic by-key storage endpoint would otherwise leave open
+  // (requireSalesApiAccess above only confirms real Sales access, which a
+  // view-only Sales viewer already has, same as an edit-capable one).
+  const isAdmin = session.role === "ADMIN";
 
   const body = (await request.json()) as StorageRequestBody;
 
   switch (body.op) {
     case "get": {
       if (!body.key) return Response.json({ error: "Missing key" }, { status: 400 });
+      if (!isAdmin && isProfitabilityStorageKey(body.key)) {
+        return Response.json({ error: "Not authorized" }, { status: 403 });
+      }
       const row = await prisma.salesToolData.findUnique({ where: { key: body.key } });
       if (!row) return Response.json({ error: "Not found" }, { status: 404 });
       return Response.json({ key: row.key, value: row.value, shared: true });
@@ -37,6 +48,12 @@ export async function POST(request: Request) {
     case "set": {
       if (!body.key || body.value === undefined) {
         return Response.json({ error: "Missing key or value" }, { status: 400 });
+      }
+      // Sales goal/actuals: ADMIN-only to write (reads stay open to any
+      // authorized Sales viewer via the "get" case above, unaffected here).
+      // Profitability/cost-settings: ADMIN-only for both reads and writes.
+      if (!isAdmin && (isSalesFinancialWriteKey(body.key) || isProfitabilityStorageKey(body.key))) {
+        return Response.json({ error: "Not authorized" }, { status: 403 });
       }
       await prisma.salesToolData.upsert({
         where: { key: body.key },
@@ -103,6 +120,9 @@ export async function POST(request: Request) {
 
     case "delete": {
       if (!body.key) return Response.json({ error: "Missing key" }, { status: 400 });
+      if (!isAdmin && (isSalesFinancialWriteKey(body.key) || isProfitabilityStorageKey(body.key))) {
+        return Response.json({ error: "Not authorized" }, { status: 403 });
+      }
       const existing = await prisma.salesToolData.findUnique({ where: { key: body.key } });
       if (existing) await prisma.salesToolData.delete({ where: { key: body.key } });
       return Response.json({ key: body.key, deleted: !!existing, shared: true });
@@ -113,7 +133,11 @@ export async function POST(request: Request) {
         where: body.prefix ? { key: { startsWith: body.prefix } } : undefined,
         select: { key: true },
       });
-      return Response.json({ keys: rows.map((r) => r.key), prefix: body.prefix ?? "", shared: true });
+      // Never list a profitability key's existence to a non-admin either —
+      // the key names themselves (e.g. a client name baked into a saved
+      // job id) are internal data, not just the values behind them.
+      const keys = rows.map((r) => r.key).filter((key) => isAdmin || !isProfitabilityStorageKey(key));
+      return Response.json({ keys, prefix: body.prefix ?? "", shared: true });
     }
 
     default:

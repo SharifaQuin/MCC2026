@@ -488,7 +488,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 <div class="tab-nav">
   <button class="tab-btn active" id="tabbtn-pricing" onclick="switchTab('pricing')">Pricing Calculator<span class="tab-sub">Internal Tool</span></button>
   <button class="tab-btn" id="tabbtn-quote" onclick="switchTab('quote')">Client Quote Page<span class="tab-sub">Branded / Sendable</span></button>
-  <button class="tab-btn" id="tabbtn-profit" onclick="switchTab('profit')">Profitability &amp; Performance<span class="tab-sub">Internal Only</span></button>
+  <!-- ADMIN-ONLY:START --><button class="tab-btn" id="tabbtn-profit" onclick="switchTab('profit')">Profitability &amp; Performance<span class="tab-sub">Internal Only</span></button><!-- ADMIN-ONLY:END -->
 </div>
 
 <div id="tab-pricing" class="tab-panel active">
@@ -504,6 +504,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
   </div>
 </header>
 
+<!-- ADMIN-ONLY:START -->
 <div class="assume-wrap">
   <div class="assume-hdr" onclick="toggleAssumptions()">
     <div class="assume-hdr-txt"><strong>All values below are now real, decided, or owner-confirmed</strong> — tap to see the full history of what changed and why</div>
@@ -528,6 +529,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
     </div>
   </div>
 </div>
+<!-- ADMIN-ONLY:END -->
 
 <div class="main">
 
@@ -602,7 +604,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
   <!-- RIGHT: OUTPUT -->
   <div>
     <div class="rdp-card" id="rdp-card">
-      <div class="rdp-title">Route Day Planner</div>
+      <div class="rdp-title"><a href="/sales/open-slots" target="_top" style="color:inherit;text-decoration:none;">Route Day Planner ↗</a></div>
       <div id="rdp-result"></div>
 
       <div class="rdp-override-row">
@@ -700,6 +702,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
       </div>
       <div class="walkthrough-load-status" id="walkthrough-load-status"></div>
     </div>
+    <!-- ADMIN-ONLY:START -->
     <div class="tear"><span class="tear-label">Internal Only — Do Not Share</span></div>
     <div class="biz-view">
       <div class="biz-hdr">
@@ -722,13 +725,16 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
       <div class="schedule-box" id="schedule-box"></div>
       <div class="hours-note" id="hours-note"></div>
     </div>
+    <!-- ADMIN-ONLY:END -->
   </div>
 
 </div>
 
+<!-- ADMIN-ONLY:START -->
 <div style="max-width:1300px;margin:0 auto;padding:0 32px;">
   <div class="disclaimer">This is a working internal tool. All core pricing inputs — sqft pacing, rates, frequency/volume discounts, add-ons, overhead, mileage, and hot-zone pricing — now reflect real data or owner-confirmed decisions (July 2026), with drive time, mileage and overhead updated from the Sep 2026 client audit. Competitor pricing research is the one open item not yet incorporated. Review the assumptions banner above for the full history of what changed.</div>
 </div>
+<!-- ADMIN-ONLY:END -->
 
 
 </div>
@@ -907,6 +913,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 
 </div>
 
+<!-- ADMIN-ONLY:START -->
 <div id="tab-profit" class="tab-panel">
 
 <header class="pf-hdr">
@@ -1161,6 +1168,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 
 </div>
 </div>
+<!-- ADMIN-ONLY:END -->
 
 <script>
 
@@ -1171,7 +1179,8 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 // Priority order:
 //   0. The MCC Training Portal's own database (Railway Postgres) — used when this file
 //      is being served through the portal's authenticated /api/sales/pricing-tool route,
-//      so quotes/settings/profitability data sync for everyone with Sales access.
+//      so data syncs automatically for everyone with Sales access (see syncScope below
+//      for exactly what that means for the current viewer).
 //   1. Real Claude storage (window.storage) — used as-is when present.
 //   2. Firebase (Firestore) — if FIREBASE_CONFIG below has been filled in, this syncs
 //      saves/loads automatically across every computer/browser that opens this file.
@@ -1181,6 +1190,13 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 // All four expose the exact same get/set/delete/list shape, so nothing else in this
 // file has to know or care which one is actually running underneath it.
 (function(){
+  // What the connection-status banners below tell the viewer actually syncs.
+  // Defaults to what's true for every viewer; ADMIN-ONLY widens it to the
+  // full list, since the rest of it only exists for an admin viewer.
+  let syncScope = 'your quotes';
+  /* ADMIN-ONLY:START */
+  syncScope = 'quotes, Cost Settings, and Profitability data';
+  /* ADMIN-ONLY:END */
   // ---- TIER 0: the portal's own Postgres-backed storage ----
   if (window.location.pathname === '/api/sales/pricing-tool'){
     window.__mccStorageMode = 'portal';
@@ -1215,7 +1231,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
         catch(e){ console.error('Portal storage list error:', e); return null; }
       }
     };
-    showBanner('#2E5A38', '☁️ Connected — quotes, Cost Settings, and Profitability data sync automatically for everyone with Sales access.');
+    showBanner('#2E5A38', `☁️ Connected — ${syncScope} sync automatically.`);
     return;
   }
 
@@ -1277,7 +1293,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
         } catch(e){ return null; }
       }
     };
-    showBanner('#5c4a15', 'ℹ️ Running as a local file — saved quotes, Cost Settings, and Profitability data are stored in <b>this browser on this computer only</b> (not synced to another device or browser). &nbsp;<span style="text-decoration:underline;cursor:pointer;font-weight:600;" onclick="this.parentNode.remove()">Dismiss</span>');
+    showBanner('#5c4a15', `ℹ️ Running as a local file — ${syncScope} are stored in <b>this browser on this computer only</b> (not synced to another device or browser). &nbsp;<span style="text-decoration:underline;cursor:pointer;font-weight:600;" onclick="this.parentNode.remove()">Dismiss</span>`);
   }
 
   if (!FIREBASE_CONFIGURED){
@@ -1356,7 +1372,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
   };
 
   readyPromise.then(function(){
-    showBanner('#2E5A38', '☁️ Connected — quotes, Cost Settings, and Profitability data now sync automatically across every computer you open this file on.');
+    showBanner('#2E5A38', `☁️ Connected — ${syncScope} now sync automatically across every computer you open this file on.`);
   }).catch(function(err){
     showBanner('#8B3A3A', '⚠️ Could not connect to your synced storage (' + (err && err.message ? err.message : 'unknown error') + '). Check your internet connection, or your Firebase setup. Data won\'t save until this is resolved. &nbsp;<span style="text-decoration:underline;cursor:pointer;font-weight:600;" onclick="this.parentNode.remove()">Dismiss</span>');
   });
@@ -1365,10 +1381,10 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 function switchTab(name){
   document.getElementById('tab-pricing').classList.toggle('active', name==='pricing');
   document.getElementById('tab-quote').classList.toggle('active', name==='quote');
-  document.getElementById('tab-profit').classList.toggle('active', name==='profit');
+  document.getElementById('tab-profit')?.classList.toggle('active', name==='profit');
   document.getElementById('tabbtn-pricing').classList.toggle('active', name==='pricing');
   document.getElementById('tabbtn-quote').classList.toggle('active', name==='quote');
-  document.getElementById('tabbtn-profit').classList.toggle('active', name==='profit');
+  document.getElementById('tabbtn-profit')?.classList.toggle('active', name==='profit');
   if(name==='quote' && typeof refreshPreviousQuotesList === 'function') refreshPreviousQuotesList();
   if (name==='profit' && !window.__profitInited){ window.__profitInited = true; initProfitTab(); }
   // Refresh the embedded Route Day Planner in case a quote was marked Won
@@ -1379,6 +1395,15 @@ function switchTab(name){
 // ===== PRICING TAB LOGIC =====
 
 // ── CONSTANTS (placeholders flagged in banner above) ──
+// Internal cost-model constants — ADMIN-ONLY. The customer-facing sell
+// price (computeCurrent(), below) is driven entirely by RATE_PER_TECH/
+// TEAM_RATE/FREQUENCY_DISCOUNTS/etc. and never reads any of these; they
+// exist only to feed the owner's cost ledger / margin check / Profitability
+// tab (fixedCostFor/costBreakdown/minAcceptablePrice, further down, and the
+// Profitability tab's own script later in this file). Stripped from a
+// non-ADMIN response along with every function that reads them, so none of
+// these numbers ever reach a Sales Rep's browser in any form.
+/* ADMIN-ONLY:START */
 const TECH_WAGE = 25;
 const WC_RATE = 0.15;
 const TAX_RATE = 0.105;
@@ -1408,6 +1433,7 @@ const AUDIT_OVERHEAD_PER_TECH_HR = 20.52;
 function currentOverheadPerHr(){
   return {rate:AUDIT_OVERHEAD_PER_TECH_HR, label:'Sep 2026 audit', real:true};
 }
+/* ADMIN-ONLY:END */
 const RATE_PER_TECH = 75.00; // Updated July 2026: confirmed client rate (was $65.45 aspirational-vs-current test; now decided at $150/hr team)
 const TEAM_RATE = RATE_PER_TECH * 2;
 
@@ -1420,36 +1446,86 @@ const AIRBNB_EXTRA_LOAD_FEE = 10;     // per load beyond the 2 included
 const AIRBNB_VOLUME_DISCOUNTS = { 1:0, 2:0.05, 3:0.10 }; // turnovers/week
 const FIRST_TIME_DISCOUNT = 0.20; // owner decision (July 2026) — inspired by competitor SoCal Cleaners' 20% first-clean offer, softens the one-time quote price at the moment that matters most for conversion
 
+// Per-city hot-zone PRICE PREMIUM only — this is the one piece of the city
+// pricing model the customer-facing calculator actually needs (getCityPremium()
+// below, read by computeCurrent() to produce the quoted price). The research
+// that originally justified these premiums is a separate, ADMIN-ONLY dataset
+// further below — a Sales Rep gets the resulting price adjustment, never the
+// benchmarking behind it.
+const CITY_DATA = {
+  'Corona Del Mar': {premium:0.05},
+  'Rancho Santa Margarita': {premium:0.05},
+  'Laguna Beach': {premium:0.03},
+  'Laguna Niguel': {premium:0.03},
+  'Irvine': {premium:0.03},
+  'Huntington Beach': {premium:0},
+  'Costa Mesa': {premium:0},
+  'Newport Beach': {premium:0},
+  'Dana Point': {premium:0},
+  'Mission Viejo': {premium:0},
+  'Lake Forest': {premium:0},
+  'San Clemente': {premium:0},
+  'Aliso Viejo': {premium:0},
+  'San Juan Capistrano': {premium:0},
+  'Laguna Hills': {premium:0},
+  'Tustin': {premium:0},
+  'Laguna Woods': {premium:0},
+  'Ladera Ranch': {premium:0},
+  'Rancho Mission Viejo': {premium:0},
+  'Newport Coast': {premium:0},
+  'Santa Ana': {premium:0},
+  'Anaheim': {premium:0},
+  'Long Beach': {premium:0},
+  'Other': {premium:0},
+};
+// ADMIN-ONLY from here down: the median-household-income benchmarking data
+// and writeCityIncomeNote (which renders it into #city-note) must never
+// reach a non-admin browser, including in comments — recalc() further below
+// calls writeCityIncomeNote only when it exists, falling back to a neutral
+// placeholder otherwise.
+/* ADMIN-ONLY:START */
 // REAL DATA (July 2026) — median household income, 2024 Census/ACS, vs Orange County median ($116,300).
 // Hot-zone premium tiers are a business decision (owner-confirmed): +25%+ vs OC median -> +5%, +15-25% -> +3%, below -> base rate.
 // Only the 7 named hot zones carry a premium; all other Southern OC cities are base rate regardless of income.
 const OC_MEDIAN_INCOME = 116300;
-const CITY_DATA = {
-  'Corona Del Mar': {income:174904, hot:true, premium:0.05},
-  'Rancho Santa Margarita': {income:150146, hot:true, premium:0.05},
-  'Laguna Beach': {income:143843, hot:true, premium:0.03},
-  'Laguna Niguel': {income:140452, hot:true, premium:0.03},
-  'Irvine': {income:136719, hot:true, premium:0.03},
-  'Huntington Beach': {income:120919, hot:true, premium:0},
-  'Costa Mesa': {income:111505, hot:true, premium:0},
-  'Newport Beach': {income:153990, hot:false, premium:0},
-  'Dana Point': {income:141520, hot:false, premium:0},
-  'Mission Viejo': {income:136123, hot:false, premium:0},
-  'Lake Forest': {income:135175, hot:false, premium:0},
-  'San Clemente': {income:133049, hot:false, premium:0},
-  'Aliso Viejo': {income:132217, hot:false, premium:0},
-  'San Juan Capistrano': {income:129457, hot:false, premium:0},
-  'Laguna Hills': {income:128851, hot:false, premium:0},
-  'Tustin': {income:101499, hot:false, premium:0},
-  'Laguna Woods': {income:null, hot:false, premium:0},
-  'Ladera Ranch': {income:null, hot:false, premium:0},
-  'Rancho Mission Viejo': {income:null, hot:false, premium:0},
-  'Newport Coast': {income:null, hot:false, premium:0},
-  'Santa Ana': {income:null, hot:false, premium:0},
-  'Anaheim': {income:null, hot:false, premium:0},
-  'Long Beach': {income:null, hot:false, premium:0},
-  'Other': {income:null, hot:false, premium:0},
+const CITY_INCOME_DATA = {
+  'Corona Del Mar': {income:174904, hot:true},
+  'Rancho Santa Margarita': {income:150146, hot:true},
+  'Laguna Beach': {income:143843, hot:true},
+  'Laguna Niguel': {income:140452, hot:true},
+  'Irvine': {income:136719, hot:true},
+  'Huntington Beach': {income:120919, hot:true},
+  'Costa Mesa': {income:111505, hot:true},
+  'Newport Beach': {income:153990, hot:false},
+  'Dana Point': {income:141520, hot:false},
+  'Mission Viejo': {income:136123, hot:false},
+  'Lake Forest': {income:135175, hot:false},
+  'San Clemente': {income:133049, hot:false},
+  'Aliso Viejo': {income:132217, hot:false},
+  'San Juan Capistrano': {income:129457, hot:false},
+  'Laguna Hills': {income:128851, hot:false},
+  'Tustin': {income:101499, hot:false},
+  'Laguna Woods': {income:null, hot:false},
+  'Ladera Ranch': {income:null, hot:false},
+  'Rancho Mission Viejo': {income:null, hot:false},
+  'Newport Coast': {income:null, hot:false},
+  'Santa Ana': {income:null, hot:false},
+  'Anaheim': {income:null, hot:false},
+  'Long Beach': {income:null, hot:false},
+  'Other': {income:null, hot:false},
 };
+function writeCityIncomeNote(el, city){
+  const info = CITY_INCOME_DATA[city];
+  if(info && info.income){
+    const vsOC = ((info.income/OC_MEDIAN_INCOME-1)*100).toFixed(0);
+    el.textContent = info.hot
+      ? `Median household income: $${info.income.toLocaleString()} (${vsOC>0?'+':''}${vsOC}% vs OC median) — hot-zone premium applied above.`
+      : `Median household income: $${info.income.toLocaleString()} (${vsOC>0?'+':''}${vsOC}% vs OC median) — base rate, no premium.`;
+  } else {
+    el.textContent = 'Tagged for reference only — no income data / no price adjustment.';
+  }
+}
+/* ADMIN-ONLY:END */
 
 // REAL DATA (Sep 2026 client audit) — TCS drive logs, Jul 1–Sep 28, 2026.
 // drive = avg drive hours PER TECH per visit (includes share of the drive back to the office)
@@ -1754,11 +1830,13 @@ function updateGlassDoors(v){
   recalc();
 }
 function setAirbnbFreq(n){ state.airbnbFreq = n; buildDynamicFields(); recalc(); }
+/* ADMIN-ONLY:START */
 function updateTargetMargin(v){
   const n = parseFloat(v);
   state.targetMargin = isNaN(n) ? 21 : clamp(n, 0, 90);
   recalc();
 }
+/* ADMIN-ONLY:END */
 function updateAirbnbLoads(v){
   const n = parseInt(v);
   state.airbnbExtraLoads = isNaN(n) ? 0 : clamp(n, 0, 10);
@@ -1905,7 +1983,13 @@ function computeCurrent(){
   return r;
 }
 
-// ── COST / MARGIN LEDGER ──
+// ── COST / MARGIN LEDGER ── ADMIN-ONLY: this whole internal cost model
+// (fixedCostFor/costBreakdown/minAcceptablePrice and the constants they use)
+// is never needed by the customer-facing calculator above — computeCurrent()
+// and its service-specific compute* functions never call any of it — so it's
+// safe to strip entirely from a non-ADMIN response. recalc() below only
+// calls costBreakdown when it exists.
+/* ADMIN-ONLY:START */
 // REAL DATA (July 2026) — Housekeeping mileage, from payroll mileage log + CA minimum wage
 // UPDATED (Aug 2026, owner-confirmed) — drive time wage is $16.90/hr (CA min wage) PER TECHNICIAN,
 // 1 hour each, for every team size (was previously only applied to solo/Housekeeping jobs).
@@ -1950,6 +2034,7 @@ function minAcceptablePrice(hours, teamSize, targetMarginPct){
   if(denom <= 0) return null; // target margin too high to solve for
   return fixed/denom;
 }
+/* ADMIN-ONLY:END */
 
 // ── RENDER ──
 function formatTimeRange(lowMin, highMin){
@@ -2203,7 +2288,11 @@ async function saveQuoteForClient(){
 
 function recalc(){
   const r = computeCurrent();
-  const b = costBreakdown(r.price, r.hours, r.teamSize);
+  // costBreakdown doesn't exist in a non-ADMIN response (see its ADMIN-ONLY
+  // wrap above) — b is only ever read below inside the ledger-body-guarded
+  // block, which likewise only runs for ADMIN, so null here is never
+  // dereferenced for a Sales Rep.
+  const b = typeof costBreakdown === 'function' ? costBreakdown(r.price, r.hours, r.teamSize) : null;
 
   document.getElementById('cv-price').innerHTML = (r.lowPrice!=null) ? `$${r.lowPrice.toFixed(0)}–$${r.highPrice.toFixed(0)}` : `$${r.price.toFixed(2)}`;
   document.getElementById('cv-price-sub').textContent = SERVICES.find(s=>s.id===state.service).label;
@@ -2223,13 +2312,13 @@ function recalc(){
   const chips = [cityInfo && cityInfo.premium > 0 ? `${city} +${(cityInfo.premium*100).toFixed(0)}%` : city];
   const cityNote = document.getElementById('city-note');
   if(cityNote){
-    if(cityInfo && cityInfo.income){
-      const vsOC = ((cityInfo.income/OC_MEDIAN_INCOME-1)*100).toFixed(0);
-      cityNote.textContent = cityInfo.hot
-        ? `Median household income: $${cityInfo.income.toLocaleString()} (${vsOC>0?'+':''}${vsOC}% vs OC median) — hot-zone premium applied above.`
-        : `Median household income: $${cityInfo.income.toLocaleString()} (${vsOC>0?'+':''}${vsOC}% vs OC median) — base rate, no premium.`;
+    // writeCityIncomeNote only exists in an ADMIN response (see its
+    // ADMIN-ONLY wrap above) — a Sales Rep gets a neutral placeholder
+    // instead, never the income/hot-zone commentary.
+    if (typeof writeCityIncomeNote === 'function') {
+      writeCityIncomeNote(cityNote, city);
     } else {
-      cityNote.textContent = 'Tagged for reference only — no income data / no price adjustment.';
+      cityNote.textContent = 'Tagged for reference only — no price adjustment applied yet.';
     }
     const cdn = getCityDrive();
     const driveTxt = cdn.fallback
@@ -2250,6 +2339,12 @@ function recalc(){
   if(document.getElementById('pet-fee') && document.getElementById('pet-fee').checked) chips.push('Pet +$25');
   document.getElementById('cv-chips').innerHTML = chips.map(c=>`<span class="cv-chip">${c}</span>`).join('');
 
+  // Owner-only internal cost/margin ledger — this whole block (not just the
+  // rendered panel) is ADMIN-ONLY and physically absent from a non-admin
+  // response, not merely dead code behind a DOM check: it references cost
+  // constants and functions that don't exist in that response either.
+  /* ADMIN-ONLY:START */
+  if (document.getElementById('ledger-body')) {
   const marginCls = b.margin < 0 ? 'margin-bad' : (b.marginPct < 20 ? '' : 'margin-good');
   document.getElementById('ledger-body').innerHTML = `
     <tr><td>Cleaning wage (${r.teamSize} tech${r.teamSize>1?'s':''} × ${r.hours.toFixed(2)} hrs)</td><td>$${b.cleaningWage.toFixed(2)}</td></tr>
@@ -2295,6 +2390,8 @@ function recalc(){
     <div class="schedule-row block"><span>Client time window</span><span class="sr-val">${formatTimeRange(cleanMin, bufferedMin)}</span></div>
     <div class="schedule-note">Low end = actual estimated cleaning time. High end = cleaning time + 1hr scheduling buffer. Buffer is not billed to the client.</div>
   `;
+  }
+  /* ADMIN-ONLY:END */
 }
 
 function toggleAssumptions(){
@@ -2343,13 +2440,37 @@ const BASELINE = {
   "Newport Beach":       {Monday:0, Tuesday:0, Wednesday:0, Thursday:0, Friday:0},
 };
 
+// Public/shared per-window data — used for ranking day/window combos AND
+// for the compare view's price/job-count context. `weight` is a derived,
+// already-normalized (0..1) relative strength for ranking only — not a
+// margin percentage, and not reversible to one (it has no units and no
+// reference to cost, revenue, or dollar figures) — computed once from the
+// real internal margin data below and hardcoded here; if that data is ever
+// revised, recompute weight to match (same relative order/spacing) so a
+// Sales Rep's "find the best day" ranking stays IDENTICAL to ADMIN's,
+// rather than drifting out of sync with two independently-maintained
+// copies. avgPrice (a historical average SELLING price — not a cost or
+// margin figure) and jobs (a historical booking-volume count) are kept
+// public too, for the compare view's non-admin context.
+const WINDOW_RANK_WEIGHTS = [
+  {window:'10:00 AM – 1:00 PM', weight:1,   jobs:62, avgPrice:232.08},
+  {window:'8:00 – 9:00 AM',     weight:0.3, jobs:31, avgPrice:205.16},
+  {window:'8:00 – 11:00 AM',   weight:0,   jobs:33, avgPrice:194.03},
+  {window:'12:00 – 4:00 PM',   weight:0.2, jobs:19, avgPrice:164.37},
+];
+const BEST_WINDOW = WINDOW_RANK_WEIGHTS[0].window;
+// The admin-only table below holds performance figures that never reach a
+// non-admin response — every read site has its own admin-only block with a
+// public fallback, so stripping this table never changes the Top-3 order a
+// Sales Rep sees (that ranking is driven entirely by the weights above).
+/* ADMIN-ONLY:START */
 const WINDOW_STATS = [
   {window:'10:00 AM – 1:00 PM', jobs:62, avgPrice:232.08, marginPct:0.812, revPerHr:133.03},
   {window:'8:00 – 9:00 AM',     jobs:31, avgPrice:205.16, marginPct:0.770, revPerHr:108.63},
   {window:'8:00 – 11:00 AM',   jobs:33, avgPrice:194.03, marginPct:0.752, revPerHr:100.86},
   {window:'12:00 – 4:00 PM',   jobs:19, avgPrice:164.37, marginPct:0.764, revPerHr:105.86},
 ];
-const BEST_WINDOW = WINDOW_STATS[0].window;
+/* ADMIN-ONLY:END */
 
 const ROUTE_STORAGE_KEY = 'route-planner:logged-leads';
 let loggedLeads = [];
@@ -2379,11 +2500,11 @@ function rdpBestDay(city){
   return {day, max, total};
 }
 
-function rdpCombinedScore(dayRatio, windowMarginPct){
-  const minMargin = Math.min(...WINDOW_STATS.map(w=>w.marginPct));
-  const maxMargin = Math.max(...WINDOW_STATS.map(w=>w.marginPct));
-  const normWindow = maxMargin > minMargin ? (windowMarginPct - minMargin)/(maxMargin - minMargin) : 1;
-  return 0.65*dayRatio + 0.35*normWindow;
+// windowWeight is already normalized 0..1 (see WINDOW_RANK_WEIGHTS above) —
+// no min/max rescaling needed, and nothing here ever touches the
+// ADMIN-ONLY real margin figures, so ranking is identical for every role.
+function rdpCombinedScore(dayRatio, windowWeight){
+  return 0.65*dayRatio + 0.35*windowWeight;
 }
 
 function rdpTopCombos(city, n){
@@ -2396,11 +2517,11 @@ function rdpTopCombos(city, n){
   DAYS.forEach(day=>{
     const dayCount = hasData ? (counts[day]||0) : 0;
     const dayRatio = hasData && maxDayCount>0 ? dayCount/maxDayCount : 0.5;
-    WINDOW_STATS.forEach(w=>{
+    WINDOW_RANK_WEIGHTS.forEach(w=>{
       combos.push({
         day, window: w.window, dayCount, totalJobs, dayRatio,
-        windowMarginPct: w.marginPct,
-        score: rdpCombinedScore(dayRatio, w.marginPct)
+        windowWeight: w.weight,
+        score: rdpCombinedScore(dayRatio, w.weight)
       });
     });
   });
@@ -2412,7 +2533,14 @@ function rdpComboReason(c, hasData){
   const dayPart = hasData
     ? `${c.dayCount} of ${c.totalJobs} jobs (${c.totalJobs?Math.round(c.dayCount/c.totalJobs*100):0}%) already run ${c.day}`
     : `no routing history yet for this day`;
-  return `${dayPart} · ${c.window} runs ${Math.round(c.windowMarginPct*100)}% margin`;
+  // The block below is physically absent (not just unreachable) from a
+  // non-admin response, which falls through to the day-only reason below,
+  // never a softened approximation or a dangling reference.
+  /* ADMIN-ONLY:START */
+  const stats = WINDOW_STATS.find(w => w.window === c.window);
+  if (stats) return `${dayPart} · ${c.window} runs ${Math.round(stats.marginPct*100)}% margin`;
+  /* ADMIN-ONLY:END */
+  return `${dayPart} · ${c.window}`;
 }
 
 function rdpSurchargeTier(city, day){
@@ -2624,7 +2752,7 @@ function renderRdpResultStatic(city){
   }).join('');
 
   box.innerHTML = `
-    <p style="font-size:11.5px;color:var(--ink-lt);margin-bottom:8px;">Top 3 for <strong style="color:var(--ink);">${city}</strong>, ranked by profitability${hasData?'':' (no job history yet — ranked on time-of-day only)'}:</p>
+    <p style="font-size:11.5px;color:var(--ink-lt);margin-bottom:8px;">Top 3 suggested available slots for <strong style="color:var(--ink);">${city}</strong>${hasData?'':' (no job history yet — ranked on time-of-day only)'}:</p>
     <div class="rdp-combo-list">${cards}</div>`;
 
   box.querySelectorAll('.rdp-copy-btn').forEach(btn=>{
@@ -2683,7 +2811,7 @@ function renderRdpCompare(){
     </div>
     ${tier.surcharge > 0 ? `
       <div class="rdp-surcharge">
-        Suggested quote add-on to stay profitable: <span class="rdp-surcharge-amount">+$${tier.surcharge}</span>
+        Suggested quote add-on: <span class="rdp-surcharge-amount">+$${tier.surcharge}</span>
         <div class="rdp-cc-stat" style="margin-top:4px;">Estimate, not measured for this exact city/day — based on the extra drive time a mismatched day has cost on similar routes. Add it into the quote rather than mentioning it as a "day fee."</div>
       </div>` : `
       <div class="rdp-surcharge">No add-on needed — this day still has enough existing volume nearby to keep the route efficient.</div>`}`;
@@ -2697,9 +2825,22 @@ function renderRdpWindowCompare(){
     box.innerHTML = '';
     return;
   }
+  // avgPrice/jobs (historical selling-price average and booking-volume
+  // count — neither a cost nor margin figure) come from the public table
+  // and render for every role. The real margin % is physically absent from
+  // this block for a non-admin viewer (admin-only block below).
+  const bestPublic = WINDOW_RANK_WEIGHTS.find(w=>w.window === BEST_WINDOW);
+  const reqPublic = WINDOW_RANK_WEIGHTS.find(w=>w.window === reqWindow);
+  const priceDiff = bestPublic.avgPrice - reqPublic.avgPrice;
+
+  let bestMarginLine = '';
+  let reqMarginLine = '';
+  /* ADMIN-ONLY:START */
   const best = WINDOW_STATS.find(w=>w.window === BEST_WINDOW);
   const req = WINDOW_STATS.find(w=>w.window === reqWindow);
-  const priceDiff = best.avgPrice - req.avgPrice;
+  bestMarginLine = `${Math.round(best.marginPct*100)}% margin · `;
+  reqMarginLine = `${Math.round(req.marginPct*100)}% margin · `;
+  /* ADMIN-ONLY:END */
 
   box.innerHTML = `
     <div class="rdp-compare">
@@ -2707,13 +2848,13 @@ function renderRdpWindowCompare(){
       <div class="rdp-compare-grid">
         <div class="rdp-compare-col">
           <div class="rdp-cc-label">Best window (${BEST_WINDOW})</div>
-          <div class="rdp-cc-value">$${best.avgPrice.toFixed(0)} avg</div>
-          <div class="rdp-cc-stat">${Math.round(best.marginPct*100)}% margin · ${best.jobs} jobs</div>
+          <div class="rdp-cc-value">$${bestPublic.avgPrice.toFixed(0)} avg</div>
+          <div class="rdp-cc-stat">${bestMarginLine}${bestPublic.jobs} jobs</div>
         </div>
         <div class="rdp-compare-col">
           <div class="rdp-cc-label">Client wants (${reqWindow})</div>
-          <div class="rdp-cc-value">$${req.avgPrice.toFixed(0)} avg</div>
-          <div class="rdp-cc-stat">${Math.round(req.marginPct*100)}% margin · ${req.jobs} jobs</div>
+          <div class="rdp-cc-value">$${reqPublic.avgPrice.toFixed(0)} avg</div>
+          <div class="rdp-cc-stat">${reqMarginLine}${reqPublic.jobs} jobs</div>
         </div>
       </div>
       <div class="rdp-cc-stat" style="margin-top:8px;">
@@ -3355,6 +3496,7 @@ async function sendQuoteToClient(){
   sendBtn.disabled = !currentQuote.clientEmail;
 }
 
+/* ADMIN-ONLY:START */
 // ============================================================
 // ===== PROFITABILITY & PERFORMANCE TAB (INTERNAL ONLY) =====
 // ============================================================
@@ -4247,6 +4389,7 @@ pfShowView = function(name){
   _origPfShowView(name);
   if (name === 'route') pfRenderRoutePicker();
 };
+/* ADMIN-ONLY:END */
 
 </script>
 

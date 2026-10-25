@@ -62,8 +62,22 @@ export default async function HomePage() {
     select: { department: true, canEdit: true },
   });
   const hasSalesAccess = hasDepartmentAccess(session.role, grants, "SALES").canView;
+  // A Sales Rep's account is sales-only — her landing page is the Sales
+  // dashboard itself, not this cross-department HR-labeled Home — but only
+  // once she actually has real Sales access; redirecting her there
+  // unconditionally would loop forever against /sales's own identical
+  // requireDepartmentAccess("SALES") redirect-to-"/" for an unconfigured
+  // account that doesn't have it yet. Without it, she falls through to the
+  // generic Home body below, which already hides every section she
+  // shouldn't see (Sales/Goals/Training/Recruiting all gate on flags that
+  // are false for her here).
+  if (session.role === "SALES_REP" && hasSalesAccess) redirect("/sales");
   const isAdmin = session.role === "ADMIN";
   const isOfficeAssistant = session.role === "OFFICE_ASSISTANT";
+  // Reachable here only when she has no Sales access yet (see the redirect
+  // above) — a sales-only account with an unconfigured grant should still
+  // never see or trigger a query for HR/recruiting/training content.
+  const isSalesRep = session.role === "SALES_REP";
   // Goals (getTeamGoals) is ADMIN/SERVICE_MANAGER only (requireManagementAccess)
   // — matches that function's own real authorization boundary exactly, so
   // every role this general Home branch is ever reached by (currently ADMIN,
@@ -77,7 +91,7 @@ export default async function HomePage() {
   // open the way they already are for SERVICE_MANAGER/ADMIN.
   const canViewHrSummary = isOfficeAssistant
     ? (await getAreaAccessForUser(session.sub, "HR_SUMMARY")).canView
-    : true;
+    : !isSalesRep;
   // The Training card's own button is gated by the Training area grant
   // specifically, independent of HR_SUMMARY above — an Office Assistant can
   // have HR Summary access without Training access, or vice versa, and the
@@ -100,8 +114,8 @@ export default async function HomePage() {
 
   const [training, recruiting, sales, latestFinancials, teamGoals, checklistTasks, openLoans, todayCard] =
     await Promise.all([
-      loadAdminDashboard(),
-      loadRecruitingDashboard(),
+      isSalesRep ? Promise.resolve(null) : loadAdminDashboard(),
+      isSalesRep ? Promise.resolve(null) : loadRecruitingDashboard(),
       hasSalesAccess ? loadSalesDashboard() : Promise.resolve(null),
       isAdmin ? getLatestMonthlyFinancials() : Promise.resolve(null),
       // The Goals section that uses this is hidden outright for anyone this
@@ -112,7 +126,7 @@ export default async function HomePage() {
         ? getChecklistTasksForRole(session.role, isAdmin ? undefined : session.sub)
         : Promise.resolve([]),
       isAdmin ? getOpenLoans() : Promise.resolve([]),
-      getTodayCardData({ isAdmin, hasSalesAccess, canViewPayroll }),
+      getTodayCardData({ isAdmin, hasSalesAccess, canViewPayroll, isSalesRep }),
     ]);
 
   const growthStaircase = (teamGoals.growth_staircase_monthly_revenue as number[] | undefined) ?? [];
@@ -148,6 +162,7 @@ export default async function HomePage() {
             isAdmin={isAdmin}
             hasSalesAccess={hasSalesAccess}
             canViewPayroll={canViewPayroll}
+            isSalesRep={isSalesRep}
           />
 
           {isAdmin && latestFinancials && (
@@ -284,7 +299,7 @@ export default async function HomePage() {
             </section>
           )}
 
-          {canViewHrSummary && (
+          {canViewHrSummary && training && recruiting && (
           <div className="grid gap-6 md:grid-cols-2">
             <section className="rounded-lg border border-neutral-200 bg-white p-6">
               <h2 className="text-lg font-medium text-neutral-900">Training</h2>

@@ -4,6 +4,7 @@ import { loadSalesDashboard } from "@/lib/salesDashboard";
 import { loadLeadKpis } from "@/lib/leads";
 import { resolveActiveSlotMonth, getNextOpenSlots } from "@/lib/slotCapacitySummary";
 import { setSalesGoalAction, setSalesActualsAction } from "@/app/(portal)/sales/actions";
+import { getOverdueSalesChecklistTasks } from "@/lib/hrToday";
 import AdSpendForm from "./AdSpendForm";
 import NextOpenSlotsCard from "./NextOpenSlotsCard";
 
@@ -19,8 +20,21 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
 const money = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default async function SalesPage() {
-  const { canEdit } = await requireDepartmentAccess("SALES");
-  const [dash, leadKpis] = await Promise.all([loadSalesDashboard(), loadLeadKpis()]);
+  const { session } = await requireDepartmentAccess("SALES");
+  // Goals, actuals, and ad spend are owner-only to set — see
+  // src/app/(portal)/sales/actions.ts. A Sales canEdit grant still governs
+  // every other edit control on this page (assigning leads, etc.), just
+  // not these three financial inputs.
+  const isAdmin = session.role === "ADMIN";
+  const isSalesRep = session.role === "SALES_REP";
+  const [dash, leadKpis, overdueSalesTasks] = await Promise.all([
+    loadSalesDashboard(),
+    loadLeadKpis(),
+    // Her sales-only equivalent of the general Today card — see
+    // getOverdueSalesChecklistTasks' own comment for why she doesn't see
+    // the general one at all (it's HR/recruiting/staffing content).
+    isSalesRep ? getOverdueSalesChecklistTasks() : Promise.resolve([]),
+  ]);
 
   const activeSlotMonth = await resolveActiveSlotMonth();
   const nextOpenSlots = activeSlotMonth ? await getNextOpenSlots(activeSlotMonth, 5) : [];
@@ -30,6 +44,19 @@ export default async function SalesPage() {
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold">Sales</h1>
+
+      {isSalesRep && overdueSalesTasks.length > 0 && (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-5">
+          <p className="mb-2 font-medium text-amber-900">Overdue Sales Tasks</p>
+          <div className="flex flex-wrap gap-2">
+            {overdueSalesTasks.map((t) => (
+              <span key={t.id} className="rounded-full bg-amber-100 px-3 py-1.5 text-sm font-medium text-amber-800">
+                {t.task}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <section className="rounded-lg border border-neutral-200 bg-white p-6">
         <div className="flex items-center justify-between">
@@ -69,7 +96,7 @@ export default async function SalesPage() {
           />
         </div>
 
-        {canEdit && (
+        {isAdmin && (
           <form action={setSalesGoalAction} className="mt-5 flex flex-wrap items-end gap-3">
             <div>
               <label htmlFor="revenueGoal" className="block text-xs font-medium text-neutral-500">
@@ -111,7 +138,7 @@ export default async function SalesPage() {
             <Stat label="Profit So Far" value={money(dash.actuals.profit)} accent />
           </div>
 
-          {canEdit && (
+          {isAdmin && (
             <form action={setSalesActualsAction} className="mt-4 flex flex-wrap items-end gap-3">
               <div>
                 <label htmlFor="actualRevenue" className="block text-xs font-medium text-neutral-500">
@@ -303,7 +330,7 @@ export default async function SalesPage() {
               No leads or ad spend logged yet this month.
             </p>
           )}
-          {canEdit && (
+          {isAdmin && (
             <div className="mt-4">
               <AdSpendForm
                 currentSpend={Object.fromEntries(leadKpis.bySource.map((s) => [s.source, s.amountSpent]))}

@@ -245,6 +245,19 @@ export async function getNextOpenSlots(month: string, limit = 5, now: Date = new
 /** Which month's feed the sales/reporting UI should treat as "current":
  *  this calendar month if loaded, else next month (the owner typically
  *  loads next month's feed during the last week of the prior month). */
+// Every month with an actually-loaded capacity feed, earliest first — for
+// month-to-month navigation (e.g. finding a specific requested date that
+// doesn't fit the top few suggestions). Never implies availability for a
+// month with no loaded feed; the caller shows an explicit empty state for
+// anything outside this list instead of guessing or extrapolating.
+export async function listLoadedSlotMonths(): Promise<string[]> {
+  const rows = await prisma.slotFeedMonth.findMany({
+    select: { month: true },
+    orderBy: { month: "asc" },
+  });
+  return rows.map((r) => r.month);
+}
+
 export async function resolveActiveSlotMonth(now: Date = new Date()): Promise<string | null> {
   const todayIso = businessDateKey(now);
   const thisMonth = todayIso.slice(0, 7);
