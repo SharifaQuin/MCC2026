@@ -1189,6 +1189,13 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 // All four expose the exact same get/set/delete/list shape, so nothing else in this
 // file has to know or care which one is actually running underneath it.
 (function(){
+  // What the connection-status banners below tell the viewer actually syncs.
+  // Defaults to what's true for every viewer; ADMIN-ONLY widens it to the
+  // full list, since the rest of it only exists for an admin viewer.
+  let syncScope = 'your quotes';
+  /* ADMIN-ONLY:START */
+  syncScope = 'quotes, Cost Settings, and Profitability data';
+  /* ADMIN-ONLY:END */
   // ---- TIER 0: the portal's own Postgres-backed storage ----
   if (window.location.pathname === '/api/sales/pricing-tool'){
     window.__mccStorageMode = 'portal';
@@ -1223,7 +1230,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
         catch(e){ console.error('Portal storage list error:', e); return null; }
       }
     };
-    showBanner('#2E5A38', '☁️ Connected — quotes, Cost Settings, and Profitability data sync automatically for everyone with Sales access.');
+    showBanner('#2E5A38', `☁️ Connected — ${syncScope} sync automatically for everyone with Sales access.`);
     return;
   }
 
@@ -1285,7 +1292,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
         } catch(e){ return null; }
       }
     };
-    showBanner('#5c4a15', 'ℹ️ Running as a local file — saved quotes, Cost Settings, and Profitability data are stored in <b>this browser on this computer only</b> (not synced to another device or browser). &nbsp;<span style="text-decoration:underline;cursor:pointer;font-weight:600;" onclick="this.parentNode.remove()">Dismiss</span>');
+    showBanner('#5c4a15', `ℹ️ Running as a local file — ${syncScope} are stored in <b>this browser on this computer only</b> (not synced to another device or browser). &nbsp;<span style="text-decoration:underline;cursor:pointer;font-weight:600;" onclick="this.parentNode.remove()">Dismiss</span>`);
   }
 
   if (!FIREBASE_CONFIGURED){
@@ -1364,7 +1371,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
   };
 
   readyPromise.then(function(){
-    showBanner('#2E5A38', '☁️ Connected — quotes, Cost Settings, and Profitability data now sync automatically across every computer you open this file on.');
+    showBanner('#2E5A38', `☁️ Connected — ${syncScope} now sync automatically across every computer you open this file on.`);
   }).catch(function(err){
     showBanner('#8B3A3A', '⚠️ Could not connect to your synced storage (' + (err && err.message ? err.message : 'unknown error') + '). Check your internet connection, or your Firebase setup. Data won\'t save until this is resolved. &nbsp;<span style="text-decoration:underline;cursor:pointer;font-weight:600;" onclick="this.parentNode.remove()">Dismiss</span>');
   });
@@ -2744,7 +2751,7 @@ function renderRdpResultStatic(city){
   }).join('');
 
   box.innerHTML = `
-    <p style="font-size:11.5px;color:var(--ink-lt);margin-bottom:8px;">Top 3 for <strong style="color:var(--ink);">${city}</strong>, ranked by profitability${hasData?'':' (no job history yet — ranked on time-of-day only)'}:</p>
+    <p style="font-size:11.5px;color:var(--ink-lt);margin-bottom:8px;">Top 3 suggested available slots for <strong style="color:var(--ink);">${city}</strong>${hasData?'':' (no job history yet — ranked on time-of-day only)'}:</p>
     <div class="rdp-combo-list">${cards}</div>`;
 
   box.querySelectorAll('.rdp-copy-btn').forEach(btn=>{
@@ -2803,7 +2810,7 @@ function renderRdpCompare(){
     </div>
     ${tier.surcharge > 0 ? `
       <div class="rdp-surcharge">
-        Suggested quote add-on to stay profitable: <span class="rdp-surcharge-amount">+$${tier.surcharge}</span>
+        Suggested quote add-on: <span class="rdp-surcharge-amount">+$${tier.surcharge}</span>
         <div class="rdp-cc-stat" style="margin-top:4px;">Estimate, not measured for this exact city/day — based on the extra drive time a mismatched day has cost on similar routes. Add it into the quote rather than mentioning it as a "day fee."</div>
       </div>` : `
       <div class="rdp-surcharge">No add-on needed — this day still has enough existing volume nearby to keep the route efficient.</div>`}`;

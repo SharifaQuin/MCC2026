@@ -393,6 +393,21 @@ test.describe.serial("Sales-rep corrections (browser)", () => {
     expect(repHtml).not.toContain("WINDOW_STATS");
     expect(repHtml).not.toContain("0.812");
     expect(repHtml).not.toContain("133.03");
+    // Third follow-up (wording-only): "ranked by profitability" and "to stay
+    // profitable" implied internal profit reasoning in copy shown to every
+    // viewer and are now gone for everyone, universally reworded. The
+    // connection-status banners claimed "Cost Settings" and "Profitability
+    // data" sync for every viewer, including a Sales Rep who has neither —
+    // that's now role-scoped via a syncScope variable wrapped in its own
+    // ADMIN-ONLY override, so those two literal phrases are physically
+    // absent from her response, not just unused.
+    expect(repHtml).not.toContain("ranked by profitability");
+    expect(repHtml).not.toContain("to stay profitable");
+    expect(repHtml).not.toContain("Cost Settings");
+    expect(repHtml).not.toContain("Profitability data");
+    expect(repHtml).toContain("suggested available slots");
+    expect(repHtml).toContain("Suggested quote add-on");
+    expect(repHtml).toContain("your quotes");
     // The city-note div itself, and its (now Sales-Rep-safe) driving-time
     // text, still render for her — only the income/hot-zone commentary
     // the first pass missed is gone.
@@ -421,6 +436,14 @@ test.describe.serial("Sales-rep corrections (browser)", () => {
     expect(adminHtml).toContain("revPerHr");
     expect(adminHtml).toContain("WINDOW_STATS");
     expect(adminHtml).toContain("0.812");
+    expect(adminHtml).not.toContain("ranked by profitability");
+    expect(adminHtml).not.toContain("to stay profitable");
+    expect(adminHtml).toContain("suggested available slots");
+    expect(adminHtml).toContain("Suggested quote add-on");
+    // The banners interpolate syncScope client-side, so the raw response
+    // only ever contains its literal assigned value, not a rendered
+    // sentence — this proves the ADMIN-ONLY override text is still shipped.
+    expect(adminHtml).toContain("Cost Settings, and Profitability data");
     await logout(page);
   });
 
