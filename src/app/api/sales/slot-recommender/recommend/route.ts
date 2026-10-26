@@ -6,7 +6,11 @@ import { recommendSlots, cityFromAddress } from "@/lib/slotRecommender";
 // Reps see headline/route badge/reason/repeat check only. Score, drive cost,
 // and day status are manager-only (BUILD_SPEC §4) — computed here and
 // stripped before the response reaches anyone without Management access,
-// never left to the client to hide.
+// never left to the client to hide. Earnings/performance data
+// (windowValuePerHour, and the "this window earns $X/hr" reason clause) is
+// a stricter, owner-only boundary: isManager (Management department view)
+// can include non-ADMIN roles, so that data is never even computed by
+// recommendSlots() unless the session is ADMIN — never gated here alone.
 export const dynamic = "force-dynamic";
 
 interface RecommendBody {
@@ -30,6 +34,7 @@ export async function POST(request: Request) {
     select: { department: true, canEdit: true },
   });
   const isManager = hasDepartmentAccess(session.role, grants, "MANAGEMENT").canView;
+  const isAdmin = session.role === "ADMIN";
 
   const body = (await request.json()) as RecommendBody;
   if (!body.address || !body.month) {
@@ -50,11 +55,16 @@ export async function POST(request: Request) {
     quote: { price: body.price, personHours: body.personHours, frequency: body.frequency },
     today: body.today,
     constraints: body.constraints,
+    includeInternal: isAdmin,
   });
 
   const results = result.results.map((c) => {
-    if (isManager) return c;
-    const { score, estDriveCost, dayStatus, dayOpenHours, ...repCard } = c;
+    // windowValuePerHour is already null here for non-admin (recommendSlots
+    // never computed it), but strip it explicitly too so this stays safe
+    // even if a future caller of recommendSlots forgets includeInternal.
+    const card = isAdmin ? c : { ...c, windowValuePerHour: null };
+    if (isManager) return card;
+    const { score, estDriveCost, dayStatus, dayOpenHours, ...repCard } = card;
     return repCard;
   });
 

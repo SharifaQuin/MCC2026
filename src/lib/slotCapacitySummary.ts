@@ -188,8 +188,17 @@ export interface NextOpenSlot {
  *  rep-safe fields only (no score/drive-cost/day-status; see BUILD_SPEC
  *  §4 on what managers see that reps don't). Mirrors the same "today +
  *  min_lead_days, active bookings subtracted" rules recommendSlots uses,
- *  but isn't scored against any one lead's address. */
-export async function getNextOpenSlots(month: string, limit = 5, now: Date = new Date()): Promise<NextOpenSlot[]> {
+ *  but isn't scored against any one lead's address.
+ *
+ *  windowValuePerHour is owner-only earnings/performance data — callers
+ *  must pass includeInternal explicitly (ADMIN sessions only); it defaults
+ *  to false so a caller that forgets it fails closed, not open. */
+export async function getNextOpenSlots(
+  month: string,
+  limit = 5,
+  now: Date = new Date(),
+  includeInternal = false
+): Promise<NextOpenSlot[]> {
   const feedMonth = await prisma.slotFeedMonth.findUnique({ where: { month } });
   if (!feedMonth) return [];
 
@@ -233,7 +242,7 @@ export async function getNextOpenSlots(month: string, limit = 5, now: Date = new
           block,
           window,
           teamsOpen,
-          windowValuePerHour: wv[window] ?? null,
+          windowValuePerHour: includeInternal ? (wv[window] ?? null) : null,
         });
         if (results.length >= limit) return results;
       }
