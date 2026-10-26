@@ -44,6 +44,7 @@ export function buildNavGroups({
   officeAssistantAreas,
   pendingApprovalCount,
   openProblemReportCount,
+  canEditTrainingContent,
 }: {
   role: Role;
   language: Language;
@@ -52,6 +53,12 @@ export function buildNavGroups({
   officeAssistantAreas?: Partial<Record<PermissionArea, AreaAccessResult>>;
   pendingApprovalCount?: number;
   openProblemReportCount?: number;
+  // Settable for any role via the Permissions screen (see
+  // src/lib/trainingContentAccess.ts) — independent of every role-specific
+  // group above, since a member can hold this grant without also having
+  // learning access to /modules (and several roles, e.g. Sales Rep, are
+  // redirected away from /modules entirely regardless of this grant).
+  canEditTrainingContent?: boolean;
 }): NavGroup[] {
   const labels = t(language);
   const groups: NavGroup[] = [];
@@ -109,6 +116,7 @@ export function buildNavGroups({
       links: [
         { href: "/sales", label: "Sales Dashboard" },
         { href: "/sales/leads", label: "Leads & Callbacks" },
+        { href: "/sales/pricing-tool", label: "Quote Tool" },
         { href: "/sales/quotes", label: "Quotes" },
         { href: "/sales/open-slots", label: "Open Slots" },
       ],
@@ -173,6 +181,20 @@ export function buildNavGroups({
     });
   }
 
+  // Unconditional on role — a member can hold TRAINING_CONTENT_EDIT without
+  // also having Training (operational/learning) access, so they may have no
+  // other path to /modules at all (e.g. a Sales Rep is redirected away from
+  // it, and an Office Assistant without the Training grant is blocked from
+  // it by requireOfficeAssistantTrainingAccess). This is the one link such a
+  // member needs; it grants nothing else.
+  if (canEditTrainingContent) {
+    groups.push({
+      key: "training-content-editor",
+      label: "Training Content",
+      links: [{ href: "/training/content-editor", label: "Training Content Editor" }],
+    });
+  }
+
   return groups;
 }
 
@@ -195,6 +217,7 @@ const FALLBACK_PAGE_TITLES: Array<{ prefix: string; label: (language: Language) 
   { prefix: "/operations", label: () => "Operations" },
   { prefix: "/management", label: () => "Management" },
   { prefix: "/trainer", label: () => "Team" },
+  { prefix: "/training/content-editor", label: () => "Training Content Editor" },
 ];
 
 export function getPageTitle(pathname: string, groups: NavGroup[], language: Language): string {

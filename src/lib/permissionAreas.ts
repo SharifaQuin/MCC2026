@@ -14,4 +14,5 @@ export const PERMISSION_AREAS: { area: PermissionArea; label: string }[] = [
   { area: "CALLBACK_QUEUE", label: "Callback Queue" },
   { area: "OPERATIONAL_STATUS", label: "Operational Status" },
   { area: "ASSIGNED_TASKS", label: "Assigned Tasks (To-Do)" },
+  { area: "TRAINING_CONTENT_EDIT", label: "Training Content Editing" },
 ];

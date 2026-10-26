@@ -94,6 +94,39 @@ function AccessSelect({
   );
 }
 
+// Training content editing has no "view only" meaning of its own (the
+// feature is entirely about editing), so unlike AccessSelect's three
+// states this is a plain on/off toggle — off deletes the AreaAccess row,
+// on upserts it with canEdit:true.
+function TrainingContentEditToggle({
+  userId,
+  granted,
+}: {
+  userId: string;
+  granted: boolean;
+}) {
+  const [value, setValue] = useState(granted);
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <select
+      value={value ? "EDIT" : "NONE"}
+      disabled={pending}
+      onChange={(e) => {
+        const next = e.target.value === "EDIT";
+        setValue(next);
+        startTransition(() => {
+          void updateAreaAccessAction(userId, "TRAINING_CONTENT_EDIT", next ? "EDIT" : "NONE");
+        });
+      }}
+      className="rounded-md border border-neutral-300 px-2 py-1 text-sm disabled:opacity-60"
+    >
+      <option value="NONE">No access</option>
+      <option value="EDIT">Can edit</option>
+    </select>
+  );
+}
+
 function ApprovalManagerSelect({
   userId,
   managerId,
@@ -129,6 +162,12 @@ function ApprovalManagerSelect({
   );
 }
 
+// Office Assistant's own area grants only — Training Content Editing is
+// shown as its own always-visible column in the main table instead (it's
+// settable for any role, not just Office Assistant), so it's excluded here
+// to avoid showing the same toggle twice for an Office Assistant row.
+const OFFICE_ASSISTANT_AREAS = PERMISSION_AREAS.filter((a) => a.area !== "TRAINING_CONTENT_EDIT");
+
 function OfficeAssistantAreaPanel({
   user,
   eligibleManagers,
@@ -138,12 +177,12 @@ function OfficeAssistantAreaPanel({
 }) {
   return (
     <tr>
-      <td colSpan={2 + GRANTABLE_DEPARTMENTS.length} className="bg-neutral-50 px-3 py-4">
+      <td colSpan={3 + GRANTABLE_DEPARTMENTS.length} className="bg-neutral-50 px-3 py-4">
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
           Office Assistant Areas — {user.name}
         </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {PERMISSION_AREAS.map(({ area, label }) => (
+          {OFFICE_ASSISTANT_AREAS.map(({ area, label }) => (
             <div key={area} className="flex items-center justify-between gap-2 rounded-md border border-neutral-200 bg-white px-2 py-1.5">
               <span className="text-xs text-neutral-700">{label}</span>
               <AccessSelect
@@ -190,6 +229,7 @@ export default function PermissionsTable({
                 {d.label}
               </th>
             ))}
+            <th className="px-3 py-2">Training Content Editing</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-neutral-100">
@@ -224,6 +264,9 @@ export default function PermissionsTable({
                       )}
                     </td>
                   ))}
+                  <td className="px-3 py-2">
+                    <TrainingContentEditToggle userId={u.id} granted={u.areaAccess.TRAINING_CONTENT_EDIT === "EDIT"} />
+                  </td>
                 </tr>
                 {isOfficeAssistant && (
                   <OfficeAssistantAreaPanel user={u} eligibleManagers={eligibleManagers} />

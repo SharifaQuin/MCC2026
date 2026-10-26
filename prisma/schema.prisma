@@ -63,6 +63,11 @@ enum PermissionArea {
   CALLBACK_QUEUE
   OPERATIONAL_STATUS
   ASSIGNED_TASKS
+  // Separate from TRAINING (operational/learning access) — lets a member of
+  // ANY role edit existing module/lesson text and quiz Q&A without being an
+  // Office Assistant or getting any other admin power. See
+  // src/lib/trainingContentAccess.ts.
+  TRAINING_CONTENT_EDIT
 }
 
 model AreaAccess {

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { t } from "@/lib/i18n";
 import { requireOnboardingComplete } from "@/lib/onboarding";
+import { requireOfficeAssistantTrainingAccess } from "@/lib/officeAssistant";
 import GlossarySearch from "@/components/GlossarySearch";
 import BackToTraining from "@/components/BackToTraining";
 
@@ -10,6 +11,7 @@ export default async function GlossaryPage() {
   if (!session) redirect("/login");
   if (session.role === "SALES_REP") redirect("/sales");
   await requireOnboardingComplete(session);
+  await requireOfficeAssistantTrainingAccess(session);
   const labels = t(session.language);
 
   return (

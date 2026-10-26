@@ -28,7 +28,7 @@ export default async function SalesPage() {
   const isAdmin = session.role === "ADMIN";
   const isSalesRep = session.role === "SALES_REP";
   const [dash, leadKpis, overdueSalesTasks] = await Promise.all([
-    loadSalesDashboard(),
+    loadSalesDashboard(isAdmin),
     loadLeadKpis(),
     // Her sales-only equivalent of the general Today card — see
     // getOverdueSalesChecklistTasks' own comment for why she doesn't see
@@ -125,20 +125,24 @@ export default async function SalesPage() {
           </form>
         )}
 
-        <div className="mt-6 rounded-md border border-neutral-200 bg-neutral-50 p-4">
-          <p className="text-sm font-medium text-neutral-900">Actuals This Month</p>
-          <p className="mt-1 text-xs text-neutral-500">
-            Enter your real revenue and labor cost so far this month — once entered, this
-            replaces the quote-based estimate above for goal tracking.
-          </p>
+        {isAdmin && (
+          <div className="mt-6 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+            <p className="text-sm font-medium text-neutral-900">Actuals This Month</p>
+            <p className="mt-1 text-xs text-neutral-500">
+              Enter your real revenue and labor cost so far this month — once entered, this
+              replaces the quote-based estimate above for goal tracking.
+            </p>
 
-          <div className="mt-3 grid grid-cols-3 gap-3">
-            <Stat label="Actual Revenue" value={money(dash.actuals.revenue)} />
-            <Stat label="Actual Labor" value={money(dash.actuals.labor)} />
-            <Stat label="Profit So Far" value={money(dash.actuals.profit)} accent />
-          </div>
+            <div className="mt-3 grid grid-cols-3 gap-3">
+              <Stat label="Actual Revenue" value={money(dash.actuals.revenue)} />
+              {dash.actuals.labor !== null && (
+                <Stat label="Actual Labor" value={money(dash.actuals.labor)} />
+              )}
+              {dash.actuals.profit !== null && (
+                <Stat label="Profit So Far" value={money(dash.actuals.profit)} accent />
+              )}
+            </div>
 
-          {isAdmin && (
             <form action={setSalesActualsAction} className="mt-4 flex flex-wrap items-end gap-3">
               <div>
                 <label htmlFor="actualRevenue" className="block text-xs font-medium text-neutral-500">
@@ -183,8 +187,8 @@ export default async function SalesPage() {
                 Save Actuals
               </button>
             </form>
-          )}
-        </div>
+          </div>
+        )}
 
         {dash.goal > 0 && !goalHit && dash.topOpportunities.length > 0 && (
           <div className="mt-6 rounded-md border border-neutral-200 bg-neutral-50 p-4">

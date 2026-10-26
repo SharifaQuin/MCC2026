@@ -65,6 +65,28 @@ export async function assertAreaAccess(
   return { session, canEdit: access.canEdit };
 }
 
+// Nav already hides the Modules/Progress/Glossary links from an Office
+// Assistant whose Training grant is "No access", but every one of those
+// page routes (and the lesson-watched/quiz-submission routes beneath them)
+// previously had no server-side check at all — a direct URL bypassed the
+// grant entirely. Call this at the top of each, after any other
+// role-specific redirects already there. A no-op for every role other than
+// OFFICE_ASSISTANT (ADMIN, TRAINEE, TRAINER, SERVICE_MANAGER, etc. keep
+// their existing, unrelated access to this content unchanged).
+export async function requireOfficeAssistantTrainingAccess(session: SessionPayload): Promise<void> {
+  if (session.role !== "OFFICE_ASSISTANT") return;
+  const access = await getAreaAccessForUser(session.sub, "TRAINING");
+  if (!access.canView) redirect("/");
+}
+
+// Non-redirecting variant for API routes (lesson-watched, quiz submission)
+// — same boundary, a 403 instead of a navigation.
+export async function assertOfficeAssistantTrainingAccess(session: SessionPayload): Promise<void> {
+  if (session.role !== "OFFICE_ASSISTANT") return;
+  const access = await getAreaAccessForUser(session.sub, "TRAINING");
+  if (!access.canView) throw new Error("Not authorized.");
+}
+
 // Every area grant for one user in a single query — used by Nav/layout to
 // decide which links to show without a round trip per area.
 export async function getAllAreaAccessForUser(

@@ -19,13 +19,23 @@ interface Lesson {
   imageUrl: string | null;
   estimatedMinutes: number | null;
   published: boolean;
+  updatedAt: string;
 }
 
-function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
+function LessonRow({
+  lesson,
+  slug,
+  canAdminister,
+}: {
+  lesson: Lesson;
+  slug: string;
+  canAdminister: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [imageUrl, setImageUrl] = useState(lesson.imageUrl ?? "");
   const [imageError, setImageError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -47,7 +57,13 @@ function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
 
       {open && (
         <form
-          action={(formData) => startTransition(() => updateLessonAction(lesson.id, slug, formData))}
+          action={(formData) => {
+            setError(null);
+            startTransition(async () => {
+              const result = await updateLessonAction(lesson.id, slug, lesson.updatedAt, formData);
+              if (!result.ok) setError(result.error ?? "Could not save.");
+            });
+          }}
           className="mt-4 space-y-3"
         >
           <div className="grid grid-cols-2 gap-3">
@@ -225,15 +241,23 @@ function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
               Shown above the lesson text (below the video, if this lesson has one).
             </p>
           </div>
-          <label className="flex items-center gap-2 text-sm text-neutral-700">
-            <input
-              type="checkbox"
-              name="published"
-              defaultChecked={lesson.published}
-              className="h-4 w-4"
-            />
-            Published (visible to trainees)
-          </label>
+          {canAdminister && (
+            <label className="flex items-center gap-2 text-sm text-neutral-700">
+              <input
+                type="checkbox"
+                name="published"
+                defaultChecked={lesson.published}
+                className="h-4 w-4"
+              />
+              Published (visible to trainees)
+            </label>
+          )}
+          {!canAdminister && (
+            <p className="text-xs text-amber-700">
+              Saving here changes published content immediately — there is no draft or approval step.
+            </p>
+          )}
+          {error && <p className="text-sm font-medium text-red-600">{error}</p>}
           <div className="flex items-center gap-3">
             <button
               type="submit"
@@ -242,17 +266,19 @@ function LessonRow({ lesson, slug }: { lesson: Lesson; slug: string }) {
             >
               {pending ? "Saving..." : "Save Lesson"}
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm("Delete this lesson?")) {
-                  startTransition(() => deleteLessonAction(lesson.id, slug));
-                }
-              }}
-              className="text-sm font-medium text-red-600 hover:underline"
-            >
-              Delete
-            </button>
+            {canAdminister && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm("Delete this lesson?")) {
+                    startTransition(() => deleteLessonAction(lesson.id, slug));
+                  }
+                }}
+                className="text-sm font-medium text-red-600 hover:underline"
+              >
+                Delete
+              </button>
+            )}
           </div>
         </form>
       )}
@@ -264,26 +290,30 @@ export default function LessonEditor({
   moduleId,
   slug,
   lessons,
+  canAdminister,
 }: {
   moduleId: string;
   slug: string;
   lessons: Lesson[];
+  canAdminister: boolean;
 }) {
   const [pending, startTransition] = useTransition();
 
   return (
     <div className="space-y-3">
       {lessons.map((lesson) => (
-        <LessonRow key={lesson.id} lesson={lesson} slug={slug} />
+        <LessonRow key={lesson.id} lesson={lesson} slug={slug} canAdminister={canAdminister} />
       ))}
-      <button
-        type="button"
-        disabled={pending}
-        onClick={() => startTransition(() => createLessonAction(moduleId, slug))}
-        className="w-full rounded-lg border border-dashed border-neutral-300 py-3 text-sm font-medium text-neutral-500 hover:border-brand-400 hover:text-brand-600"
-      >
-        + Add Lesson
-      </button>
+      {canAdminister && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => startTransition(() => createLessonAction(moduleId, slug))}
+          className="w-full rounded-lg border border-dashed border-neutral-300 py-3 text-sm font-medium text-neutral-500 hover:border-brand-400 hover:text-brand-600"
+        >
+          + Add Lesson
+        </button>
+      )}
     </div>
   );
 }
