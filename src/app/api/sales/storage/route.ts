@@ -2,7 +2,11 @@ import { prisma } from "@/lib/prisma";
 import { requireSalesApiAccess } from "@/lib/requireSalesApiAccess";
 import { syncLeadFromQuote } from "@/lib/leads";
 import { getTrueActorId } from "@/lib/impersonation";
-import { isProfitabilityStorageKey, isSalesFinancialWriteKey } from "@/lib/salesPricingToolAccess";
+import {
+  isProfitabilityStorageKey,
+  isSalesFinancialWriteKey,
+  isSalesActualsStorageKey,
+} from "@/lib/salesPricingToolAccess";
 
 // Backs the pricing/quotes tool's window.storage abstraction (get/set/
 // delete/list by key) with the shared Postgres database instead of browser
@@ -37,7 +41,7 @@ export async function POST(request: Request) {
   switch (body.op) {
     case "get": {
       if (!body.key) return Response.json({ error: "Missing key" }, { status: 400 });
-      if (!isAdmin && isProfitabilityStorageKey(body.key)) {
+      if (!isAdmin && (isProfitabilityStorageKey(body.key) || isSalesActualsStorageKey(body.key))) {
         return Response.json({ error: "Not authorized" }, { status: 403 });
       }
       const row = await prisma.salesToolData.findUnique({ where: { key: body.key } });
@@ -49,9 +53,12 @@ export async function POST(request: Request) {
       if (!body.key || body.value === undefined) {
         return Response.json({ error: "Missing key or value" }, { status: 400 });
       }
-      // Sales goal/actuals: ADMIN-only to write (reads stay open to any
-      // authorized Sales viewer via the "get" case above, unaffected here).
-      // Profitability/cost-settings: ADMIN-only for both reads and writes.
+      // Sales goal: ADMIN-only to write (reads stay open to any authorized
+      // Sales viewer via the "get" case above, unaffected here). Sales
+      // actuals (revenue+labor) and profitability/cost-settings: ADMIN-only
+      // for both reads and writes — see isSalesActualsStorageKey's own
+      // comment for why actuals reads are denied outright rather than
+      // stripped (labor is owner-only, revenue alone has no consumer here).
       if (!isAdmin && (isSalesFinancialWriteKey(body.key) || isProfitabilityStorageKey(body.key))) {
         return Response.json({ error: "Not authorized" }, { status: 403 });
       }

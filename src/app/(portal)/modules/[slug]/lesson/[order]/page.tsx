@@ -4,6 +4,7 @@ import { getSession } from "@/lib/session";
 import { getLessonDetail, markModuleInProgress } from "@/lib/courses";
 import { getRookieLessonAccess, getTrainingExperienceVersion } from "@/lib/rookieJourney";
 import { requireOnboardingComplete } from "@/lib/onboarding";
+import { requireOfficeAssistantTrainingAccess } from "@/lib/officeAssistant";
 import { t } from "@/lib/i18n";
 import LessonContinueButton from "./LessonContinueButton";
 import LessonContent from "@/components/LessonContent";
@@ -16,6 +17,7 @@ export default async function LessonPage({
   const session = await getSession();
   if (!session) redirect("/login");
   await requireOnboardingComplete(session);
+  await requireOfficeAssistantTrainingAccess(session);
   const labels = t(session.language);
 
   const order = parseInt(params.order, 10);

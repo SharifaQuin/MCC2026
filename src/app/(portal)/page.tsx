@@ -116,7 +116,7 @@ export default async function HomePage() {
     await Promise.all([
       isSalesRep ? Promise.resolve(null) : loadAdminDashboard(),
       isSalesRep ? Promise.resolve(null) : loadRecruitingDashboard(),
-      hasSalesAccess ? loadSalesDashboard() : Promise.resolve(null),
+      hasSalesAccess ? loadSalesDashboard(isAdmin) : Promise.resolve(null),
       isAdmin ? getLatestMonthlyFinancials() : Promise.resolve(null),
       // The Goals section that uses this is hidden outright for anyone this
       // isn't true for (see canViewGoals above) — skip the call entirely
@@ -286,7 +286,12 @@ export default async function HomePage() {
                       : "0"
                   }
                 />
-                <Stat label="Profit So Far" value={sales.actuals.entered ? money(sales.actuals.profit) : "—"} />
+                {isAdmin && (
+                  <Stat
+                    label="Profit So Far"
+                    value={sales.actuals.entered && sales.actuals.profit !== null ? money(sales.actuals.profit) : "—"}
+                  />
+                )}
                 <Stat label="Pending Quotes" value={sales.pendingCount} href="/sales/quotes?status=pending" />
                 <Stat
                   label="Win Rate"

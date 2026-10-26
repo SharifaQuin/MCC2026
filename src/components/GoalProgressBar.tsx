@@ -23,7 +23,7 @@ export default async function GoalProgressBar({
   const hasSalesAccess = departments.some((d) => d.department === "SALES");
 
   const [sales, teamGoals, latestFinancials] = await Promise.all([
-    hasSalesAccess ? loadSalesDashboard() : Promise.resolve(null),
+    hasSalesAccess ? loadSalesDashboard(isAdmin) : Promise.resolve(null),
     isAdmin ? getTeamGoals() : Promise.resolve(null),
     isAdmin ? getLatestMonthlyFinancials() : Promise.resolve(null),
   ]);

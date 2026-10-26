@@ -42,3 +42,14 @@ const SALES_FINANCIAL_WRITE_KEYS = [/^sales:goal$/, /^sales:actuals:/];
 export function isSalesFinancialWriteKey(key: string): boolean {
   return SALES_FINANCIAL_WRITE_KEYS.some((pattern) => pattern.test(key));
 }
+
+// sales:actuals:<month> stores {revenue, labor} together — labor (and the
+// profit derived from it) is owner-only to READ, unlike the goal/actuals
+// write restriction above. There is no legitimate non-admin consumer of
+// this key through the generic storage endpoint today, so denying the read
+// outright (same as isProfitabilityStorageKey's reads) is the safe default.
+const SALES_ACTUALS_STORAGE_KEY = /^sales:actuals:/;
+
+export function isSalesActualsStorageKey(key: string): boolean {
+  return SALES_ACTUALS_STORAGE_KEY.test(key);
+}

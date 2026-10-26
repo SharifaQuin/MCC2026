@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/session";
 import { submitQuizAttempt } from "@/lib/courses";
+import { getAreaAccessForUser } from "@/lib/officeAssistant";
 
 export interface QuestionResult {
   questionId: string;
@@ -28,6 +29,13 @@ export async function submitQuizAction(
 ): Promise<QuizState> {
   const session = await getSession();
   if (!session) return { error: "Not logged in." };
+  // Mirrors the server-side Training-grant check enforced on the quiz page
+  // itself — rejects a direct call from an Office Assistant whose Training
+  // grant was revoked, even for a quiz page already open in their browser.
+  if (session.role === "OFFICE_ASSISTANT") {
+    const access = await getAreaAccessForUser(session.sub, "TRAINING");
+    if (!access.canView) return { error: "Not authorized." };
+  }
 
   const answers: Record<string, string> = {};
   for (const qid of questionIds) {

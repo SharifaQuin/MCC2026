@@ -17,6 +17,7 @@ interface Question {
   textEn: string;
   textEs: string | null;
   options: Option[];
+  updatedAt: string;
 }
 
 function MissRateBadge({ missRate }: { missRate?: QuestionMissRate }) {
@@ -41,16 +42,19 @@ function QuestionRow({
   question,
   slug,
   missRate,
+  canAdminister,
 }: {
   question: Question;
   slug: string;
   missRate?: QuestionMissRate;
+  canAdminister: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [correctOptionId, setCorrectOptionId] = useState(
     question.options.find((o) => o.isCorrect)?.id ?? question.options[0]?.id
   );
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -70,9 +74,13 @@ function QuestionRow({
 
       {open && (
         <form
-          action={(formData) =>
-            startTransition(() => updateQuestionAction(question.id, slug, formData))
-          }
+          action={(formData) => {
+            setError(null);
+            startTransition(async () => {
+              const result = await updateQuestionAction(question.id, slug, question.updatedAt, formData);
+              if (!result.ok) setError(result.error ?? "Could not save.");
+            });
+          }}
           className="mt-4 space-y-4"
         >
           <input type="hidden" name="correctOptionId" value={correctOptionId} />
@@ -123,6 +131,12 @@ function QuestionRow({
             ))}
           </div>
 
+          {!canAdminister && (
+            <p className="text-xs text-amber-700">
+              Saving here changes published content immediately — there is no draft or approval step.
+            </p>
+          )}
+          {error && <p className="text-sm font-medium text-red-600">{error}</p>}
           <div className="flex items-center gap-3">
             <button
               type="submit"
@@ -131,17 +145,19 @@ function QuestionRow({
             >
               {pending ? "Saving..." : "Save Question"}
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm("Delete this question?")) {
-                  startTransition(() => deleteQuestionAction(question.id, slug));
-                }
-              }}
-              className="text-sm font-medium text-red-600 hover:underline"
-            >
-              Delete
-            </button>
+            {canAdminister && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm("Delete this question?")) {
+                    startTransition(() => deleteQuestionAction(question.id, slug));
+                  }
+                }}
+                className="text-sm font-medium text-red-600 hover:underline"
+              >
+                Delete
+              </button>
+            )}
           </div>
         </form>
       )}
@@ -154,11 +170,13 @@ export default function QuestionEditor({
   slug,
   questions,
   missRates,
+  canAdminister,
 }: {
   moduleId: string;
   slug: string;
   questions: Question[];
   missRates?: Record<string, QuestionMissRate>;
+  canAdminister: boolean;
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -170,16 +188,19 @@ export default function QuestionEditor({
           question={question}
           slug={slug}
           missRate={missRates?.[question.id]}
+          canAdminister={canAdminister}
         />
       ))}
-      <button
-        type="button"
-        disabled={pending}
-        onClick={() => startTransition(() => createQuestionAction(moduleId, slug))}
-        className="w-full rounded-lg border border-dashed border-neutral-300 py-3 text-sm font-medium text-neutral-500 hover:border-brand-400 hover:text-brand-600"
-      >
-        + Add Question
-      </button>
+      {canAdminister && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => startTransition(() => createQuestionAction(moduleId, slug))}
+          className="w-full rounded-lg border border-dashed border-neutral-300 py-3 text-sm font-medium text-neutral-500 hover:border-brand-400 hover:text-brand-600"
+        >
+          + Add Question
+        </button>
+      )}
     </div>
   );
 }

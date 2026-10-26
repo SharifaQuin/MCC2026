@@ -4,12 +4,14 @@ import { getSession } from "@/lib/session";
 import { getModuleOverview, markModuleInProgress } from "@/lib/courses";
 import { getTrainingExperienceVersion } from "@/lib/rookieJourney";
 import { requireOnboardingComplete } from "@/lib/onboarding";
+import { requireOfficeAssistantTrainingAccess } from "@/lib/officeAssistant";
 import { t } from "@/lib/i18n";
 
 export default async function ModuleOverviewPage({ params }: { params: { slug: string } }) {
   const session = await getSession();
   if (!session) redirect("/login");
   await requireOnboardingComplete(session);
+  await requireOfficeAssistantTrainingAccess(session);
   if (session.role === "TRAINEE" && (await getTrainingExperienceVersion()) === "rookie") redirect("/");
   const labels = t(session.language);
 

@@ -2,14 +2,42 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/session";
+import { getSession, type SessionPayload } from "@/lib/session";
 import { normalizeVideoUrl } from "@/lib/videoUrl";
 import { moduleVideoTranscripts } from "@/data/moduleVideoTranscripts";
+import { assertTrainingContentEditAccess } from "@/lib/trainingContentAccess";
+import { logAudit } from "@/lib/auditLog";
+import { getTrueActorId } from "@/lib/impersonation";
 
 async function requireAdmin() {
   const session = await getSession();
   if (!session || session.role !== "ADMIN") throw new Error("Not authorized");
   return session;
+}
+
+export interface SaveResult {
+  ok: boolean;
+  error?: string;
+}
+
+const STALE_SAVE_ERROR =
+  "This content was changed by someone else since you opened it — reload the page to see the latest version before saving again.";
+
+// Never throws: a revoked grant must surface as a clean save-rejection
+// message in an already-open editor tab, the same as a stale-save conflict,
+// not an uncaught error boundary.
+async function tryContentEditAccess(): Promise<
+  { ok: true; session: SessionPayload; isAdmin: boolean } | { ok: false; error: string }
+> {
+  try {
+    const { session, isAdmin } = await assertTrainingContentEditAccess();
+    return { ok: true, session, isAdmin };
+  } catch {
+    return {
+      ok: false,
+      error: "You no longer have permission to edit this content — reload the page to continue.",
+    };
+  }
 }
 
 function slugify(text: string) {
@@ -39,28 +67,61 @@ export async function createModuleAction(formData: FormData) {
   return mod.slug;
 }
 
-export async function updateModuleMetaAction(moduleId: string, formData: FormData) {
-  await requireAdmin();
+// Shared by the ADMIN-only editor (/admin/content) and the narrowly-scoped
+// training-content-editor route (/training/content-editor) a permitted
+// non-admin member reaches via the TRAINING_CONTENT_EDIT grant — re-checked
+// here on every save, never cached, so a mid-session revocation blocks the
+// very next save even in an already-open editor tab.
+export async function updateModuleMetaAction(
+  moduleId: string,
+  expectedUpdatedAt: string,
+  formData: FormData
+): Promise<SaveResult> {
+  const access = await tryContentEditAccess();
+  if (!access.ok) return access;
+  const { session, isAdmin } = access;
+  const current = await prisma.module.findUnique({ where: { id: moduleId } });
+  if (!current) return { ok: false, error: "Module not found." };
+  if (current.updatedAt.toISOString() !== expectedUpdatedAt) {
+    return { ok: false, error: STALE_SAVE_ERROR };
+  }
+
   const titleEn = String(formData.get("titleEn") ?? "").trim();
   const titleEs = String(formData.get("titleEs") ?? "").trim();
   const summaryEn = String(formData.get("summaryEn") ?? "").trim();
   const summaryEs = String(formData.get("summaryEs") ?? "").trim();
-  const published = formData.get("published") === "on";
+  // Publish/unpublish stays ADMIN-only even for a permitted editor — enforced
+  // here, not just by hiding the checkbox, so a forged request can't flip it.
+  const published = isAdmin ? formData.get("published") === "on" : current.published;
 
-  const mod = await prisma.module.update({
-    where: { id: moduleId },
-    data: {
-      titleEn,
-      titleEs: titleEs || null,
-      summaryEn: summaryEn || null,
-      summaryEs: summaryEs || null,
-      published,
+  const next = {
+    titleEn,
+    titleEs: titleEs || null,
+    summaryEn: summaryEn || null,
+    summaryEs: summaryEs || null,
+    published,
+  };
+  const mod = await prisma.module.update({ where: { id: moduleId }, data: next });
+
+  await logAudit({
+    actorId: getTrueActorId(session),
+    action: "TRAINING_CONTENT_EDITED",
+    recordType: "Module",
+    recordId: moduleId,
+    changedFields: {
+      titleEn: { from: current.titleEn, to: next.titleEn },
+      titleEs: { from: current.titleEs, to: next.titleEs },
+      summaryEn: { from: current.summaryEn, to: next.summaryEn },
+      summaryEs: { from: current.summaryEs, to: next.summaryEs },
+      published: { from: current.published, to: next.published },
     },
   });
 
   revalidatePath(`/admin/content/${mod.slug}`);
+  revalidatePath(`/training/content-editor/${mod.slug}`);
   revalidatePath("/admin/content");
   revalidatePath("/modules");
+  return { ok: true };
 }
 
 export async function deleteModuleAction(moduleId: string) {
@@ -79,36 +140,67 @@ export async function createLessonAction(moduleId: string, slug: string) {
   revalidatePath(`/admin/content/${slug}`);
 }
 
-export async function updateLessonAction(lessonId: string, slug: string, formData: FormData) {
-  await requireAdmin();
+export async function updateLessonAction(
+  lessonId: string,
+  slug: string,
+  expectedUpdatedAt: string,
+  formData: FormData
+): Promise<SaveResult> {
+  const access = await tryContentEditAccess();
+  if (!access.ok) return access;
+  const { session, isAdmin } = access;
+  const current = await prisma.lesson.findUnique({ where: { id: lessonId } });
+  if (!current) return { ok: false, error: "Lesson not found." };
+  if (current.updatedAt.toISOString() !== expectedUpdatedAt) {
+    return { ok: false, error: STALE_SAVE_ERROR };
+  }
+
   const durationRaw = String(formData.get("videoDurationSeconds") ?? "").trim();
   const videoDurationSeconds = durationRaw ? parseInt(durationRaw, 10) : null;
   const minutesRaw = String(formData.get("estimatedMinutes") ?? "").trim();
   const estimatedMinutes = minutesRaw ? parseInt(minutesRaw, 10) : null;
 
-  await prisma.lesson.update({
-    where: { id: lessonId },
-    data: {
-      titleEn: String(formData.get("titleEn") ?? ""),
-      titleEs: String(formData.get("titleEs") ?? "") || null,
-      contentEn: String(formData.get("contentEn") ?? ""),
-      contentEs: String(formData.get("contentEs") ?? "") || null,
-      videoUrl: normalizeVideoUrl(String(formData.get("videoUrl") ?? "")),
-      videoUrlEs: normalizeVideoUrl(String(formData.get("videoUrlEs") ?? "")),
-      videoTranscriptEn: String(formData.get("videoTranscriptEn") ?? "") || null,
-      videoTranscriptEs: String(formData.get("videoTranscriptEs") ?? "") || null,
-      videoDurationSeconds:
-        videoDurationSeconds !== null && Number.isFinite(videoDurationSeconds)
-          ? videoDurationSeconds
-          : null,
-      imageUrl: String(formData.get("imageUrl") ?? "") || null,
-      estimatedMinutes:
-        estimatedMinutes !== null && Number.isFinite(estimatedMinutes) ? estimatedMinutes : null,
-      published: formData.get("published") === "on",
+  const next = {
+    titleEn: String(formData.get("titleEn") ?? ""),
+    titleEs: String(formData.get("titleEs") ?? "") || null,
+    contentEn: String(formData.get("contentEn") ?? ""),
+    contentEs: String(formData.get("contentEs") ?? "") || null,
+    videoUrl: normalizeVideoUrl(String(formData.get("videoUrl") ?? "")),
+    videoUrlEs: normalizeVideoUrl(String(formData.get("videoUrlEs") ?? "")),
+    videoTranscriptEn: String(formData.get("videoTranscriptEn") ?? "") || null,
+    videoTranscriptEs: String(formData.get("videoTranscriptEs") ?? "") || null,
+    videoDurationSeconds:
+      videoDurationSeconds !== null && Number.isFinite(videoDurationSeconds)
+        ? videoDurationSeconds
+        : null,
+    imageUrl: String(formData.get("imageUrl") ?? "") || null,
+    estimatedMinutes:
+      estimatedMinutes !== null && Number.isFinite(estimatedMinutes) ? estimatedMinutes : null,
+    // Publish/unpublish stays ADMIN-only even for a permitted editor —
+    // enforced here, not just by hiding the checkbox.
+    published: isAdmin ? formData.get("published") === "on" : current.published,
+  };
+
+  await prisma.lesson.update({ where: { id: lessonId }, data: next });
+
+  await logAudit({
+    actorId: getTrueActorId(session),
+    action: "TRAINING_CONTENT_EDITED",
+    recordType: "Lesson",
+    recordId: lessonId,
+    changedFields: {
+      titleEn: { from: current.titleEn, to: next.titleEn },
+      titleEs: { from: current.titleEs, to: next.titleEs },
+      contentEn: { from: current.contentEn, to: next.contentEn },
+      contentEs: { from: current.contentEs, to: next.contentEs },
+      published: { from: current.published, to: next.published },
     },
   });
+
   revalidatePath(`/admin/content/${slug}`);
+  revalidatePath(`/training/content-editor/${slug}`);
   revalidatePath("/modules");
+  return { ok: true };
 }
 
 export async function deleteLessonAction(lessonId: string, slug: string) {
@@ -137,9 +229,21 @@ export async function createQuestionAction(moduleId: string, slug: string) {
 export async function updateQuestionAction(
   questionId: string,
   slug: string,
+  expectedUpdatedAt: string,
   formData: FormData
-) {
-  await requireAdmin();
+): Promise<SaveResult> {
+  const access = await tryContentEditAccess();
+  if (!access.ok) return access;
+  const { session } = access;
+  const current = await prisma.quizQuestion.findUnique({
+    where: { id: questionId },
+    include: { options: true },
+  });
+  if (!current) return { ok: false, error: "Question not found." };
+  if (current.updatedAt.toISOString() !== expectedUpdatedAt) {
+    return { ok: false, error: STALE_SAVE_ERROR };
+  }
+
   const textEn = String(formData.get("textEn") ?? "");
   const textEs = String(formData.get("textEs") ?? "") || null;
   const correctOptionId = String(formData.get("correctOptionId") ?? "");
@@ -149,22 +253,37 @@ export async function updateQuestionAction(
     data: { textEn, textEs },
   });
 
-  const options = await prisma.quizOption.findMany({ where: { questionId } });
-  for (const option of options) {
+  const optionChanges: Record<string, { from: unknown; to: unknown }> = {};
+  for (const option of current.options) {
     const textEnOpt = String(formData.get(`option_${option.id}_en`) ?? "");
     const textEsOpt = String(formData.get(`option_${option.id}_es`) ?? "") || null;
+    const isCorrect = option.id === correctOptionId;
+    optionChanges[`option:${option.id}`] = {
+      from: { textEn: option.textEn, textEs: option.textEs, isCorrect: option.isCorrect },
+      to: { textEn: textEnOpt, textEs: textEsOpt, isCorrect },
+    };
     await prisma.quizOption.update({
       where: { id: option.id },
-      data: {
-        textEn: textEnOpt,
-        textEs: textEsOpt,
-        isCorrect: option.id === correctOptionId,
-      },
+      data: { textEn: textEnOpt, textEs: textEsOpt, isCorrect },
     });
   }
 
+  await logAudit({
+    actorId: getTrueActorId(session),
+    action: "TRAINING_CONTENT_EDITED",
+    recordType: "QuizQuestion",
+    recordId: questionId,
+    changedFields: {
+      textEn: { from: current.textEn, to: textEn },
+      textEs: { from: current.textEs, to: textEs },
+      ...optionChanges,
+    },
+  });
+
   revalidatePath(`/admin/content/${slug}`);
+  revalidatePath(`/training/content-editor/${slug}`);
   revalidatePath("/modules");
+  return { ok: true };
 }
 
 export async function deleteQuestionAction(questionId: string, slug: string) {

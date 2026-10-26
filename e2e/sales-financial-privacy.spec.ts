@@ -1,0 +1,134 @@
+import { test, expect, type Page } from "@playwright/test";
+import { PrismaClient } from "@prisma/client";
+import { hashPassword } from "../src/lib/password";
+
+// Only ADMIN should ever receive or see "Actual Labor" and "Profit So Far" —
+// revenue/goal numbers stay visible read-only to any authorized Sales
+// viewer. Two independent surfaces: the /sales page (and the portal Home
+// dashboard's own Sales card) and the generic /api/sales/storage "get" op,
+// which previously returned the raw {revenue, labor} JSON for
+// sales:actuals:<month> to anyone with Sales access. A non-admin SALES_REP
+// and a non-admin SERVICE_MANAGER with Sales access are both tested, since
+// labor/profit must be ADMIN-only regardless of department-level access.
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "shar@mamascleaningcrew.com";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "change-this-immediately";
+const RUN_ID = Date.now().toString();
+const PASSWORD = "Test-Password-123!";
+
+const prisma = new PrismaClient();
+
+function currentMonthKey(now: Date = new Date()): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+const REVENUE = 48213;
+const LABOR = 19321;
+
+async function loginAs(page: Page, email: string, password: string) {
+  await page.goto("/login");
+  await page.fill('input[name="email"]', email);
+  await page.fill('input[name="password"]', password);
+  await page.click('button[type="submit"]');
+  await page.waitForURL((url) => !url.pathname.startsWith("/login"));
+}
+
+test.describe.serial("Sales financial privacy: Actual Labor / Profit So Far are ADMIN-only", () => {
+  let salesRepId: string;
+  let smId: string;
+  const salesRepEmail = `fin-privacy-rep-${RUN_ID}@example.com`;
+  const smEmail = `fin-privacy-sm-${RUN_ID}@example.com`;
+  const monthKey = currentMonthKey();
+
+  test.beforeAll(async () => {
+    const salesRep = await prisma.user.create({
+      data: {
+        email: salesRepEmail,
+        name: `Fin Privacy Sales Rep ${RUN_ID}`,
+        role: "SALES_REP",
+        passwordHash: await hashPassword(PASSWORD),
+        mustSetPassword: false,
+        active: true,
+        departmentAccess: { create: [{ department: "SALES", canEdit: true }] },
+      },
+    });
+    salesRepId = salesRep.id;
+
+    const sm = await prisma.user.create({
+      data: {
+        email: smEmail,
+        name: `Fin Privacy SM ${RUN_ID}`,
+        role: "SERVICE_MANAGER",
+        passwordHash: await hashPassword(PASSWORD),
+        mustSetPassword: false,
+        active: true,
+        departmentAccess: { create: [{ department: "SALES", canEdit: true }] },
+      },
+    });
+    smId = sm.id;
+
+    await prisma.salesToolData.upsert({
+      where: { key: `sales:actuals:${monthKey}` },
+      create: { key: `sales:actuals:${monthKey}`, value: JSON.stringify({ revenue: REVENUE, labor: LABOR }) },
+      update: { value: JSON.stringify({ revenue: REVENUE, labor: LABOR }) },
+    });
+  });
+
+  test.afterAll(async () => {
+    await prisma.salesToolData.deleteMany({ where: { key: `sales:actuals:${monthKey}` } });
+    await prisma.departmentAccess.deleteMany({ where: { userId: { in: [salesRepId, smId] } } });
+    await prisma.user.deleteMany({ where: { id: { in: [salesRepId, smId] } } });
+    await prisma.$disconnect();
+  });
+
+  test("ADMIN: /sales shows Actual Labor and Profit So Far", async ({ page }) => {
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const html = await (await page.request.get("/sales")).text();
+    expect(html).toContain("Actual Labor");
+    expect(html).toContain("Profit So Far");
+    expect(html).toContain(LABOR.toLocaleString());
+  });
+
+  test("SALES_REP: /sales never contains Actual Labor or Profit So Far anywhere in the raw response", async ({
+    page,
+  }) => {
+    await loginAs(page, salesRepEmail, PASSWORD);
+    const html = await (await page.request.get("/sales")).text();
+    expect(html).not.toContain("Actual Labor");
+    expect(html).not.toContain("Profit So Far");
+    expect(html).not.toContain(String(LABOR));
+    // Revenue stays visible.
+    expect(html).toContain("Actual Revenue");
+    expect(html).toContain(REVENUE.toLocaleString());
+  });
+
+  test("non-admin SERVICE_MANAGER (Sales access, not Admin): same restriction as a Sales Rep", async ({ page }) => {
+    await loginAs(page, smEmail, PASSWORD);
+    const html = await (await page.request.get("/sales")).text();
+    expect(html).not.toContain("Actual Labor");
+    expect(html).not.toContain("Profit So Far");
+    expect(html).not.toContain(String(LABOR));
+  });
+
+  test("SALES_REP: /api/sales/storage get on sales:actuals:<month> is denied, never returns labor", async ({
+    page,
+  }) => {
+    await loginAs(page, salesRepEmail, PASSWORD);
+    const res = await page.request.post("/api/sales/storage", {
+      data: { op: "get", key: `sales:actuals:${monthKey}` },
+    });
+    expect(res.status()).toBe(403);
+    const raw = await res.text();
+    expect(raw).not.toContain(String(LABOR));
+  });
+
+  test("ADMIN: /api/sales/storage get on sales:actuals:<month> still returns the real value", async ({ page }) => {
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const res = await page.request.post("/api/sales/storage", {
+      data: { op: "get", key: `sales:actuals:${monthKey}` },
+    });
+    expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    const parsed = JSON.parse(body.value);
+    expect(parsed.labor).toBe(LABOR);
+  });
+});

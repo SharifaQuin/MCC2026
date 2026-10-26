@@ -21,11 +21,12 @@ function Stat({ label, value }: { label: string; value: number | string }) {
 // onboarding/training counts, gated on the HR_SUMMARY area grant. No
 // payroll, pay rates, complaints, payroll disputes, or document-template
 // management ever reach this branch.
-async function OfficeAssistantHrSummary() {
-  const [training, recruiting, staff] = await Promise.all([
+async function OfficeAssistantHrSummary({ userId }: { userId: string }) {
+  const [training, recruiting, staff, staffDirectoryAccess] = await Promise.all([
     loadAdminDashboard(),
     loadRecruitingDashboard(),
     getStaffDashboardStats(),
+    getAreaAccessForUser(userId, "STAFF_DIRECTORY"),
   ]);
 
   return (
@@ -64,12 +65,14 @@ async function OfficeAssistantHrSummary() {
             <Stat label="Total Staff" value={staff.totalStaff} />
             <Stat label="Upcoming Anniversaries" value={staff.upcomingAnniversaries.length} />
           </div>
-          <Link
-            href="/staff"
-            className="mt-5 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-          >
-            View Staff Directory
-          </Link>
+          {staffDirectoryAccess.canView && (
+            <Link
+              href="/staff"
+              className="mt-5 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+            >
+              View Staff Directory
+            </Link>
+          )}
         </section>
       </div>
     </div>
@@ -83,7 +86,7 @@ export default async function HROverviewPage() {
   if (session.role === "OFFICE_ASSISTANT") {
     const access = await getAreaAccessForUser(session.sub, "HR_SUMMARY");
     if (!access.canView) redirect("/");
-    return <OfficeAssistantHrSummary />;
+    return <OfficeAssistantHrSummary userId={session.sub} />;
   }
 
   if (session.role !== "ADMIN" && session.role !== "SERVICE_MANAGER") redirect("/");

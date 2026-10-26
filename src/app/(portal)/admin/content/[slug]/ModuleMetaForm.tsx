@@ -11,20 +11,31 @@ interface Props {
   summaryEn: string | null;
   summaryEs: string | null;
   published: boolean;
+  updatedAt: string;
+  // False for a permitted-but-non-admin training content editor: hides
+  // publish/unpublish and delete, which stay ADMIN-only even though the
+  // same component and save action are reused for both viewers.
+  canAdminister: boolean;
 }
 
 export default function ModuleMetaForm(props: Props) {
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   return (
     <form
       action={(formData) => {
+        setError(null);
         startTransition(async () => {
-          await updateModuleMetaAction(props.moduleId, formData);
-          setSaved(true);
-          setTimeout(() => setSaved(false), 1500);
+          const result = await updateModuleMetaAction(props.moduleId, props.updatedAt, formData);
+          if (result.ok) {
+            setSaved(true);
+            setTimeout(() => setSaved(false), 1500);
+          } else {
+            setError(result.error ?? "Could not save.");
+          }
         });
       }}
       className="space-y-4 rounded-lg border border-neutral-200 bg-white p-4"
@@ -66,10 +77,18 @@ export default function ModuleMetaForm(props: Props) {
           />
         </div>
       </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" name="published" defaultChecked={props.published} />
-        Published (visible to trainees)
-      </label>
+      {props.canAdminister && (
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="published" defaultChecked={props.published} />
+          Published (visible to trainees)
+        </label>
+      )}
+      {!props.canAdminister && (
+        <p className="text-xs text-amber-700">
+          Saving here changes published content immediately — there is no draft or approval step.
+        </p>
+      )}
+      {error && <p className="text-sm font-medium text-red-600">{error}</p>}
       <div className="flex items-center gap-3">
         <button
           type="submit"
@@ -78,20 +97,22 @@ export default function ModuleMetaForm(props: Props) {
         >
           {pending ? "Saving..." : saved ? "Saved" : "Save"}
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            if (confirm("Delete this entire module, including all lessons and quiz questions?")) {
-              startTransition(async () => {
-                await deleteModuleAction(props.moduleId);
-                router.push("/admin/content");
-              });
-            }
-          }}
-          className="text-sm font-medium text-red-600 hover:underline"
-        >
-          Delete Module
-        </button>
+        {props.canAdminister && (
+          <button
+            type="button"
+            onClick={() => {
+              if (confirm("Delete this entire module, including all lessons and quiz questions?")) {
+                startTransition(async () => {
+                  await deleteModuleAction(props.moduleId);
+                  router.push("/admin/content");
+                });
+              }
+            }}
+            className="text-sm font-medium text-red-600 hover:underline"
+          >
+            Delete Module
+          </button>
+        )}
       </div>
     </form>
   );

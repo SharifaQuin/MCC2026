@@ -31,8 +31,8 @@ export interface SalesOpportunity {
 
 export interface SalesActuals {
   revenue: number;
-  labor: number;
-  profit: number;
+  labor: number | null; // null for a non-admin caller — owner-only, never computed for them
+  profit: number | null; // null for a non-admin caller — derived from labor, same boundary
   entered: boolean; // false until she's actually entered a figure this month
 }
 
@@ -115,7 +115,7 @@ function isSameMonth(isoDate: string, now: Date): boolean {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 }
 
-export async function loadSalesDashboard(): Promise<SalesDashboard> {
+export async function loadSalesDashboard(isAdmin: boolean = false): Promise<SalesDashboard> {
   const [rows, goal, actuals] = await Promise.all([
     prisma.salesToolData.findMany({ where: { key: { startsWith: "quote:" } } }),
     getSalesGoal(),
@@ -171,6 +171,13 @@ export async function loadSalesDashboard(): Promise<SalesDashboard> {
 
   const decided = won.length + lost.length;
 
+  // Labor/profit are owner-only: never included in the object handed back
+  // to a non-admin caller at all, not just hidden by the page's rendering —
+  // the RSC payload for a non-admin viewer must never carry these numbers.
+  const scopedActuals: SalesActuals = isAdmin
+    ? actuals
+    : { revenue: actuals.revenue, labor: null, profit: null, entered: actuals.entered };
+
   return {
     goal,
     totalQuotes: quotes.length,
@@ -181,7 +188,7 @@ export async function loadSalesDashboard(): Promise<SalesDashboard> {
     wonRevenueThisMonth,
     wonRevenueAllTime,
     averageJobValue,
-    actuals,
+    actuals: scopedActuals,
     revenueTowardGoal,
     revenueRemaining,
     cleaningsNeeded,

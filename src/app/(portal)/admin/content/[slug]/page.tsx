@@ -45,12 +45,19 @@ export default async function AdminModuleEditorPage({ params }: { params: { slug
           summaryEn={module.summaryEn}
           summaryEs={module.summaryEs}
           published={module.published}
+          updatedAt={module.updatedAt.toISOString()}
+          canAdminister
         />
       </section>
 
       <section>
         <h2 className="mb-3 text-lg font-medium">Lessons</h2>
-        <LessonEditor moduleId={module.id} slug={module.slug} lessons={module.lessons} />
+        <LessonEditor
+          moduleId={module.id}
+          slug={module.slug}
+          lessons={module.lessons.map((l) => ({ ...l, updatedAt: l.updatedAt.toISOString() }))}
+          canAdminister
+        />
       </section>
 
       <section>
@@ -58,8 +65,9 @@ export default async function AdminModuleEditorPage({ params }: { params: { slug
         <QuestionEditor
           moduleId={module.id}
           slug={module.slug}
-          questions={module.quizQuestions}
+          questions={module.quizQuestions.map((q) => ({ ...q, updatedAt: q.updatedAt.toISOString() }))}
           missRates={missRates}
+          canAdminister
         />
       </section>
     </div>

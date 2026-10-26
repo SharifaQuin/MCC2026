@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { t } from "@/lib/i18n";
 import { loadFieldEvaluationSummaryForTrainee } from "@/lib/fieldEvalData";
 import { requireOnboardingComplete } from "@/lib/onboarding";
+import { requireOfficeAssistantTrainingAccess } from "@/lib/officeAssistant";
 import {
   getTrainingExperienceVersion,
   getEffectiveRookiePosition,
@@ -17,6 +18,7 @@ export default async function ProgressPage() {
   if (!session) redirect("/login");
   if (session.role === "SALES_REP") redirect("/sales");
   await requireOnboardingComplete(session);
+  await requireOfficeAssistantTrainingAccess(session);
   const labels = t(session.language);
 
   const me = await prisma.user.findUnique({

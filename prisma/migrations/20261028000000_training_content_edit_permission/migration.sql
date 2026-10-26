@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "PermissionArea" ADD VALUE 'TRAINING_CONTENT_EDIT';

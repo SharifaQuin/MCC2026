@@ -28,7 +28,7 @@ export default async function SalesPage() {
   const isAdmin = session.role === "ADMIN";
   const isSalesRep = session.role === "SALES_REP";
   const [dash, leadKpis, overdueSalesTasks] = await Promise.all([
-    loadSalesDashboard(),
+    loadSalesDashboard(isAdmin),
     loadLeadKpis(),
     // Her sales-only equivalent of the general Today card — see
     // getOverdueSalesChecklistTasks' own comment for why she doesn't see
@@ -134,8 +134,12 @@ export default async function SalesPage() {
 
           <div className="mt-3 grid grid-cols-3 gap-3">
             <Stat label="Actual Revenue" value={money(dash.actuals.revenue)} />
-            <Stat label="Actual Labor" value={money(dash.actuals.labor)} />
-            <Stat label="Profit So Far" value={money(dash.actuals.profit)} accent />
+            {isAdmin && dash.actuals.labor !== null && (
+              <Stat label="Actual Labor" value={money(dash.actuals.labor)} />
+            )}
+            {isAdmin && dash.actuals.profit !== null && (
+              <Stat label="Profit So Far" value={money(dash.actuals.profit)} accent />
+            )}
           </div>
 
           {isAdmin && (
