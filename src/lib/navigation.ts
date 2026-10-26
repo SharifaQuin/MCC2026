@@ -116,7 +116,7 @@ export function buildNavGroups({
       links: [
         { href: "/sales", label: "Sales Dashboard" },
         { href: "/sales/leads", label: "Leads & Callbacks" },
-        { href: "/sales/pricing-tool", label: "Quote Tool" },
+        { href: "/sales/pricing-tool", label: "Pricing Calculator" },
         { href: "/sales/quotes", label: "Quotes" },
         { href: "/sales/open-slots", label: "Open Slots" },
       ],
@@ -133,6 +133,7 @@ export function buildNavGroups({
         { href: "/todo", label: labels.todo },
         { href: "/admin/rookie-journey", label: "Rookie Journey" },
         { href: "/owner/problem-reports", label: "Problem Reports", badge: openProblemReportCount },
+        { href: "/sales/pricing-tool", label: "Pricing Calculator" },
       ],
     });
   }

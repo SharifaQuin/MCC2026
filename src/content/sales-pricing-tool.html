@@ -256,7 +256,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 .btn-small{font-family:'Lato',sans-serif;font-size:11.5px;font-weight:700;background:var(--navy);color:#fff;border:none;border-radius:6px;padding:9px 16px;cursor:pointer;white-space:nowrap;}
 .btn-small:hover{background:var(--navy-mid);}
 .builder-note{font-family:'Lato',sans-serif;font-size:10.5px;color:var(--charcoal-lt);line-height:1.5;margin-top:4px;}
-.generate-row{margin-top:20px;padding-top:18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;}
+.generate-row{margin-top:20px;padding-top:18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;}
 .btn-generate{font-family:'Lato',sans-serif;font-size:12.5px;font-weight:700;letter-spacing:.02em;background:var(--green);color:#fff;border:none;border-radius:6px;padding:11px 22px;cursor:pointer;}
 .btn-generate:hover{background:var(--green-dark);}
 
@@ -773,6 +773,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
     <div class="builder-section-title">Or Fill In By Hand</div>
     <div class="form-grid">
       <div class="form-field"><label>Client name</label><input type="text" id="f-name" placeholder="e.g. Jennifer Salas"></div>
+      <div class="form-field"><label>Client email (needed to save/send this quote)</label><input type="email" id="f-recipient-email" placeholder="client@example.com"></div>
       <div class="form-field"><label>City</label><input type="text" id="f-city" placeholder="e.g. Irvine"></div>
       <div class="form-field"><label>Service address</label><input type="text" id="f-address" placeholder="Street address"></div>
       <div class="form-field"><label>Date of walkthrough</label><input type="date" id="f-date"></div>
@@ -821,9 +822,17 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
       <div class="form-field"><label>Your name (for the email signature)</label><input type="text" id="f-sender" placeholder="e.g. Maria"></div>
     </div>
 
-    <div class="generate-row">
-      <button class="btn-generate" onclick="generateQuote()">Generate Client Quote →</button>
+    <div class="builder-section-title">Save This Quote</div>
+    <div class="form-grid">
+      <div class="form-field"><label>Quote ID (leave blank to auto-generate from name — ignored once a quote is already loaded above, which always updates in place)</label><input type="text" id="f-quote-id" placeholder="e.g. smith-0728"></div>
     </div>
+
+    <div class="generate-row">
+      <button class="btn-small" onclick="clearManualQuoteForNewClient()" id="f-new-client-btn">New Client / Clear</button>
+      <button class="btn-generate" onclick="generateQuote()">Preview Client Quote →</button>
+      <button class="btn-generate" onclick="saveManualQuote()" id="f-save-btn">Save Quote →</button>
+    </div>
+    <div class="builder-note" id="f-save-status"></div>
   </div>
 </div>
 
@@ -2181,38 +2190,23 @@ async function loadQuoteForUpdate(){
 async function saveQuoteForClient(){
   const statusEl = document.getElementById('save-quote-status');
   const clientName = document.getElementById('save-client-name').value.trim();
-  let id = document.getElementById('save-client-id').value.trim();
   if(!clientName){ statusEl.textContent = 'Enter a client name first.'; return; }
-  if(!id){
-    const today = new Date();
-    const mmdd = String(today.getMonth()+1).padStart(2,'0') + String(today.getDate()).padStart(2,'0');
-    // Include the service so the same client getting two different quotes
-    // the same day (e.g. Standard + Deep) get distinct auto-generated IDs
-    // instead of silently overwriting each other under name-date alone.
-    id = clientName.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') + '-' + mmdd + '-' + state.service;
-    document.getElementById('save-client-id').value = id;
-  } else {
-    // Storage keys can't contain spaces, quotes, or slashes — clean up anything typed by hand
-    // (e.g. an apostrophe in "O'Brien") rather than letting the save fail silently on it.
-    const cleanedId = id.toLowerCase().replace(/[^a-z0-9-]+/g,'-').replace(/-+/g,'-').replace(/(^-|-$)/g,'');
-    if(cleanedId !== id){
-      id = cleanedId;
-      document.getElementById('save-client-id').value = id;
-      statusEl.textContent = `Quote ID had to be cleaned up to "${id}" (spaces/apostrophes/slashes aren't allowed in a saved ID) — saving under that.`;
-    }
-  }
+  // Include the service so the same client getting two different quotes the
+  // same day (e.g. Standard + Deep) get distinct auto-generated IDs instead
+  // of silently overwriting each other under name-date alone. Shared with
+  // saveManualQuote() above via resolveQuoteSaveId/checkQuoteIdCollision so
+  // both quote-creation surfaces resolve/guard a Quote ID the same way.
+  const resolved = await resolveQuoteSaveId(document.getElementById('save-client-id').value, clientName, state.service);
+  let id = resolved.id;
+  document.getElementById('save-client-id').value = id;
+  if(resolved.note) statusEl.textContent = resolved.note;
 
-  let existingData = null;
-  try{
-    const existing = await window.storage.get('quote:'+id, true);
-    if(existing && existing.value){
-      existingData = JSON.parse(existing.value);
-      if(existingData.clientName !== clientName){
-        statusEl.textContent = `Quote ID "${id}" is already used by a different client (${existingData.clientName}). Please enter a unique Quote ID above and save again.`;
-        return;
-      }
-    }
-  } catch(e){}
+  const collisionCheck = await checkQuoteIdCollision(id, clientName);
+  if(collisionCheck.collision){
+    statusEl.textContent = `Quote ID "${id}" is already used by a different client (${collisionCheck.existingData.clientName}). Please enter a unique Quote ID above and save again.`;
+    return;
+  }
+  const existingData = collisionCheck.existingData;
 
   const r = computeCurrent();
   const cleanMin = r.hours*60, bufferedMin = cleanMin+60;
@@ -3106,6 +3100,8 @@ function collectFormData(){
   };
   return {
     clientName: document.getElementById('f-name').value || 'Valued Client',
+    clientEmail: document.getElementById('f-recipient-email').value.trim(),
+    quoteIdInput: document.getElementById('f-quote-id').value.trim(),
     city: document.getElementById('f-city').value,
     address: document.getElementById('f-address').value,
     walkthroughDate: document.getElementById('f-date').value,
@@ -3121,6 +3117,55 @@ function collectFormData(){
   };
 }
 
+// Combines the freshly-typed manual-form fields with whatever quote is
+// currently loaded (if any), so switching to this form — or re-generating
+// after editing it — never discards an in-progress quote's id/clientEmail/
+// status/sentAt. The only way to intentionally start a new, unlinked quote
+// is the explicit "New Client / Clear" action below, which nulls
+// currentQuote first. The recipient email always comes from the manual
+// form's own field (the one thing the user may have just edited), never
+// from a name/email text match against the previously-loaded record.
+function buildMergedManualQuoteData(formData){
+  const base = (currentQuote && currentQuote.id) ? Object.assign({}, currentQuote) : {};
+  const merged = Object.assign({}, base, formData);
+  merged.clientEmail = formData.clientEmail;
+  delete merged.quoteIdInput;
+  return merged;
+}
+
+// Keeps the manual "Fill In By Hand" form in sync with whatever quote is
+// currently loaded, no matter which surface loaded it (the Pricing
+// Calculator's Save Quote box, "Load a Saved Quote", the Previous Quotes
+// list, or this form's own Save) — so switching to this form always shows
+// a fully editable copy of the loaded quote ready for a targeted tweak,
+// never a stale or blank one, and a subsequent regenerate+save can't lose
+// the client name (which saveManualQuote requires) just because loading
+// happened on a different tab.
+function syncManualFormFromQuote(data){
+  const setVal = (id, val) => { const el = document.getElementById(id); if(el) el.value = val; };
+  const setChecked = (id, val) => { const el = document.getElementById(id); if(el) el.checked = !!val; };
+  setVal('f-recipient-email', data.clientEmail || '');
+  setVal('f-quote-id', data.id || '');
+  setVal('f-name', data.clientName || '');
+  setVal('f-city', data.city || '');
+  setVal('f-address', data.address || '');
+  setVal('f-date', data.walkthroughDate || '');
+  if(data.service) setVal('f-service', data.service);
+  if(data.frequency) setVal('f-frequency', data.frequency);
+  setVal('f-low', data.low || '');
+  setVal('f-high', data.high || '');
+  setVal('f-time', data.time || '');
+  setVal('f-validuntil', data.validUntil || '');
+  const addons = data.addons || {};
+  setChecked('a-linens', addons.linens);
+  setChecked('a-baseboards', addons.baseboards);
+  setChecked('a-laundry', addons.laundry);
+  setChecked('a-fridge', addons.fridge);
+  setChecked('a-oven', addons.oven);
+  setChecked('a-glass', addons.glass);
+  setChecked('a-pet', addons.pet);
+}
+
 function generateQuote(){
   const data = collectFormData();
   if(!data.mailbox){
@@ -3128,7 +3173,142 @@ function generateQuote(){
     return;
   }
   saveDefaultSenderSettings(data.mailbox, data.sender);
-  renderQuote(data);
+  renderQuote(buildMergedManualQuoteData(data));
+}
+
+// Shared with saveQuoteForClient() below — same auto-generate/cleanup rules,
+// factored out so both quote-creation surfaces resolve a Quote ID the same
+// way instead of each inventing their own.
+function generateQuoteIdFromName(clientName, suffix){
+  const today = new Date();
+  const mmdd = String(today.getMonth()+1).padStart(2,'0') + String(today.getDate()).padStart(2,'0');
+  const base = clientName.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+  return base + '-' + mmdd + (suffix ? '-'+suffix : '');
+}
+function cleanTypedQuoteId(id){
+  return id.toLowerCase().replace(/[^a-z0-9-]+/g,'-').replace(/-+/g,'-').replace(/(^-|-$)/g,'');
+}
+async function resolveQuoteSaveId(typedId, clientName, suffix){
+  const id = (typedId||'').trim();
+  if(!id){
+    return { id: generateQuoteIdFromName(clientName, suffix), note: '' };
+  }
+  const cleaned = cleanTypedQuoteId(id);
+  if(cleaned !== id){
+    return { id: cleaned, note: `Quote ID had to be cleaned up to "${cleaned}" (spaces/apostrophes/slashes aren't allowed in a saved ID) — saving under that.` };
+  }
+  return { id: cleaned, note: '' };
+}
+async function checkQuoteIdCollision(id, clientName){
+  try{
+    const existing = await window.storage.get('quote:'+id, true);
+    if(existing && existing.value){
+      const existingData = JSON.parse(existing.value);
+      if(existingData.clientName !== clientName){
+        return { collision: true, existingData };
+      }
+      return { collision: false, existingData };
+    }
+  } catch(e){}
+  return { collision: false, existingData: null };
+}
+
+// Persists a quote built from the manual "Fill In By Hand" form. Mirrors
+// saveQuoteForClient()'s id-cleanup/collision-check/status-preservation
+// approach (via the shared helpers above) rather than inventing a second
+// persistence scheme. If a quote is already loaded (currentQuote.id is
+// truthy), this always updates that exact same record — the Quote ID field
+// is only consulted when starting a genuinely new, unsaved quote; the only
+// way to intentionally break the link to a loaded quote is "New Client /
+// Clear" below.
+async function saveManualQuote(){
+  const statusEl = document.getElementById('f-save-status');
+  const clientName = document.getElementById('f-name').value.trim();
+  if(!clientName){ statusEl.textContent = 'Enter a client name first.'; return; }
+
+  const email = document.getElementById('f-recipient-email').value.trim();
+  if(!email){ statusEl.textContent = 'Enter the client\'s email above before saving — it\'s required to send the quote later.'; return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ statusEl.textContent = 'That client email doesn\'t look valid — check it and try again.'; return; }
+
+  const data = collectFormData();
+  const alreadyLoaded = !!(currentQuote && currentQuote.id);
+  let id, existingData = null;
+
+  if(alreadyLoaded){
+    id = currentQuote.id;
+    try{
+      const existing = await window.storage.get('quote:'+id, true);
+      if(existing && existing.value) existingData = JSON.parse(existing.value);
+    } catch(e){}
+    if(!existingData){
+      statusEl.textContent = 'This quote no longer exists in storage (it may have been deleted elsewhere) — use "New Client / Clear" to start fresh, or clear the Quote ID field above to save it as a new quote.';
+      return;
+    }
+  } else {
+    const idFieldEl = document.getElementById('f-quote-id');
+    const resolved = await resolveQuoteSaveId(idFieldEl.value, clientName, data.service);
+    id = resolved.id;
+    idFieldEl.value = id;
+    if(resolved.note) statusEl.textContent = resolved.note;
+
+    const collisionCheck = await checkQuoteIdCollision(id, clientName);
+    if(collisionCheck.collision){
+      statusEl.textContent = `Quote ID "${id}" is already used by a different client (${collisionCheck.existingData.clientName}). Please enter a unique Quote ID above and save again.`;
+      return;
+    }
+    existingData = collisionCheck.existingData;
+  }
+
+  const merged = buildMergedManualQuoteData(data);
+  merged.id = id;
+  merged.clientEmail = email;
+  merged.status = (existingData && existingData.status) || 'pending';
+  merged.sentAt = (existingData && existingData.sentAt) || null;
+  merged.savedAt = new Date().toISOString();
+
+  if(typeof window.storage === 'undefined' || !window.storage){
+    statusEl.textContent = 'Save failed — this browser/window has no connection to Claude\'s storage.';
+    return;
+  }
+
+  try{
+    const result = await window.storage.set('quote:'+id, JSON.stringify(merged), true);
+    if(result){
+      statusEl.textContent = `Saved. Quote ID: ${id}.`;
+      document.getElementById('f-quote-id').value = id;
+      renderQuote(merged);
+      if(typeof refreshPreviousQuotesList === 'function') refreshPreviousQuotesList();
+    } else {
+      statusEl.textContent = 'Save failed — storage returned nothing. Check the Quote ID above for spaces, apostrophes, or slashes and try again.';
+    }
+  } catch(e){
+    statusEl.textContent = 'Save failed: ' + (e && e.message ? e.message : 'unknown error') + '. Check the Quote ID for unusual characters and try again.';
+  }
+}
+
+// The only intentional way to break the link to whatever quote is currently
+// loaded — clears id/recipient/everything so the manual form's next Save
+// creates a genuinely new, separate quote rather than silently updating the
+// one that was just here.
+function clearManualQuoteForNewClient(){
+  currentQuote = null;
+  ['f-name','f-city','f-address','f-recipient-email','f-quote-id','f-date','f-time','f-validuntil','f-low','f-high'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.value = '';
+  });
+  const serviceEl = document.getElementById('f-service');
+  if(serviceEl) serviceEl.value = 'standard';
+  const freqEl = document.getElementById('f-frequency');
+  if(freqEl) freqEl.value = 'One-Time';
+  ['a-linens','a-baseboards','a-laundry','a-fridge','a-oven','a-glass','a-pet'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.checked = false;
+  });
+  document.getElementById('f-save-status').textContent = 'Cleared — ready for a new, unrelated client/quote.';
+  const emptyEl = document.getElementById('empty-state');
+  const quoteViewEl = document.getElementById('quote-view');
+  if(emptyEl) emptyEl.style.display = '';
+  if(quoteViewEl) quoteViewEl.classList.remove('open');
 }
 
 async function loadDefaultSenderSettings(){
@@ -3289,6 +3469,8 @@ function renderQuote(data){
   document.getElementById('empty-state').style.display = 'none';
   document.getElementById('quote-view').classList.add('open');
 
+  syncManualFormFromQuote(data);
+
   const firstName = (data.clientName||'').split(' ')[0] || 'there';
   document.getElementById('q-hero-title').textContent = `A Cleaner, Calmer Home Awaits`;
   document.getElementById('q-hero-sub').textContent = `Prepared especially for ${data.clientName||'you'}`;
@@ -3354,9 +3536,12 @@ function updateSalesControlsUI(data){
 
   const sendBtn = document.getElementById('sc-send-btn');
   const sendStatus = document.getElementById('sc-send-status');
-  if(!data.clientEmail){
+  if(!data.id){
     sendBtn.disabled = true;
-    sendStatus.textContent = 'Add a client email in the Pricing Calculator tab and save again to enable sending.';
+    sendStatus.textContent = 'Save this quote (with a client email) first to enable sending.';
+  } else if(!data.clientEmail){
+    sendBtn.disabled = true;
+    sendStatus.textContent = 'Add a client email and save again to enable sending.';
   } else {
     sendBtn.disabled = false;
     sendStatus.textContent = data.sentAt
@@ -3422,8 +3607,43 @@ function skipRouteLog(){
 async function sendQuoteToClient(){
   const sendBtn = document.getElementById('sc-send-btn');
   const sendStatus = document.getElementById('sc-send-status');
-  if(!currentQuote || !currentQuote.id) return;
-  if(!currentQuote.clientEmail){ sendStatus.textContent = 'No client email on this quote.'; return; }
+
+  // Disable immediately, synchronously, before any awaited checks below —
+  // a rapid second click must never be able to slip through the async gap
+  // while those checks are still pending, which is how a duplicate-click
+  // could otherwise still double-send even with every check below in place.
+  if(sendBtn.disabled) return;
+  sendBtn.disabled = true;
+
+  if(!currentQuote || !currentQuote.id){
+    sendStatus.textContent = 'Save this quote (with a client email) first to enable sending.';
+    sendBtn.disabled = false;
+    return;
+  }
+  if(!currentQuote.clientEmail){
+    sendStatus.textContent = 'No client email on this quote — add one and save again.';
+    sendBtn.disabled = false;
+    return;
+  }
+
+  // Re-check against storage immediately before sending — guards against a
+  // stale loaded-then-deleted quote, or an unsaved recipient edit, silently
+  // sending to the wrong place (or nowhere at all) instead of failing loudly.
+  let fresh = null;
+  try{
+    const freshResult = await window.storage.get('quote:'+currentQuote.id, true);
+    fresh = freshResult && freshResult.value ? JSON.parse(freshResult.value) : null;
+  } catch(e){ fresh = null; }
+  if(!fresh){
+    sendStatus.textContent = 'This quote no longer exists in storage — it may have been deleted elsewhere. Save it again before sending.';
+    sendBtn.disabled = false;
+    return;
+  }
+  if(fresh.clientEmail !== currentQuote.clientEmail){
+    sendStatus.textContent = 'The recipient email shown doesn\'t match what\'s saved — save your changes before sending, so this doesn\'t go to the wrong address.';
+    sendBtn.disabled = false;
+    return;
+  }
 
   const q = currentQuote;
   const serviceLabel = SERVICE_LABELS[q.service] || q.service || '';
@@ -3474,7 +3694,6 @@ async function sendQuoteToClient(){
     EMAIL_CONTACT_TEXT,
   ].filter(Boolean).join('\n\n');
 
-  sendBtn.disabled = true;
   sendStatus.textContent = 'Sending...';
   try{
     const res = await fetch('/api/sales/send-quote', {

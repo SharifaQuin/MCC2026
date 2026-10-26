@@ -38,6 +38,17 @@ export async function POST(request: Request) {
     return Response.json({ error: "Quote not found" }, { status: 404 });
   }
 
+  // A quote linked (by Lead.quoteKey) to a Scam-classified lead must never
+  // be sent — this is the one real gap the Section A client-side identity
+  // fix doesn't close on its own: a stale/already-open tab could otherwise
+  // still send to a scam lead's stored recipient even after classification
+  // happens in another tab, since the client never re-checks Lead stage.
+  // Checked fresh here, server-side, every time — never cached.
+  const linkedLead = await prisma.lead.findFirst({ where: { quoteKey: id }, select: { stage: true } });
+  if (linkedLead?.stage === "SCAM") {
+    return Response.json({ error: "This quote is linked to a lead classified as Scam — sending is blocked." }, { status: 403 });
+  }
+
   const quote = JSON.parse(row.value);
   const clientEmail = typeof quote.clientEmail === "string" ? quote.clientEmail.trim() : "";
   if (!clientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail)) {

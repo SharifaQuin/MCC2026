@@ -98,8 +98,15 @@ export async function submitLeadAction(formData: FormData) {
     if (value) customFields.push({ label: field.label, value });
   }
 
+  // SCAM included here (flagged as a product call, not decided silently —
+  // see this PR's description): leaving it OUT would mean a scam-classified
+  // email permanently and silently suppresses any future resubmission from
+  // that same address, including a different real person who later shares
+  // it. Including it means a resubmission from that address always creates
+  // a fresh Lead instead, consistent with "don't auto-block other people
+  // sharing contact details."
   const existing = await prisma.lead.findFirst({
-    where: { email: { equals: email, mode: "insensitive" }, stage: { notIn: ["WON", "LOST"] } },
+    where: { email: { equals: email, mode: "insensitive" }, stage: { notIn: ["WON", "LOST", "SCAM"] } },
   });
   if (existing) {
     redirect("/lead-form/thank-you");

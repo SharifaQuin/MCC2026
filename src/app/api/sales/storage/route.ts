@@ -97,7 +97,7 @@ export async function POST(request: Request) {
 
           if (quoteData.status === "won" || quoteData.status === "lost") {
             const lead = await prisma.lead.findFirst({ where: { quoteKey: quoteId } });
-            if (lead && lead.stage !== "WON" && lead.stage !== "LOST") {
+            if (lead && lead.stage !== "WON" && lead.stage !== "LOST" && lead.stage !== "SCAM") {
               const toStage = quoteData.status === "won" ? "WON" : "LOST";
               await prisma.lead.update({
                 where: { id: lead.id },

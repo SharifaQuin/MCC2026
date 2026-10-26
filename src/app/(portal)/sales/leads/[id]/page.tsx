@@ -157,6 +157,12 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
         </div>
       )}
 
+      {lead.stage === "SCAM" && (
+        <div className="mb-6 rounded-md border border-neutral-700 bg-neutral-900 p-3 text-sm text-white">
+          Classified as Scam{lead.scamReason ? `: ${lead.scamReason}` : "."}
+        </div>
+      )}
+
       <div className="mb-6 rounded-lg border border-neutral-200 bg-white p-4">
         <dl className="grid grid-cols-2 gap-3 text-sm">
           <div>
@@ -231,7 +237,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
       {canEdit && (
         <div className="mb-6 rounded-lg border border-neutral-200 bg-white p-4">
           <h2 className="mb-3 font-medium text-neutral-900">Move Lead</h2>
-          <LeadStageControls leadId={lead.id} stage={lead.stage} />
+          <LeadStageControls leadId={lead.id} stage={lead.stage} expectedUpdatedAt={lead.updatedAt.toISOString()} />
         </div>
       )}
 

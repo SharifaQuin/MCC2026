@@ -194,6 +194,141 @@ export async function markLeadLostAction(leadId: string, lostReason: string) {
   revalidatePath("/sales");
 }
 
+export interface MarkLeadScamResult {
+  ok: boolean;
+  error?: string;
+}
+
+// Mirrors markLeadLostAction's shape, plus the extra protections the owner
+// explicitly asked for that Lost itself doesn't have: a stale-write check
+// (Lost has none today — deliberately not touched here, out of scope) and
+// an explicit refusal to convert an already-WON lead, since nothing
+// server-side stops that today (LeadStageControls' NEXT_STAGES map is
+// UI-only). expectedUpdatedAt must be the ISO string of the lead's
+// updatedAt as last read by the caller — a mismatch means someone/something
+// else changed this lead in between, and we refuse rather than overwrite.
+export async function markLeadScamAction(
+  leadId: string,
+  expectedUpdatedAt: string,
+  reason?: string
+): Promise<MarkLeadScamResult> {
+  const { session, canEdit } = await requireDepartmentAccess("SALES");
+  if (!canEdit) return { ok: false, error: "Not authorized." };
+  // Office Assistant never reaches here (requireDepartmentAccess("SALES")
+  // always denies this role — see src/lib/departments.ts), but guard
+  // explicitly anyway: marking a lead Scam is a business judgment call, not
+  // a factual contact status this role may record on its own.
+  if (session.role === "OFFICE_ASSISTANT") throw new Error("Not authorized.");
+
+  // Always re-read fresh — never trust a cached/client-supplied stage, and
+  // this also covers a forged/stale lead id for a lead that's since changed
+  // stage via a completely different path.
+  const current = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  if (current.updatedAt.toISOString() !== expectedUpdatedAt) {
+    return {
+      ok: false,
+      error: "This lead changed since you loaded it — reload the page and try again.",
+    };
+  }
+  if (current.stage === "WON") {
+    return {
+      ok: false,
+      error: "This lead is already Won — an already-booked job needs manual review, not an automatic reclassification. Contact the owner.",
+    };
+  }
+
+  const trimmedReason = reason?.trim() || null;
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { stage: "SCAM", scamReason: trimmedReason },
+  });
+  await prisma.leadStageChange.create({
+    data: { leadId, fromStage: current.stage, toStage: "SCAM", changedById: getTrueActorId(session) },
+  });
+  await logAudit({
+    actorId: getTrueActorId(session),
+    action: "LEAD_MARKED_SCAM",
+    recordType: "Lead",
+    recordId: leadId,
+    changedFields: { fromStage: { from: current.stage, to: "SCAM" }, reason: { from: null, to: trimmedReason } },
+  });
+
+  // Bulk-cancel every pending scheduled send for this lead — a scam contact
+  // should never still get a follow-up text/email queued up after this.
+  // This can't intercept a row the 60s-interval scheduler already claimed
+  // into SENDING in the narrow window right before this runs (a real, known
+  // limitation — reported honestly rather than claimed as airtight). SENT/
+  // FAILED history is untouched either way.
+  await prisma.scheduledMessage.updateMany({
+    where: { leadId, status: "PENDING" },
+    data: { status: "CANCELLED", cancelReason: "Lead marked Scam" },
+  });
+
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath("/sales/leads");
+  revalidatePath("/sales/leads/scam");
+  revalidatePath("/sales");
+  revalidatePath("/scheduled");
+  return { ok: true };
+}
+
+export interface RestoreLeadFromScamResult {
+  ok: boolean;
+  error?: string;
+}
+
+// The prior stage is read from this lead's own stage-change history (the
+// most recent row whose toStage is SCAM) rather than a new field — that
+// history already exists and is the single source of truth for "what was
+// this lead before it got classified." Never auto-resends anything the
+// Scam action cancelled; restoring only ever changes stage/scamReason.
+export async function restoreLeadFromScamAction(
+  leadId: string,
+  expectedUpdatedAt: string
+): Promise<RestoreLeadFromScamResult> {
+  const { session, canEdit } = await requireDepartmentAccess("SALES");
+  if (!canEdit) return { ok: false, error: "Not authorized." };
+  if (session.role === "OFFICE_ASSISTANT") throw new Error("Not authorized.");
+
+  const current = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  if (current.updatedAt.toISOString() !== expectedUpdatedAt) {
+    return {
+      ok: false,
+      error: "This lead changed since you loaded it — reload the page and try again.",
+    };
+  }
+  if (current.stage !== "SCAM") {
+    return { ok: false, error: "This lead isn't currently classified as Scam — nothing to restore." };
+  }
+
+  const lastScamChange = await prisma.leadStageChange.findFirst({
+    where: { leadId, toStage: "SCAM" },
+    orderBy: { createdAt: "desc" },
+  });
+  const restoredStage: LeadStage = lastScamChange?.fromStage ?? "NEW_INQUIRY";
+
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { stage: restoredStage, scamReason: null },
+  });
+  await prisma.leadStageChange.create({
+    data: { leadId, fromStage: "SCAM", toStage: restoredStage, changedById: getTrueActorId(session) },
+  });
+  await logAudit({
+    actorId: getTrueActorId(session),
+    action: "LEAD_RESTORED_FROM_SCAM",
+    recordType: "Lead",
+    recordId: leadId,
+    changedFields: { fromStage: { from: "SCAM", to: restoredStage } },
+  });
+
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath("/sales/leads");
+  revalidatePath("/sales/leads/scam");
+  revalidatePath("/sales");
+  return { ok: true };
+}
+
 // For phone calls, walk-ins, or referrals — added directly by a manager,
 // skipping the public website form since it wasn't a website inquiry.
 export async function createManualLeadAction(formData: FormData) {
