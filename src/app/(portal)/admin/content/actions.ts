@@ -5,9 +5,13 @@ import { prisma } from "@/lib/prisma";
 import { getSession, type SessionPayload } from "@/lib/session";
 import { normalizeVideoUrl } from "@/lib/videoUrl";
 import { moduleVideoTranscripts } from "@/data/moduleVideoTranscripts";
-import { assertTrainingContentEditAccess } from "@/lib/trainingContentAccess";
+import { assertTrainingContentEditAccess, isLessonInLiveRookieCurriculum } from "@/lib/trainingContentAccess";
+import { getTrainingExperienceVersion } from "@/lib/rookieJourney";
 import { logAudit } from "@/lib/auditLog";
 import { getTrueActorId } from "@/lib/impersonation";
+
+const NOT_LIVE_CURRICULUM_ERROR =
+  "This isn't part of the live curriculum right now — the active training mode changed, or this content isn't assigned to it. Reload to see what's current.";
 
 async function requireAdmin() {
   const session = await getSession();
@@ -80,6 +84,14 @@ export async function updateModuleMetaAction(
   const access = await tryContentEditAccess();
   if (!access.ok) return access;
   const { session, isAdmin } = access;
+  // The classic catalog has no Rookie equivalent — while Rookie Journey is
+  // the active training mode, it isn't the live curriculum, so a non-admin
+  // editor may not touch it at all. Computed fresh here (never trusted from
+  // the client), so flipping the mode between page load and save rejects
+  // the save instead of silently succeeding.
+  if (!isAdmin && (await getTrainingExperienceVersion()) === "rookie") {
+    return { ok: false, error: NOT_LIVE_CURRICULUM_ERROR };
+  }
   const current = await prisma.module.findUnique({ where: { id: moduleId } });
   if (!current) return { ok: false, error: "Module not found." };
   if (current.updatedAt.toISOString() !== expectedUpdatedAt) {
@@ -149,6 +161,16 @@ export async function updateLessonAction(
   const access = await tryContentEditAccess();
   if (!access.ok) return access;
   const { session, isAdmin } = access;
+  // Unlike the module/quiz actions, a Lesson CAN be the live curriculum
+  // while Rookie is active — if it's currently assigned to a Rookie Day.
+  // Classic mode is unrestricted here (no change from the original
+  // behavior); Rookie mode allows only a lesson actually assigned to a live
+  // Rookie Day, re-checked fresh so a stale tab or a mode flip is caught.
+  if (!isAdmin && (await getTrainingExperienceVersion()) === "rookie") {
+    if (!(await isLessonInLiveRookieCurriculum(lessonId))) {
+      return { ok: false, error: NOT_LIVE_CURRICULUM_ERROR };
+    }
+  }
   const current = await prisma.lesson.findUnique({ where: { id: lessonId } });
   if (!current) return { ok: false, error: "Lesson not found." };
   if (current.updatedAt.toISOString() !== expectedUpdatedAt) {
@@ -234,7 +256,10 @@ export async function updateQuestionAction(
 ): Promise<SaveResult> {
   const access = await tryContentEditAccess();
   if (!access.ok) return access;
-  const { session } = access;
+  const { session, isAdmin } = access;
+  if (!isAdmin && (await getTrainingExperienceVersion()) === "rookie") {
+    return { ok: false, error: NOT_LIVE_CURRICULUM_ERROR };
+  }
   const current = await prisma.quizQuestion.findUnique({
     where: { id: questionId },
     include: { options: true },

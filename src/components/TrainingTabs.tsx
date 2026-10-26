@@ -16,9 +16,25 @@ const ADMIN_ONLY_TABS = [
   { href: "/admin/permissions", label: "Permissions" },
 ];
 
-export default function TrainingTabs({ isAdmin }: { isAdmin: boolean }) {
+export default function TrainingTabs({
+  isAdmin,
+  hideClassicCatalogTabs = false,
+}: {
+  isAdmin: boolean;
+  // While Rookie Journey is the active training mode, the classic
+  // 25-module catalog isn't the live curriculum — hide its everyday-nav
+  // tabs (Modules, Content Editor) to avoid pointing anyone at content
+  // trainees no longer see. /training/content-editor and
+  // /admin/rookie-journey (the Rookie-aware equivalents) stay reachable
+  // from elsewhere and are unaffected by this.
+  hideClassicCatalogTabs?: boolean;
+}) {
   const pathname = usePathname();
-  const tabs = isAdmin ? [...TABS, ...ADMIN_ONLY_TABS] : TABS;
+  const visibleTabs = hideClassicCatalogTabs ? TABS.filter((tab) => tab.href !== "/modules") : TABS;
+  const visibleAdminTabs = hideClassicCatalogTabs
+    ? ADMIN_ONLY_TABS.filter((tab) => tab.href !== "/admin/content")
+    : ADMIN_ONLY_TABS;
+  const tabs = isAdmin ? [...visibleTabs, ...visibleAdminTabs] : visibleTabs;
 
   return (
     <div className="flex flex-wrap gap-3">

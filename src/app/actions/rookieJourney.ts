@@ -3,12 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/session";
+import { getSession, type SessionPayload } from "@/lib/session";
 import { getTrueActorId } from "@/lib/impersonation";
+import { logAudit } from "@/lib/auditLog";
+import { assertTrainingContentEditAccess } from "@/lib/trainingContentAccess";
 import {
   recordFieldCheckoff,
   markRookieContentComplete,
   setTrainingExperienceVersion,
+  getTrainingExperienceVersion,
+  ROOKIE_DAY_COUNT,
   type TrainingExperienceVersion,
 } from "@/lib/rookieJourney";
 import type {
@@ -35,6 +39,36 @@ async function requireTrainerOrAdmin() {
   return session;
 }
 
+export interface SaveResult {
+  ok: boolean;
+  error?: string;
+}
+
+const STALE_SAVE_ERROR =
+  "This content was changed by someone else since you opened it — reload the page to see the latest version before saving again.";
+const NOT_LIVE_CURRICULUM_ERROR =
+  "This isn't part of the live curriculum right now — the active training mode changed, or this content isn't assigned to it. Reload to see what's current.";
+
+// Shared by the granted-editor's narrowly-scoped Rookie Day view
+// (/training/content-editor/day/[n]) and the ADMIN-only
+// /admin/rookie-journey editor — same pattern as
+// admin/content/actions.ts's tryContentEditAccess: never throws, so a
+// revoked grant surfaces as a clean save-rejection message rather than an
+// uncaught error.
+async function tryContentEditAccess(): Promise<
+  { ok: true; session: SessionPayload; isAdmin: boolean } | { ok: false; error: string }
+> {
+  try {
+    const { session, isAdmin } = await assertTrainingContentEditAccess();
+    return { ok: true, session, isAdmin };
+  } catch {
+    return {
+      ok: false,
+      error: "You no longer have permission to edit this content — reload the page to continue.",
+    };
+  }
+}
+
 function revalidateEmployeeViews(traineeId: string) {
   revalidatePath(`/admin/employees/${traineeId}`);
   revalidatePath(`/trainer/employees/${traineeId}`);
@@ -55,24 +89,73 @@ export async function setTrainingExperienceVersionAction(formData: FormData) {
 
 // ── Admin: Rookie Day content ──
 
-export async function updateRookieDayContentAction(dayNumber: number, formData: FormData) {
-  await requireAdmin();
-  const field = (name: string) => String(formData.get(name) ?? "").trim();
+// Shared by the ADMIN-only /admin/rookie-journey editor and the narrowly-
+// scoped /training/content-editor/day/[n] route a granted non-admin editor
+// reaches — re-checked on every save, never cached, so a mid-session
+// revocation blocks the very next save. estimatedAcademyMinutes and
+// fieldGoalEn/Es are field-skill/schedule administration, not content — a
+// non-admin caller's values for those are force-ignored in favor of the
+// row's current ones, even if a forged request included them.
+export async function updateRookieDayContentAction(
+  dayNumber: number,
+  expectedUpdatedAt: string,
+  formData: FormData
+): Promise<SaveResult> {
+  const access = await tryContentEditAccess();
+  if (!access.ok) return access;
+  const { session, isAdmin } = access;
 
-  await prisma.rookieDay.update({
-    where: { dayNumber },
-    data: {
-      titleEn: field("titleEn"),
-      titleEs: field("titleEs"),
-      descriptionEn: field("descriptionEn"),
-      descriptionEs: field("descriptionEs"),
-      estimatedAcademyMinutes: Number(field("estimatedAcademyMinutes")) || 0,
-      fieldGoalEn: field("fieldGoalEn") || null,
-      fieldGoalEs: field("fieldGoalEs") || null,
+  // Rookie Day content has no classic equivalent — while Classic is the
+  // active training mode, it isn't the live curriculum, so a non-admin
+  // editor may not touch it. Computed fresh, never trusted from the client.
+  // The route itself bounds dayNumber to 1..ROOKIE_DAY_COUNT before this
+  // action is ever reachable through the UI, but a non-admin could still
+  // call the action directly with a forged out-of-range dayNumber — that
+  // boundary belongs here too, not just at the page.
+  if (!isAdmin && ((await getTrainingExperienceVersion()) !== "rookie" || dayNumber < 1 || dayNumber > ROOKIE_DAY_COUNT)) {
+    return { ok: false, error: NOT_LIVE_CURRICULUM_ERROR };
+  }
+
+  const current = await prisma.rookieDay.findUnique({ where: { dayNumber } });
+  if (!current) return { ok: false, error: "Rookie Day not found." };
+  if (current.updatedAt.toISOString() !== expectedUpdatedAt) {
+    return { ok: false, error: STALE_SAVE_ERROR };
+  }
+
+  const field = (name: string) => String(formData.get(name) ?? "").trim();
+  const next = {
+    titleEn: field("titleEn"),
+    titleEs: field("titleEs"),
+    descriptionEn: field("descriptionEn"),
+    descriptionEs: field("descriptionEs"),
+    // Schedule/field-skill administration — ADMIN-only even for a permitted
+    // editor, enforced here rather than just hiding the inputs.
+    estimatedAcademyMinutes: isAdmin
+      ? Number(field("estimatedAcademyMinutes")) || 0
+      : current.estimatedAcademyMinutes,
+    fieldGoalEn: isAdmin ? field("fieldGoalEn") || null : current.fieldGoalEn,
+    fieldGoalEs: isAdmin ? field("fieldGoalEs") || null : current.fieldGoalEs,
+  };
+
+  await prisma.rookieDay.update({ where: { dayNumber }, data: next });
+
+  await logAudit({
+    actorId: getTrueActorId(session),
+    action: "TRAINING_CONTENT_EDITED",
+    recordType: "RookieDay",
+    recordId: current.id,
+    changedFields: {
+      titleEn: { from: current.titleEn, to: next.titleEn },
+      titleEs: { from: current.titleEs, to: next.titleEs },
+      descriptionEn: { from: current.descriptionEn, to: next.descriptionEn },
+      descriptionEs: { from: current.descriptionEs, to: next.descriptionEs },
     },
   });
+
   revalidatePath("/admin/rookie-journey");
+  revalidatePath(`/training/content-editor/day/${dayNumber}`);
   revalidatePath("/");
+  return { ok: true };
 }
 
 // Assigns a lesson to a Rookie Day, to the Knowledge Library, or clears its
@@ -227,38 +310,98 @@ export async function createRookieContentItemAction(dayNumber: number, input: Ro
   revalidatePath("/");
 }
 
-export async function updateRookieContentItemAction(contentItemId: string, input: RookieContentItemFormInput) {
-  await requireAdmin();
+// Shared the same way as updateRookieDayContentAction above. `kind` and
+// `sourceLessonIds` are curatorial/structural, not content — force-ignored
+// for a non-admin caller in favor of the row's current values, even if a
+// forged request tried to change them. hasFutureVideoSlot/estimatedMinutes
+// are likewise left ADMIN-only (not among the fields the owner named as
+// editor-touchable).
+export async function updateRookieContentItemAction(
+  contentItemId: string,
+  expectedUpdatedAt: string,
+  input: RookieContentItemFormInput
+): Promise<SaveResult> {
+  const access = await tryContentEditAccess();
+  if (!access.ok) return access;
+  const { session, isAdmin } = access;
+
+  if (!isAdmin && (await getTrainingExperienceVersion()) !== "rookie") {
+    return { ok: false, error: NOT_LIVE_CURRICULUM_ERROR };
+  }
+
+  const current = await prisma.rookieContentItem.findUnique({
+    where: { id: contentItemId },
+    include: { rookieDay: { select: { dayNumber: true } } },
+  });
+  if (!current) return { ok: false, error: "Content card not found." };
+
+  // A card on an out-of-range/orphaned Day is never live curriculum for a
+  // non-admin — closes a forged-contentItemId path the page's own
+  // dayNumber bound can't catch (the page checks the ROUTE's dayNumber,
+  // not the day this specific card actually belongs to).
+  if (!isAdmin && (current.rookieDay.dayNumber < 1 || current.rookieDay.dayNumber > ROOKIE_DAY_COUNT)) {
+    return { ok: false, error: NOT_LIVE_CURRICULUM_ERROR };
+  }
+
+  if (current.updatedAt.toISOString() !== expectedUpdatedAt) {
+    return { ok: false, error: STALE_SAVE_ERROR };
+  }
+
+  const next = {
+    kind: isAdmin ? input.kind : current.kind,
+    titleEn: input.titleEn,
+    titleEs: input.titleEs,
+    bodyEn: input.bodyEn,
+    bodyEs: input.bodyEs,
+    promptEn: input.promptEn || null,
+    promptEs: input.promptEs || null,
+    revealEn: input.revealEn || null,
+    revealEs: input.revealEs || null,
+    hasFutureVideoSlot: isAdmin ? input.hasFutureVideoSlot : current.hasFutureVideoSlot,
+    videoUrl: input.videoUrl || null,
+    videoUrlEs: input.videoUrlEs || null,
+    estimatedMinutes: isAdmin ? (input.estimatedMinutes ?? null) : current.estimatedMinutes,
+  };
+
   await prisma.$transaction([
-    prisma.rookieContentItem.update({
-      where: { id: contentItemId },
-      data: {
-        kind: input.kind,
-        titleEn: input.titleEn,
-        titleEs: input.titleEs,
-        bodyEn: input.bodyEn,
-        bodyEs: input.bodyEs,
-        promptEn: input.promptEn || null,
-        promptEs: input.promptEs || null,
-        revealEn: input.revealEn || null,
-        revealEs: input.revealEs || null,
-        hasFutureVideoSlot: input.hasFutureVideoSlot,
-        videoUrl: input.videoUrl || null,
-        videoUrlEs: input.videoUrlEs || null,
-        estimatedMinutes: input.estimatedMinutes ?? null,
-      },
-    }),
-    prisma.rookieContentSourceLesson.deleteMany({ where: { contentItemId } }),
-    ...(input.sourceLessonIds.length
+    prisma.rookieContentItem.update({ where: { id: contentItemId }, data: next }),
+    ...(isAdmin
       ? [
-          prisma.rookieContentSourceLesson.createMany({
-            data: input.sourceLessonIds.map((lessonId) => ({ contentItemId, lessonId })),
-          }),
+          prisma.rookieContentSourceLesson.deleteMany({ where: { contentItemId } }),
+          ...(input.sourceLessonIds.length
+            ? [
+                prisma.rookieContentSourceLesson.createMany({
+                  data: input.sourceLessonIds.map((lessonId) => ({ contentItemId, lessonId })),
+                }),
+              ]
+            : []),
         ]
       : []),
   ]);
+
+  await logAudit({
+    actorId: getTrueActorId(session),
+    action: "TRAINING_CONTENT_EDITED",
+    recordType: "RookieContentItem",
+    recordId: contentItemId,
+    changedFields: {
+      titleEn: { from: current.titleEn, to: next.titleEn },
+      titleEs: { from: current.titleEs, to: next.titleEs },
+      bodyEn: { from: current.bodyEn, to: next.bodyEn },
+      bodyEs: { from: current.bodyEs, to: next.bodyEs },
+      promptEn: { from: current.promptEn, to: next.promptEn },
+      promptEs: { from: current.promptEs, to: next.promptEs },
+      revealEn: { from: current.revealEn, to: next.revealEn },
+      revealEs: { from: current.revealEs, to: next.revealEs },
+      videoUrl: { from: current.videoUrl, to: next.videoUrl },
+      videoUrlEs: { from: current.videoUrlEs, to: next.videoUrlEs },
+    },
+  });
+
   revalidatePath("/admin/rookie-journey");
+  revalidatePath(`/training/content-editor/day/${current.rookieDay.dayNumber}`);
   revalidatePath("/");
+  return { ok: true };
 }
 
 export async function deleteRookieContentItemAction(contentItemId: string) {

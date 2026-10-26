@@ -10,8 +10,6 @@ import {
   yearsOfService,
 } from "@/lib/staff";
 import { getAreaAccessForUser } from "@/lib/officeAssistant";
-import { getActingAsCandidates, ROLE_LABELS as ACTING_AS_ROLE_LABELS } from "@/lib/impersonation";
-import { actAsStaffMemberAction } from "./actingAsActions";
 import AddEmployeePanel from "@/components/AddEmployeePanel";
 import OfficeAssistantStaffDirectory from "@/components/OfficeAssistantStaffDirectory";
 import { getAssignableRolesForInviter } from "@/lib/roleAssignment";
@@ -55,53 +53,17 @@ export default async function StaffDashboardPage() {
     );
   }
 
-  const [stats, directory, officeAssistants, salesReps, turnover, actingAsCandidates] = await Promise.all([
+  const [stats, directory, officeAssistants, salesReps, turnover] = await Promise.all([
     getStaffDashboardStats(),
     getStaffDirectory(),
     getOfficeAssistantAccounts(),
     getSalesRepAccounts(),
     getTurnoverStats(90),
-    session.role === "ADMIN" ? getActingAsCandidates() : Promise.resolve([]),
   ]);
   const assignableRoles = getAssignableRolesForInviter(session.role);
 
   return (
     <div className="space-y-8">
-      {session.role === "ADMIN" && actingAsCandidates.length > 0 && (
-        <div className="rounded-lg border border-neutral-200 bg-white p-5">
-          <h2 className="mb-1 text-lg font-medium">View / Act As</h2>
-          <p className="mb-4 text-sm text-neutral-500">
-            See and use the dashboard exactly as one of these real employees would, with their own
-            effective permissions — not read-only. A banner stays on screen with a one-click way
-            back to your own owner view. Most actions you take record you, the Owner, not the
-            employee — a few are blocked outright instead: signing a document, signing payroll
-            hours, and changing a password, since those can only honestly be the employee&apos;s own
-            act.
-          </p>
-          <div className="space-y-2">
-            {actingAsCandidates.map((candidate) => (
-              <div
-                key={candidate.id}
-                data-testid={`act-as-row-${candidate.id}`}
-                className="flex items-center justify-between rounded-md border border-neutral-100 bg-neutral-50 p-3"
-              >
-                <div>
-                  <p className="text-sm font-medium text-neutral-900">{candidate.name}</p>
-                  <p className="text-xs text-neutral-500">
-                    {ACTING_AS_ROLE_LABELS[candidate.role]} · {candidate.email}
-                  </p>
-                </div>
-                <form action={actAsStaffMemberAction.bind(null, candidate.id)}>
-                  <button className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">
-                    Act As
-                  </button>
-                </form>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Stat label="Total Staff" value={stats.totalStaff} />
         <Stat

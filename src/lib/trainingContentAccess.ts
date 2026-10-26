@@ -9,6 +9,7 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getSession, type SessionPayload } from "@/lib/session";
+import { ROOKIE_DAY_COUNT } from "@/lib/rookieJourney";
 
 export async function hasTrainingContentEditAccess(userId: string): Promise<boolean> {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, active: true } });
@@ -44,4 +45,35 @@ export async function assertTrainingContentEditAccess(): Promise<{
   const allowed = await hasTrainingContentEditAccess(session.sub);
   if (!allowed) throw new Error("Not authorized.");
   return { session, isAdmin: session.role === "ADMIN" };
+}
+
+// Curriculum-allowlist boundary for a NON-ADMIN granted editor only — ADMIN
+// is never restricted by this. While Rookie Journey is the active training
+// mode, the classic 25-module catalog isn't the live curriculum, so a
+// non-admin editor may only touch a Lesson that's actually assigned to a
+// live Rookie Day (same published + ROOKIE_DAY-slot filter
+// getLessonAssignmentOptions already uses to decide a lesson is
+// live-assignable — reused here rather than re-derived). Computed fresh on
+// every call, never cached, so a mode switch between page load and save is
+// re-evaluated at save time. An assignment whose linked day is missing or
+// outside 1..ROOKIE_DAY_COUNT (an orphaned/forged assignment) never counts
+// as live curriculum, even if its slot is ROOKIE_DAY.
+export async function isLessonInLiveRookieCurriculum(lessonId: string): Promise<boolean> {
+  const lesson = await prisma.lesson.findUnique({
+    where: { id: lessonId },
+    select: {
+      published: true,
+      rookieAssignment: { select: { slot: true, rookieDay: { select: { dayNumber: true } } } },
+    },
+  });
+  return (
+    !!lesson?.published &&
+    lesson.rookieAssignment.some(
+      (a) =>
+        a.slot === "ROOKIE_DAY" &&
+        !!a.rookieDay &&
+        a.rookieDay.dayNumber >= 1 &&
+        a.rookieDay.dayNumber <= ROOKIE_DAY_COUNT
+    )
+  );
 }

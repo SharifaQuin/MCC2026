@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireTrainingContentEditAccess } from "@/lib/trainingContentAccess";
+import { getTrainingExperienceVersion } from "@/lib/rookieJourney";
 import { loadQuizMissRates } from "@/lib/quizStats";
 import ModuleMetaForm from "@/app/(portal)/admin/content/[slug]/ModuleMetaForm";
 import LessonEditor from "@/app/(portal)/admin/content/[slug]/LessonEditor";
@@ -18,6 +19,14 @@ export const dynamic = "force-dynamic";
 
 export default async function TrainingContentEditorModulePage({ params }: { params: { slug: string } }) {
   const { isAdmin } = await requireTrainingContentEditAccess();
+
+  // Curriculum-allowlist boundary: the classic catalog is only the live
+  // curriculum while Classic is the active training mode. ADMIN is never
+  // restricted by this; a non-admin editor hitting a classic slug directly
+  // while Rookie is active is redirected, never shown non-live content.
+  if (!isAdmin && (await getTrainingExperienceVersion()) === "rookie") {
+    redirect("/training/content-editor");
+  }
 
   const module = await prisma.module.findUnique({
     where: { slug: params.slug },

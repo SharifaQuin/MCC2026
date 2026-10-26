@@ -141,7 +141,7 @@ test.describe.serial("Owner View/Act As mode", () => {
 
   test("Owner can start acting as a real Office Assistant and the banner names them", async ({ page }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto("/staff");
+    await page.goto("/account");
     await page.waitForLoadState("networkidle");
 
     const row = page.getByTestId(`act-as-row-${oaId}`);
@@ -166,7 +166,7 @@ test.describe.serial("Owner View/Act As mode", () => {
     page,
   }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto("/staff");
+    await page.goto("/account");
     const row = page.getByTestId(`act-as-row-${oaId}`);
     await row.getByRole("button", { name: "Act As" }).click();
     await page.waitForURL("/");
@@ -177,10 +177,12 @@ test.describe.serial("Owner View/Act As mode", () => {
     await page.goto("/financials");
     await expect(page).toHaveURL("/");
 
-    // The "View / Act As" admin-only panel itself must not render for the
-    // Office Assistant's own effective view of /staff.
-    await page.goto("/staff");
-    await expect(page.getByText("View / Act As")).toHaveCount(0);
+    // The owner-only "Owner Tools" section (Legacy Training/Test
+    // Accounts/Act As) itself must not render for the Office Assistant's
+    // own effective view of /account.
+    await page.goto("/account");
+    await expect(page.getByText("Owner Tools")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Act As" })).toHaveCount(0);
 
     // Return to Owner View so later tests start from a clean slate.
     await page.getByRole("button", { name: "Return to Owner View" }).click();
@@ -204,7 +206,7 @@ test.describe.serial("Owner View/Act As mode", () => {
     applicantIds.push(applicant.id);
 
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto("/staff");
+    await page.goto("/account");
     const row = page.getByTestId(`act-as-row-${oaId}`);
     await row.getByRole("button", { name: "Act As" }).click();
     await page.waitForURL("/");
@@ -237,7 +239,7 @@ test.describe.serial("Owner View/Act As mode", () => {
     page,
   }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto("/staff");
+    await page.goto("/account");
     const row = page.getByTestId(`act-as-row-${oaId}`);
     await row.getByRole("button", { name: "Act As" }).click();
     await page.waitForURL("/");
@@ -251,7 +253,7 @@ test.describe.serial("Owner View/Act As mode", () => {
 
     // Replay the real actAsStaffMemberAction server action, now using the
     // *current* (already-acting-as) cookies, targeting a second user.
-    const res = await forgeAction(page, "/staff", actAsActionId, [oa2Id]);
+    const res = await forgeAction(page, "/account", actAsActionId, [oa2Id]);
     expect(res.status()).toBeGreaterThanOrEqual(400);
 
     const auditCountAfter = await prisma.auditLogEntry.count({
@@ -281,7 +283,7 @@ test.describe.serial("Owner View/Act As mode", () => {
     // Not asserting a specific HTTP status here — what matters is the
     // real-world effect: no acting-as session was created, and the
     // non-owner's own identity is unaffected.
-    await forgeAction(page, "/staff", actAsActionId, [oa2Id]);
+    await forgeAction(page, "/account", actAsActionId, [oa2Id]);
 
     const auditCountAfter = await prisma.auditLogEntry.count({
       where: { action: "ACTING_AS_STARTED", recordId: oa2Id },
@@ -299,7 +301,7 @@ test.describe.serial("Owner View/Act As mode", () => {
     page,
   }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto("/staff");
+    await page.goto("/account");
     const row = page.getByTestId(`act-as-row-${oaId}`);
     await row.getByRole("button", { name: "Act As" }).click();
     await page.waitForURL("/");
@@ -335,7 +337,7 @@ test.describe.serial("Owner View/Act As mode", () => {
 
   test("Returning to Owner rejects an expired stash instead of restoring it", async ({ page }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto("/staff");
+    await page.goto("/account");
     const row = page.getByTestId(`act-as-row-${oaId}`);
     await row.getByRole("button", { name: "Act As" }).click();
     await page.waitForURL("/");
@@ -369,7 +371,7 @@ test.describe.serial("Owner View/Act As mode", () => {
     });
 
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto("/staff");
+    await page.goto("/account");
     // The trainee fixture has no complaint/payroll flags and is a normal
     // STAFF_ROLES member, so it's reachable from the main directory's own
     // rows too — but the dedicated Act As panel is simplest and consistent

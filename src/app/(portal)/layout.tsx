@@ -36,8 +36,12 @@ export default async function PortalLayout({ children }: { children: React.React
   }
 
   const departments = resolveUserDepartments(session.role, user.departmentAccess);
-  const hideModulesNavLink =
-    session.role === "TRAINEE" && (await getTrainingExperienceVersion()) === "rookie";
+  // While Rookie Journey is the active training mode, the classic catalog
+  // isn't the live curriculum for anyone — hide both of navigation.ts's
+  // /modules links (the Trainee one and the Office Assistant one) the same
+  // way, declutter-only: neither role's actual Lesson/quiz data, progress,
+  // or access changes, only whether this one nav link shows.
+  const hideModulesNavLink = (await getTrainingExperienceVersion()) === "rookie";
 
   const officeAssistantAreas =
     session.role === "OFFICE_ASSISTANT" ? (await getAllAreaAccessForUser(session.sub)).areas : undefined;

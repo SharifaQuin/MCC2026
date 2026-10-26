@@ -13,6 +13,7 @@ type Kind = "PRACTICAL_LESSON" | "SCENARIO" | "RECAP" | "ORIENTATION";
 
 export interface ContentItemRow {
   id: string;
+  updatedAt: string;
   kind: Kind;
   titleEn: string;
   titleEs: string;
@@ -57,17 +58,20 @@ function ContentForm({
   dayNumber,
   initial,
   editingId,
+  editingUpdatedAt,
   lessons,
   onDone,
 }: {
   dayNumber: number;
   initial: RookieContentItemFormInput;
   editingId: string | null;
+  editingUpdatedAt: string | null;
   lessons: LessonOption[];
   onDone: () => void;
 }) {
   const [form, setForm] = useState<RookieContentItemFormInput>(initial);
   const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
   const isScenario = form.kind === "SCENARIO";
 
   function field<K extends keyof RookieContentItemFormInput>(key: K, value: RookieContentItemFormInput[K]) {
@@ -250,8 +254,13 @@ function ContentForm({
           disabled={pending || !form.titleEn.trim()}
           onClick={() =>
             startTransition(async () => {
+              setError(null);
               if (editingId) {
-                await updateRookieContentItemAction(editingId, form);
+                const result = await updateRookieContentItemAction(editingId, editingUpdatedAt ?? "", form);
+                if (!result.ok) {
+                  setError(result.error ?? "Could not save.");
+                  return;
+                }
               } else {
                 await createRookieContentItemAction(dayNumber, form);
               }
@@ -266,6 +275,7 @@ function ContentForm({
           Cancel
         </button>
       </div>
+      {error && <p className="text-sm font-medium text-red-600">{error}</p>}
     </div>
   );
 }
@@ -298,6 +308,7 @@ export default function RookieContentItemsPanel({
               <ContentForm
                 dayNumber={dayNumber}
                 editingId={item.id}
+                editingUpdatedAt={item.updatedAt}
                 lessons={lessons}
                 initial={{
                   kind: item.kind,
@@ -378,7 +389,14 @@ export default function RookieContentItemsPanel({
       </ul>
 
       {adding ? (
-        <ContentForm dayNumber={dayNumber} editingId={null} lessons={lessons} initial={EMPTY_FORM} onDone={() => setAdding(false)} />
+        <ContentForm
+          dayNumber={dayNumber}
+          editingId={null}
+          editingUpdatedAt={null}
+          lessons={lessons}
+          initial={EMPTY_FORM}
+          onDone={() => setAdding(false)}
+        />
       ) : (
         !editingItem && (
           <button
