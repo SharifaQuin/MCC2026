@@ -3,6 +3,7 @@ import { getSession, clearSessionCookie } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { resolveUserDepartments } from "@/lib/departments";
 import { getAllAreaAccessForUser } from "@/lib/officeAssistant";
+import { hasTrainingContentEditAccess } from "@/lib/trainingContentAccess";
 import { stopActingAs, ROLE_LABELS } from "@/lib/impersonation";
 import { getTrainingExperienceVersion } from "@/lib/rookieJourney";
 import { buildNavGroups } from "@/lib/navigation";
@@ -50,6 +51,7 @@ export default async function PortalLayout({ children }: { children: React.React
   // invalidation needed beyond the status write itself.
   const openProblemReportCount =
     session.role === "ADMIN" ? await prisma.problemReport.count({ where: { status: "OPEN" } }) : 0;
+  const canEditTrainingContent = await hasTrainingContentEditAccess(session.sub);
 
   // Trainer/Service Manager-facing screens have no Spanish content, so the
   // language toggle (wherever it now lives — the gear dropdown) stays
@@ -64,6 +66,7 @@ export default async function PortalLayout({ children }: { children: React.React
     officeAssistantAreas,
     pendingApprovalCount,
     openProblemReportCount,
+    canEditTrainingContent,
   });
 
   return (

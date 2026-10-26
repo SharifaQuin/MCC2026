@@ -32,6 +32,7 @@ test.describe.serial("Member-specific training-content editing permission", () =
   let traineeEditorId: string;
   let smEditorId: string;
   let traineeNoGrantId: string;
+  let salesRepEditorId: string;
   let moduleId: string;
   let moduleSlug: string;
   let lessonId: string;
@@ -40,6 +41,7 @@ test.describe.serial("Member-specific training-content editing permission", () =
   const traineeEditorEmail = `content-edit-trainee-${RUN_ID}@example.com`;
   const smEditorEmail = `content-edit-sm-${RUN_ID}@example.com`;
   const traineeNoGrantEmail = `content-edit-no-grant-${RUN_ID}@example.com`;
+  const salesRepEditorEmail = `content-edit-salesrep-${RUN_ID}@example.com`;
 
   test.beforeAll(async () => {
     const admin = await prisma.user.findFirstOrThrow({ where: { role: "ADMIN" }, select: { id: true } });
@@ -115,13 +117,33 @@ test.describe.serial("Member-specific training-content editing permission", () =
       },
     });
     traineeNoGrantId = traineeNoGrant.id;
+
+    // A role /modules itself redirects away from entirely (SALES_REP), used
+    // to prove the new sidebar link is the only path such a granted member
+    // needs — and that it grants nothing else (no Modules/Progress/Glossary).
+    const salesRepEditor = await prisma.user.create({
+      data: {
+        email: salesRepEditorEmail,
+        name: `Content Edit Sales Rep ${RUN_ID}`,
+        role: "SALES_REP",
+        passwordHash: await hashPassword(PASSWORD),
+        mustSetPassword: false,
+        active: true,
+        departmentAccess: { create: [{ department: "SALES", canEdit: true }] },
+        areaAccess: { create: [{ area: "TRAINING_CONTENT_EDIT", canEdit: true }] },
+      },
+    });
+    salesRepEditorId = salesRepEditor.id;
   });
 
   test.afterAll(async () => {
     await prisma.auditLogEntry.deleteMany({ where: { recordId: { in: [moduleId, lessonId, questionId] } } });
     await prisma.module.delete({ where: { id: moduleId } }).catch(() => {});
-    await prisma.areaAccess.deleteMany({ where: { userId: { in: [traineeEditorId, smEditorId] } } });
-    await prisma.user.deleteMany({ where: { id: { in: [traineeEditorId, smEditorId, traineeNoGrantId] } } });
+    await prisma.areaAccess.deleteMany({ where: { userId: { in: [traineeEditorId, smEditorId, salesRepEditorId] } } });
+    await prisma.departmentAccess.deleteMany({ where: { userId: salesRepEditorId } });
+    await prisma.user.deleteMany({
+      where: { id: { in: [traineeEditorId, smEditorId, traineeNoGrantId, salesRepEditorId] } },
+    });
     await prisma.$disconnect();
   });
 
@@ -267,6 +289,43 @@ test.describe.serial("Member-specific training-content editing permission", () =
     const res = await page.goto("/admin/content");
     expect(new URL(page.url()).pathname).toBe("/");
     expect(res?.status()).toBeLessThan(400);
+  });
+
+  test("SALES_REP granted the permission: sidebar shows a working 'Training Content Editor' link, but no Modules/Progress/Glossary", async ({
+    page,
+  }) => {
+    await loginAs(page, salesRepEditorEmail, PASSWORD);
+    await page.goto("/sales");
+    const sidebar = page.locator('[data-testid="desktop-sidebar"]');
+    const editorLink = sidebar.getByRole("link", { name: "Training Content Editor" });
+    await expect(editorLink).toBeVisible();
+    await expect(editorLink).toHaveAttribute("href", "/training/content-editor");
+
+    // Grants nothing else — a Sales Rep still has no training nav at all.
+    await expect(sidebar.getByRole("link", { name: "Modules" })).toHaveCount(0);
+    await expect(sidebar.getByRole("link", { name: "My Progress" })).toHaveCount(0);
+    await expect(sidebar.getByRole("link", { name: "Glossary" })).toHaveCount(0);
+
+    await editorLink.click();
+    await page.waitForURL("**/training/content-editor");
+    await expect(page.getByRole("heading", { name: "Training Content Editor" })).toBeVisible();
+
+    // /modules itself is still blocked for this role, unaffected by the grant.
+    await page.goto("/modules");
+    expect(new URL(page.url()).pathname).toBe("/sales");
+  });
+
+  test("Revoked grant: the 'Training Content Editor' nav link disappears", async ({ page }) => {
+    await prisma.areaAccess.deleteMany({ where: { userId: salesRepEditorId, area: "TRAINING_CONTENT_EDIT" } });
+    await loginAs(page, salesRepEditorEmail, PASSWORD);
+    await page.goto("/sales");
+    const sidebar = page.locator('[data-testid="desktop-sidebar"]');
+    await expect(sidebar.getByRole("link", { name: "Training Content Editor" })).toHaveCount(0);
+
+    // Restore for afterAll's generic cleanup/assertions to stay consistent.
+    await prisma.areaAccess.create({
+      data: { userId: salesRepEditorId, area: "TRAINING_CONTENT_EDIT", canEdit: true },
+    });
   });
 
   test("ADMIN: real /admin/content route is unaffected, full controls still present", async ({ page }) => {

@@ -2,14 +2,19 @@ import { test, expect, type Page } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/lib/password";
 
-// Only ADMIN should ever receive or see "Actual Labor" and "Profit So Far" —
-// revenue/goal numbers stay visible read-only to any authorized Sales
-// viewer. Two independent surfaces: the /sales page (and the portal Home
-// dashboard's own Sales card) and the generic /api/sales/storage "get" op,
-// which previously returned the raw {revenue, labor} JSON for
-// sales:actuals:<month> to anyone with Sales access. A non-admin SALES_REP
-// and a non-admin SERVICE_MANAGER with Sales access are both tested, since
-// labor/profit must be ADMIN-only regardless of department-level access.
+// Only ADMIN should ever receive or see the entire "Actuals This Month" card
+// on /sales — not just its Labor/Profit rows, but also its own "Actual
+// Revenue" row, heading, explanatory copy, and edit form (no automatic
+// upper-management exception: isAdmin only, never isManager/SERVICE_MANAGER).
+// This is distinct from the separate "This Month" goal-tracking section
+// above it, whose own first tile is ALSO labeled "Actual Revenue" once
+// actuals.entered is true — assertions below scope to the Actuals card's own
+// heading/copy/form-input-ids specifically, never a bare "Actual Revenue"
+// label search, so they can't produce a false pass/fail against the wrong
+// card. Also covers the generic /api/sales/storage "get" op, which
+// previously returned the raw {revenue, labor} JSON for sales:actuals:<month>
+// to anyone with Sales access. A non-admin SALES_REP and a non-admin
+// SERVICE_MANAGER with Sales access are both tested.
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "shar@mamascleaningcrew.com";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "change-this-immediately";
 const RUN_ID = Date.now().toString();
@@ -80,30 +85,46 @@ test.describe.serial("Sales financial privacy: Actual Labor / Profit So Far are 
     await prisma.$disconnect();
   });
 
-  test("ADMIN: /sales shows Actual Labor and Profit So Far", async ({ page }) => {
+  test("ADMIN: /sales shows the entire Actuals This Month card", async ({ page }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
     const html = await (await page.request.get("/sales")).text();
+    expect(html).toContain("Actuals This Month");
+    expect(html).toContain("Enter your real revenue and labor cost so far this month");
+    expect(html).toContain('id="actualRevenue"');
+    expect(html).toContain('id="actualLabor"');
     expect(html).toContain("Actual Labor");
     expect(html).toContain("Profit So Far");
     expect(html).toContain(LABOR.toLocaleString());
   });
 
-  test("SALES_REP: /sales never contains Actual Labor or Profit So Far anywhere in the raw response", async ({
+  test("SALES_REP: /sales never contains the Actuals This Month card at all — not even its own Actual Revenue row or edit form", async ({
     page,
   }) => {
     await loginAs(page, salesRepEmail, PASSWORD);
     const html = await (await page.request.get("/sales")).text();
+    expect(html).not.toContain("Actuals This Month");
+    expect(html).not.toContain("Enter your real revenue and labor cost so far this month");
+    expect(html).not.toContain('id="actualRevenue"');
+    expect(html).not.toContain('id="actualLabor"');
     expect(html).not.toContain("Actual Labor");
     expect(html).not.toContain("Profit So Far");
     expect(html).not.toContain(String(LABOR));
-    // Revenue stays visible.
-    expect(html).toContain("Actual Revenue");
+    // The separate, already-shared-safe goal-tracking section above it
+    // stays visible — note its own first tile is ALSO labeled "Actual
+    // Revenue" once actuals.entered is true (as it is here), which is
+    // exactly why none of the assertions above use a bare label search.
+    expect(html).toContain("This Month");
     expect(html).toContain(REVENUE.toLocaleString());
   });
 
-  test("non-admin SERVICE_MANAGER (Sales access, not Admin): same restriction as a Sales Rep", async ({ page }) => {
+  test("non-admin SERVICE_MANAGER (Sales access, not Admin): same restriction as a Sales Rep — isAdmin only, never isManager", async ({
+    page,
+  }) => {
     await loginAs(page, smEmail, PASSWORD);
     const html = await (await page.request.get("/sales")).text();
+    expect(html).not.toContain("Actuals This Month");
+    expect(html).not.toContain('id="actualRevenue"');
+    expect(html).not.toContain('id="actualLabor"');
     expect(html).not.toContain("Actual Labor");
     expect(html).not.toContain("Profit So Far");
     expect(html).not.toContain(String(LABOR));
