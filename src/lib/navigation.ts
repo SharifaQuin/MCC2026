@@ -133,7 +133,6 @@ export function buildNavGroups({
         { href: "/todo", label: labels.todo },
         { href: "/admin/rookie-journey", label: "Rookie Journey" },
         { href: "/owner/problem-reports", label: "Problem Reports", badge: openProblemReportCount },
-        { href: "/test-accounts", label: labels.testAccounts },
       ],
     });
   }
@@ -146,15 +145,10 @@ export function buildNavGroups({
   // already get their own "My Training" group above, and every other role
   // either has no need for it or reaches it a different way.
   if (role === "OFFICE_ASSISTANT" && officeAssistantAreas?.TRAINING?.canView) {
-    groups.push({
-      key: "training",
-      label: labels.navMyTraining,
-      links: [
-        { href: "/modules", label: labels.training },
-        { href: "/progress", label: labels.progress },
-        { href: "/glossary", label: labels.glossary },
-      ],
-    });
+    const trainingLinks: NavLinkItem[] = [];
+    if (!hideModulesLink) trainingLinks.push({ href: "/modules", label: labels.training });
+    trainingLinks.push({ href: "/progress", label: labels.progress }, { href: "/glossary", label: labels.glossary });
+    groups.push({ key: "training", label: labels.navMyTraining, links: trainingLinks });
   }
 
   if (role === "OFFICE_ASSISTANT" && officeAssistantAreas) {

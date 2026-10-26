@@ -16,6 +16,7 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "shar@mamascleaningcrew.com";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "change-this-immediately";
 const RUN_ID = Date.now().toString();
 const PASSWORD = "Test-Password-123!";
+const TRAINING_EXPERIENCE_VERSION_KEY = "training_experience_version";
 
 const prisma = new PrismaClient();
 
@@ -37,6 +38,7 @@ test.describe.serial("Member-specific training-content editing permission", () =
   let moduleSlug: string;
   let lessonId: string;
   let questionId: string;
+  let originalModeValue: string | null;
 
   const traineeEditorEmail = `content-edit-trainee-${RUN_ID}@example.com`;
   const smEditorEmail = `content-edit-sm-${RUN_ID}@example.com`;
@@ -44,6 +46,20 @@ test.describe.serial("Member-specific training-content editing permission", () =
   const salesRepEditorEmail = `content-edit-salesrep-${RUN_ID}@example.com`;
 
   test.beforeAll(async () => {
+    // This suite exercises the CLASSIC catalog's non-admin editor pathway —
+    // the classic 25-module catalog is only the live curriculum (and so
+    // only reachable to a non-admin granted editor) while Classic is the
+    // active training mode (see src/lib/rookieJourney.ts). Production
+    // defaults to Rookie when unset, so force Classic for this suite's
+    // duration and restore whatever was there before in afterAll.
+    const existingSetting = await prisma.ownerSetting.findUnique({ where: { key: TRAINING_EXPERIENCE_VERSION_KEY } });
+    originalModeValue = typeof existingSetting?.value === "string" ? existingSetting.value : null;
+    await prisma.ownerSetting.upsert({
+      where: { key: TRAINING_EXPERIENCE_VERSION_KEY },
+      create: { key: TRAINING_EXPERIENCE_VERSION_KEY, value: "classic" },
+      update: { value: "classic" },
+    });
+
     const admin = await prisma.user.findFirstOrThrow({ where: { role: "ADMIN" }, select: { id: true } });
     adminId = admin.id;
 
@@ -144,6 +160,12 @@ test.describe.serial("Member-specific training-content editing permission", () =
     await prisma.user.deleteMany({
       where: { id: { in: [traineeEditorId, smEditorId, traineeNoGrantId, salesRepEditorId] } },
     });
+
+    if (originalModeValue === null) {
+      await prisma.ownerSetting.deleteMany({ where: { key: TRAINING_EXPERIENCE_VERSION_KEY } });
+    } else {
+      await prisma.ownerSetting.update({ where: { key: TRAINING_EXPERIENCE_VERSION_KEY }, data: { value: originalModeValue } });
+    }
     await prisma.$disconnect();
   });
 

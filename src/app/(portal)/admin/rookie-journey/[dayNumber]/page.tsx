@@ -29,7 +29,7 @@ export default async function RookieDayAdminPage({ params }: { params: { dayNumb
 
       <section className="rounded-lg border border-neutral-200 bg-white p-5">
         <h2 className="mb-3 text-lg font-medium text-neutral-900">Content</h2>
-        <DayContentForm day={day} />
+        <DayContentForm day={{ ...day, updatedAt: day.updatedAt.toISOString() }} />
       </section>
 
       <section className="rounded-lg border border-neutral-200 bg-white p-5">
@@ -63,6 +63,7 @@ export default async function RookieDayAdminPage({ params }: { params: { dayNumb
           lessons={lessonOptions.map((l) => ({ id: l.id, titleEn: l.titleEn, moduleTitleEn: l.moduleTitleEn }))}
           items={day.contentItems.map((c) => ({
             id: c.id,
+            updatedAt: c.updatedAt.toISOString(),
             kind: c.kind,
             titleEn: c.titleEn,
             titleEs: c.titleEs,

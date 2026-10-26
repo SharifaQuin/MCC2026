@@ -501,7 +501,7 @@ export async function getRookieDayContentSequence(rookieDayId: string) {
     prisma.rookieLessonAssignment.findMany({
       where: { rookieDayId, slot: "ROOKIE_DAY" },
       orderBy: { order: "asc" },
-      include: { lesson: { include: { module: { select: { titleEn: true, order: true } } } } },
+      include: { lesson: { include: { module: { select: { titleEn: true, order: true, slug: true, id: true } } } } },
     }),
     prisma.rookieContentItem.findMany({
       where: { rookieDayId },

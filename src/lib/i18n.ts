@@ -154,6 +154,15 @@ export const dictionary = {
     problemReportEmailResolutionLabel: "Resolution:",
     problemReportEmailLinkIntro: "Let us know if this works for you, or if you're still running into trouble:",
     problemReportEmailClosing: "Thanks for flagging it.",
+    accountOwnerToolsTitle: "Owner Tools",
+    accountOwnerToolsSubtitle: "Relocated from the main navigation to keep everyday menus focused.",
+    accountLegacyTraining: "Legacy Training",
+    accountLegacyTrainingSubtitle: "The classic 25-module catalog and its content editor — reachable any time, regardless of the active training mode.",
+    accountTestAccountsSubtitle: "View the app exactly as a seeded test role would.",
+    accountActAs: "Act As",
+    accountActAsSubtitle:
+      "See and use the dashboard exactly as one of these real employees would, with their own effective permissions — not read-only. A banner stays on screen with a one-click way back to your own owner view. Most actions you take record you, the Owner, not the employee — a few are blocked outright instead: signing a document, signing payroll hours, and changing a password, since those can only honestly be the employee's own act.",
+    accountActAsNoCandidates: "No eligible accounts to act as right now.",
   },
   ES: {
     appName: "Portal de Capacitación de MCC",
@@ -311,6 +320,15 @@ export const dictionary = {
     problemReportEmailResolutionLabel: "Resolución:",
     problemReportEmailLinkIntro: "Avísanos si esto funciona para ti, o si sigues teniendo problemas:",
     problemReportEmailClosing: "Gracias por reportarlo.",
+    accountOwnerToolsTitle: "Herramientas del Propietario",
+    accountOwnerToolsSubtitle: "Reubicado desde la navegación principal para mantener los menús del día a día enfocados.",
+    accountLegacyTraining: "Capacitación Clásica",
+    accountLegacyTrainingSubtitle: "El catálogo clásico de 25 módulos y su editor de contenido — accesible en cualquier momento, sin importar el modo de capacitación activo.",
+    accountTestAccountsSubtitle: "Ver la aplicación exactamente como lo haría un rol de prueba.",
+    accountActAs: "Actuar Como",
+    accountActAsSubtitle:
+      "Ve y usa el panel exactamente como lo haría uno de estos empleados reales, con sus propios permisos efectivos — no es solo lectura. Un aviso permanece en pantalla con una forma de un clic para volver a tu propia vista de propietario. La mayoría de las acciones que realices te registrarán a ti, el Propietario, no al empleado — algunas se bloquean por completo: firmar un documento, firmar horas de nómina y cambiar una contraseña, ya que esas solo pueden ser honestamente el acto del propio empleado.",
+    accountActAsNoCandidates: "No hay cuentas elegibles para actuar como ahora mismo.",
   },
 } as const;
 

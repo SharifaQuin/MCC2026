@@ -45,3 +45,20 @@ export async function assertTrainingContentEditAccess(): Promise<{
   if (!allowed) throw new Error("Not authorized.");
   return { session, isAdmin: session.role === "ADMIN" };
 }
+
+// Curriculum-allowlist boundary for a NON-ADMIN granted editor only — ADMIN
+// is never restricted by this. While Rookie Journey is the active training
+// mode, the classic 25-module catalog isn't the live curriculum, so a
+// non-admin editor may only touch a Lesson that's actually assigned to a
+// live Rookie Day (same published + ROOKIE_DAY-slot filter
+// getLessonAssignmentOptions already uses to decide a lesson is
+// live-assignable — reused here rather than re-derived). Computed fresh on
+// every call, never cached, so a mode switch between page load and save is
+// re-evaluated at save time.
+export async function isLessonInLiveRookieCurriculum(lessonId: string): Promise<boolean> {
+  const lesson = await prisma.lesson.findUnique({
+    where: { id: lessonId },
+    select: { published: true, rookieAssignment: { select: { slot: true } } },
+  });
+  return !!lesson?.published && lesson.rookieAssignment.some((a) => a.slot === "ROOKIE_DAY");
+}

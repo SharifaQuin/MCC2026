@@ -23,6 +23,7 @@ const RUN_ID = Date.now().toString();
 const PASSWORD = "Test-Password-123!";
 
 const prisma = new PrismaClient();
+const TRAINING_EXPERIENCE_VERSION_KEY = "training_experience_version";
 
 async function loginAs(page: Page, email: string, password: string) {
   await page.goto("/login");
@@ -42,8 +43,22 @@ test.describe.serial("Pedro: Office Assistant training navigation + owner Staff 
   const oaNoTrainingEmail = `oa-no-training-${RUN_ID}@example.com`;
   const serviceManagerEmail = `svcmgr-directory-${RUN_ID}@example.com`;
   const traineeEmail = `trainee-nav-${RUN_ID}@example.com`;
+  let originalModeValue: string | null;
 
   test.beforeAll(async () => {
+    // This suite is about the classic /modules nav link + classic lesson
+    // sequencing — only the live curriculum while Classic is the active
+    // training mode (production defaults to Rookie when unset). Force
+    // Classic for this suite's duration and restore whatever was there
+    // before in afterAll.
+    const existingSetting = await prisma.ownerSetting.findUnique({ where: { key: TRAINING_EXPERIENCE_VERSION_KEY } });
+    originalModeValue = typeof existingSetting?.value === "string" ? existingSetting.value : null;
+    await prisma.ownerSetting.upsert({
+      where: { key: TRAINING_EXPERIENCE_VERSION_KEY },
+      create: { key: TRAINING_EXPERIENCE_VERSION_KEY, value: "classic" },
+      update: { value: "classic" },
+    });
+
     const admin = await prisma.user.findFirstOrThrow({ where: { role: "ADMIN" }, select: { id: true } });
     adminId = admin.id;
 
@@ -118,6 +133,12 @@ test.describe.serial("Pedro: Office Assistant training navigation + owner Staff 
     await prisma.user.deleteMany({
       where: { id: { in: [oaWithTrainingId, oaNoTrainingId, serviceManagerId, traineeId] } },
     });
+
+    if (originalModeValue === null) {
+      await prisma.ownerSetting.deleteMany({ where: { key: TRAINING_EXPERIENCE_VERSION_KEY } });
+    } else {
+      await prisma.ownerSetting.update({ where: { key: TRAINING_EXPERIENCE_VERSION_KEY }, data: { value: originalModeValue } });
+    }
     await prisma.$disconnect();
   });
 

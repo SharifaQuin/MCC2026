@@ -31,7 +31,7 @@ async function loginAs(page: Page, email: string, password: string) {
 
 async function actAs(page: Page, targetId: string) {
   await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-  await page.goto("/staff");
+  await page.goto("/account");
   await page.getByTestId(`act-as-row-${targetId}`).getByRole("button", { name: "Act As" }).click();
   await page.waitForURL("/");
 }
