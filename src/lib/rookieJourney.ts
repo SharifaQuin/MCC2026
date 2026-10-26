@@ -522,6 +522,33 @@ export async function getRookieDayContentSequence(rookieDayId: string) {
   return merged;
 }
 
+// Read-only reverse lookup for getRookieDayContentSequence's LESSON rows:
+// which RookieContentItem cards (if any) cite a given set of lessons as a
+// source reference (RookieContentSourceLesson is lineage only — citing a
+// lesson never changes that lesson's own text, and editing the lesson
+// never changes a citing card's own text/video). Grouped by lessonId so a
+// caller can look up "who cites lesson X" for each lesson it's rendering.
+export async function getContentItemsCitingLessons(
+  lessonIds: string[]
+): Promise<Map<string, { contentItemId: string; titleEn: string; dayNumber: number }[]>> {
+  if (lessonIds.length === 0) return new Map();
+  const rows = await prisma.rookieContentSourceLesson.findMany({
+    where: { lessonId: { in: lessonIds } },
+    include: { contentItem: { select: { id: true, titleEn: true, rookieDay: { select: { dayNumber: true } } } } },
+  });
+  const byLesson = new Map<string, { contentItemId: string; titleEn: string; dayNumber: number }[]>();
+  for (const row of rows) {
+    const list = byLesson.get(row.lessonId) ?? [];
+    list.push({
+      contentItemId: row.contentItem.id,
+      titleEn: row.contentItem.titleEn,
+      dayNumber: row.contentItem.rookieDay.dayNumber,
+    });
+    byLesson.set(row.lessonId, list);
+  }
+  return byLesson;
+}
+
 export async function getRookieContentItem(id: string) {
   return prisma.rookieContentItem.findUnique({
     where: { id },

@@ -2,7 +2,12 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireTrainingContentEditAccess } from "@/lib/trainingContentAccess";
-import { getRookieDayContentSequence, getTrainingExperienceVersion, ROOKIE_DAY_COUNT } from "@/lib/rookieJourney";
+import {
+  getRookieDayContentSequence,
+  getContentItemsCitingLessons,
+  getTrainingExperienceVersion,
+  ROOKIE_DAY_COUNT,
+} from "@/lib/rookieJourney";
 import DayContentForm from "@/app/(portal)/admin/rookie-journey/[dayNumber]/DayContentForm";
 import LessonEditor from "@/app/(portal)/admin/content/[slug]/LessonEditor";
 import RookieContentCardTextEditor from "./RookieContentCardTextEditor";
@@ -37,6 +42,10 @@ export default async function TrainingContentEditorRookieDayPage({ params }: { p
   if (!day) notFound();
 
   const sequence = await getRookieDayContentSequence(day.id);
+  const lessonIdsInSequence = sequence
+    .filter((row) => row.type === "LESSON")
+    .map((row) => (row.type === "LESSON" ? row.data.lesson.id : ""));
+  const citedByMap = await getContentItemsCitingLessons(lessonIdsInSequence);
 
   return (
     <div className="space-y-8">
@@ -69,31 +78,54 @@ export default async function TrainingContentEditorRookieDayPage({ params }: { p
       <section>
         <h2 className="mb-3 text-lg font-medium">Content — in trainee order</h2>
         <div className="space-y-4">
-          {sequence.map((row) =>
-            row.type === "LESSON" ? (
-              <div key={`lesson-${row.data.id}`} className="rounded-md border border-neutral-200 p-4">
-                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-400">
-                  Assigned lesson — Module {row.data.lesson.module.order}: {row.data.lesson.module.titleEn}
-                </p>
-                <LessonEditor
-                  moduleId={row.data.lesson.moduleId}
-                  slug={row.data.lesson.module.slug}
-                  lessons={[{ ...row.data.lesson, updatedAt: row.data.lesson.updatedAt.toISOString() }]}
-                  canAdminister={false}
-                />
-              </div>
-            ) : (
+          {sequence.map((row) => {
+            if (row.type === "LESSON") {
+              const citedBy = citedByMap.get(row.data.lesson.id) ?? [];
+              return (
+                <div key={`lesson-${row.data.id}`} className="rounded-md border border-neutral-200 p-4">
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-400">
+                    Assigned lesson — Module {row.data.lesson.module.order}: {row.data.lesson.module.titleEn}
+                  </p>
+                  <LessonEditor
+                    moduleId={row.data.lesson.moduleId}
+                    slug={row.data.lesson.module.slug}
+                    lessons={[{ ...row.data.lesson, updatedAt: row.data.lesson.updatedAt.toISOString() }]}
+                    canAdminister={false}
+                  />
+                  {citedBy.length > 0 && (
+                    <p className="mt-2 text-xs text-neutral-500">
+                      Also cited as a reference by:{" "}
+                      {citedBy.map((c, i) => (
+                        <span key={c.contentItemId}>
+                          {i > 0 && ", "}
+                          {c.titleEn} (Day {c.dayNumber})
+                        </span>
+                      ))}
+                      {" — editing this lesson's text does not change those cards."}
+                    </p>
+                  )}
+                </div>
+              );
+            }
+            return (
               <div key={`content-${row.data.id}`}>
                 <RookieContentCardTextEditor
                   item={{
                     ...row.data,
                     updatedAt: row.data.updatedAt.toISOString(),
                     sourceLessonIds: row.data.sourceLessons.map((sl) => sl.lessonId),
+                    sourceLessons: row.data.sourceLessons.map((sl) => ({
+                      lessonId: sl.lessonId,
+                      titleEn: sl.lesson.titleEn,
+                      lessonOrder: sl.lesson.order,
+                      moduleTitleEn: sl.lesson.module.titleEn,
+                      moduleOrder: sl.lesson.module.order,
+                    })),
                   }}
                 />
               </div>
-            )
-          )}
+            );
+          })}
           {sequence.length === 0 && (
             <p className="text-sm text-neutral-400">No lessons or content cards assigned to this day yet.</p>
           )}

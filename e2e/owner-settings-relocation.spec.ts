@@ -24,6 +24,8 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "change-this-immediately";
 const RUN_ID = Date.now().toString();
 const PASSWORD = "Test-Password-123!";
 const TRAINING_EXPERIENCE_VERSION_KEY = "training_experience_version";
+const SCREENSHOT_DIR =
+  "/tmp/claude-0/-home-user-MCC2026/644fd4e9-baf9-519a-bf7c-31648f9553c5/scratchpad/rookie-settings-screenshots";
 
 const prisma = new PrismaClient();
 
@@ -215,5 +217,63 @@ test.describe.serial("Owner Settings reorg: /account owner tools + mode-aware na
     await expect(sidebar.getByRole("link", { name: "Training", exact: true })).toHaveAttribute("href", "/modules");
 
     await setMode("rookie");
+  });
+
+  test("Non-admin (TRAINEE) at mobile width: /account still has no Owner Tools section", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await loginAs(page, traineeEmail, PASSWORD);
+    await page.goto("/account");
+    await expect(page.getByText("Owner Tools")).toHaveCount(0);
+    await page.setViewportSize({ width: 1280, height: 800 });
+  });
+
+  test("Mobile: Settings gear → My Account → all three destinations, including starting and ending an Act As session; an already-impersonated session gets neither the section nor the action", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+
+    // The Settings gear lives directly in the mobile top bar (not the
+    // hamburger drawer) — same component, same testid, as the desktop one.
+    // Both sidebars are present in the DOM at once (CSS hides one), so
+    // scope to the mobile-nav instance specifically.
+    await page.locator('[data-testid="mobile-nav"]').getByTestId("settings-gear").click();
+    await page.getByRole("link", { name: "My Account" }).click();
+    await page.waitForURL("/account");
+    await expect(page.getByText("Owner Tools")).toBeVisible();
+
+    const legacyTrainingLink = page.getByRole("link", { name: /Legacy Training/ });
+    await expect(legacyTrainingLink).toHaveAttribute("href", "/admin/content");
+    const testAccountsLink = page.getByRole("link", { name: "Test Accounts" });
+    await expect(testAccountsLink).toHaveAttribute("href", "/test-accounts");
+    await expect(page.getByRole("heading", { name: "Act As" })).toBeVisible();
+
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/6-mobile-account-owner-tools.png`, fullPage: true });
+
+    // Start an Act As session at mobile width.
+    const row = page.getByTestId(`act-as-row-${oaWithTrainingId}`);
+    await row.getByRole("button", { name: "Act As" }).click();
+    await page.waitForURL("/");
+    await expect(page.getByRole("button", { name: "Return to Owner View" })).toBeVisible();
+
+    // Already-impersonated session: neither the section nor its heading.
+    // (Direct forged calls to the relocated action while impersonating are
+    // separately covered, at desktop width, by
+    // owner-act-as-mode.spec.ts's "No nested impersonation" test — not
+    // duplicated here.)
+    await page.goto("/account");
+    await expect(page.getByText("Owner Tools")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Act As" })).toHaveCount(0);
+
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/7-mobile-account-impersonated-no-owner-tools.png`, fullPage: true });
+
+    // End the Act As session at mobile width — the banner works here too.
+    await page.getByRole("button", { name: "Return to Owner View" }).click();
+    await page.waitForURL("/");
+    await expect(page.getByText("Viewing and acting as")).toHaveCount(0);
+
+    await page.setViewportSize({ width: 1280, height: 800 });
   });
 });

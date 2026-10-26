@@ -122,7 +122,9 @@ export default function DayContentForm({
       )}
       {error && (
         <div className="md:col-span-2">
-          <p className="text-sm font-medium text-red-600">{error}</p>
+          <p data-testid="day-content-form-error" className="text-sm font-medium text-red-600">
+            {error}
+          </p>
         </div>
       )}
       <div className="md:col-span-2">

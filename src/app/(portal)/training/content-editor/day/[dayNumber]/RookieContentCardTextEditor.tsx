@@ -26,6 +26,11 @@ export interface EditableRookieContentItem {
   videoUrlEs: string | null;
   estimatedMinutes: number | null;
   sourceLessonIds: string[];
+  // Read-only lineage display only — never edited here. A card's own
+  // text/video is authored independently of whatever lessons informed it;
+  // editing a cited lesson's own text never changes this card, and saving
+  // this card never changes the cited lesson.
+  sourceLessons: { lessonId: string; titleEn: string; lessonOrder: number; moduleTitleEn: string; moduleOrder: number }[];
 }
 
 export default function RookieContentCardTextEditor({ item }: { item: EditableRookieContentItem }) {
@@ -74,6 +79,26 @@ export default function RookieContentCardTextEditor({ item }: { item: EditableRo
           />
         </label>
       </div>
+
+      {item.sourceLessons.length > 0 && (
+        <div className="rounded-md border border-neutral-100 bg-neutral-50 p-3">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            Source lessons (reference only)
+          </p>
+          <ul className="list-inside list-disc text-xs text-neutral-600">
+            {item.sourceLessons.map((sl) => (
+              <li key={sl.lessonId}>
+                Module {sl.moduleOrder}: {sl.moduleTitleEn} — {sl.lessonOrder}. {sl.titleEn}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-xs text-neutral-500">
+            Lineage only — these lessons informed this card&apos;s text when it was written. Editing a
+            cited lesson&apos;s own text here does not change this card&apos;s own text/video, and saving
+            this card never changes the cited lesson.
+          </p>
+        </div>
+      )}
 
       {isScenario ? (
         <>

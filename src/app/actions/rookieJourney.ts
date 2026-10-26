@@ -12,6 +12,7 @@ import {
   markRookieContentComplete,
   setTrainingExperienceVersion,
   getTrainingExperienceVersion,
+  ROOKIE_DAY_COUNT,
   type TrainingExperienceVersion,
 } from "@/lib/rookieJourney";
 import type {
@@ -107,7 +108,11 @@ export async function updateRookieDayContentAction(
   // Rookie Day content has no classic equivalent — while Classic is the
   // active training mode, it isn't the live curriculum, so a non-admin
   // editor may not touch it. Computed fresh, never trusted from the client.
-  if (!isAdmin && (await getTrainingExperienceVersion()) !== "rookie") {
+  // The route itself bounds dayNumber to 1..ROOKIE_DAY_COUNT before this
+  // action is ever reachable through the UI, but a non-admin could still
+  // call the action directly with a forged out-of-range dayNumber — that
+  // boundary belongs here too, not just at the page.
+  if (!isAdmin && ((await getTrainingExperienceVersion()) !== "rookie" || dayNumber < 1 || dayNumber > ROOKIE_DAY_COUNT)) {
     return { ok: false, error: NOT_LIVE_CURRICULUM_ERROR };
   }
 
@@ -329,6 +334,15 @@ export async function updateRookieContentItemAction(
     include: { rookieDay: { select: { dayNumber: true } } },
   });
   if (!current) return { ok: false, error: "Content card not found." };
+
+  // A card on an out-of-range/orphaned Day is never live curriculum for a
+  // non-admin — closes a forged-contentItemId path the page's own
+  // dayNumber bound can't catch (the page checks the ROUTE's dayNumber,
+  // not the day this specific card actually belongs to).
+  if (!isAdmin && (current.rookieDay.dayNumber < 1 || current.rookieDay.dayNumber > ROOKIE_DAY_COUNT)) {
+    return { ok: false, error: NOT_LIVE_CURRICULUM_ERROR };
+  }
+
   if (current.updatedAt.toISOString() !== expectedUpdatedAt) {
     return { ok: false, error: STALE_SAVE_ERROR };
   }
@@ -375,6 +389,12 @@ export async function updateRookieContentItemAction(
       titleEs: { from: current.titleEs, to: next.titleEs },
       bodyEn: { from: current.bodyEn, to: next.bodyEn },
       bodyEs: { from: current.bodyEs, to: next.bodyEs },
+      promptEn: { from: current.promptEn, to: next.promptEn },
+      promptEs: { from: current.promptEs, to: next.promptEs },
+      revealEn: { from: current.revealEn, to: next.revealEn },
+      revealEs: { from: current.revealEs, to: next.revealEs },
+      videoUrl: { from: current.videoUrl, to: next.videoUrl },
+      videoUrlEs: { from: current.videoUrlEs, to: next.videoUrlEs },
     },
   });
 
