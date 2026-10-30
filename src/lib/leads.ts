@@ -310,7 +310,15 @@ export async function loadLeadKpis(): Promise<LeadKpis> {
       leadCount: stats.leadCount,
       wonCount: stats.wonCount,
       amountSpent,
+      // costPerLead = monthly actual spend ÷ all-received lead count for
+      // this source (Scam included, unchanged from before Scam existed —
+      // still awaiting the owner's explicit decision on whether to exclude
+      // it, per the comment on the groupBy query above; neither this
+      // formula nor its Scam-inclusion has been changed here).
       costPerLead: amountSpent > 0 && stats.leadCount > 0 ? amountSpent / stats.leadCount : null,
+      // costPerWon = spend ÷ WON lead count — Scam was never part of this
+      // denominator (a Scam lead is never WON), so no change was possible
+      // here either way.
       costPerWon: amountSpent > 0 && stats.wonCount > 0 ? amountSpent / stats.wonCount : null,
     };
   });
@@ -525,7 +533,16 @@ interface CallInQuoteData {
 export async function syncLeadFromQuote(quoteId: string, quoteData: CallInQuoteData, authorId: string | null) {
   if (!quoteData.clientName) return null;
 
-  // Already linked to this exact quote — nothing to do.
+  // Already linked to this exact quote — nothing to do. Lead.quoteKey
+  // isn't a unique column, so in principle more than one Lead could share
+  // it — but unlike send-quote/route.ts's Scam check (an authorization
+  // decision, where picking the wrong one of several matches could let a
+  // blocked send through), this is purely an idempotency check: whichever
+  // match findFirst returns, the answer to "is a Lead already linked here"
+  // is still correctly "yes," so returning early is safe either way. Left
+  // as findFirst rather than widened to findMany/an array, which would be
+  // a larger, out-of-scope change to this function's single-Lead-or-null
+  // return contract for a case judged genuinely lower-risk.
   const linked = await prisma.lead.findFirst({ where: { quoteKey: quoteId } });
   if (linked) return linked;
 
@@ -710,9 +727,11 @@ export async function getLeadFunnelBySource() {
       scam: stats.scam,
       // Win rate already only ever divided won/(won+lost) — scam was never
       // part of that denominator before SCAM existed either, so no change
-      // needed here.
+      // needed to that. null (not 0) when there's no decided business yet,
+      // matching salesDashboard.ts's own winRate — 0% would otherwise
+      // misread as "no wins" rather than "nothing decided either way."
       winRatePct:
-        stats.won + stats.lost > 0 ? Math.round((stats.won / (stats.won + stats.lost)) * 100) : 0,
+        stats.won + stats.lost > 0 ? Math.round((stats.won / (stats.won + stats.lost)) * 100) : null,
     }))
     .sort((a, b) => b.total - a.total);
 }

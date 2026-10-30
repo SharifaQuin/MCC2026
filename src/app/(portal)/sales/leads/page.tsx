@@ -264,7 +264,9 @@ export default async function LeadsPage({
                     <td className="py-2 pr-4 text-neutral-600">{s.won}</td>
                     <td className="py-2 pr-4 text-neutral-600">{s.lost}</td>
                     <td className="py-2 pr-4 text-neutral-600">{s.scam}</td>
-                    <td className="py-2 pr-4 text-neutral-600">{s.winRatePct}%</td>
+                    <td className="py-2 pr-4 text-neutral-600">
+                      {s.winRatePct === null ? "—" : `${s.winRatePct}%`}
+                    </td>
                   </tr>
                 ))}
               </tbody>

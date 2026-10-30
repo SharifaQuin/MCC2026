@@ -304,7 +304,9 @@ export default async function SalesPage() {
                 <thead className="border-b border-neutral-200 text-xs uppercase tracking-wide text-neutral-500">
                   <tr>
                     <th className="py-2 pr-4">Source</th>
-                    <th className="py-2 pr-4">Leads</th>
+                    <th className="py-2 pr-4" title="Every lead received this month from this source, including any scam-classified ones">
+                      Leads (All-Received)
+                    </th>
                     <th className="py-2 pr-4">Won</th>
                     <th className="py-2 pr-4">Spend</th>
                     <th className="py-2 pr-4">Cost / Lead</th>

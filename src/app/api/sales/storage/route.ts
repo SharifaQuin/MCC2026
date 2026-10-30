@@ -97,10 +97,17 @@ export async function POST(request: Request) {
 
           if (quoteData.status === "won" || quoteData.status === "lost") {
             const lead = await prisma.lead.findFirst({ where: { quoteKey: quoteId } });
-            if (lead && lead.stage !== "WON" && lead.stage !== "LOST" && lead.stage !== "SCAM") {
+            if (lead) {
               const toStage = quoteData.status === "won" ? "WON" : "LOST";
-              await prisma.lead.update({
-                where: { id: lead.id },
+              // Atomic conditional write — evaluated by the database at
+              // write time, not from the `lead` read above, so a lead
+              // classified Scam (by markLeadScamAction, concurrently,
+              // after this read but before this write) can't have its
+              // stage silently clobbered back out of Scam by a stale
+              // quote-tab sync. A plain read-then-write here would be
+              // exactly the TOCTOU gap this guard exists to close.
+              const updated = await prisma.lead.updateMany({
+                where: { id: lead.id, stage: { notIn: ["WON", "LOST", "SCAM"] } },
                 data: {
                   stage: toStage,
                   ...(toStage === "LOST" && !lead.lostReason
@@ -108,9 +115,11 @@ export async function POST(request: Request) {
                     : {}),
                 },
               });
-              await prisma.leadStageChange.create({
-                data: { leadId: lead.id, fromStage: lead.stage, toStage, changedById: getTrueActorId(session) },
-              });
+              if (updated.count > 0) {
+                await prisma.leadStageChange.create({
+                  data: { leadId: lead.id, fromStage: lead.stage, toStage, changedById: getTrueActorId(session) },
+                });
+              }
             }
           }
         } catch (error) {

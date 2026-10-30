@@ -690,6 +690,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
       <div class="btn-row">
         <button class="btn-save-quote" onclick="saveQuoteForClient()">Save / Email Quote →</button>
         <button class="btn-copy-crm" onclick="copyForCRM()">Copy for CRM</button>
+        <button class="btn-copy-crm" onclick="clearManualQuoteForNewClient()">New Client / Clear</button>
       </div>
       <div class="save-quote-status" id="save-quote-status"></div>
     </div>
@@ -2162,14 +2163,11 @@ async function loadQuoteForUpdate(){
       state = Object.assign({}, state, data.formState);
     }
 
-    document.getElementById('save-client-name').value = data.clientName || '';
-    document.getElementById('save-client-id').value = data.id || id;
-    document.getElementById('save-client-address').value = data.address || '';
-    document.getElementById('save-client-phone').value = data.phone || '';
-    document.getElementById('save-client-email').value = data.clientEmail || '';
-    document.getElementById('save-client-zip').value = data.zip || '';
-    document.getElementById('save-walkthrough-date').value = data.walkthroughDate || '';
-    if(data.city) document.getElementById('city-select').value = data.city;
+    // Falls back to the typed id only if the stored record itself is
+    // missing its own `id` field (legacy/malformed data) — same fallback
+    // the old inline field-filling here used to have.
+    data.id = data.id || id;
+    setActiveQuote(data);
 
     state.collectedVia = 'walkthrough';
     document.getElementById('collected-via').value = 'walkthrough';
@@ -2191,6 +2189,7 @@ async function saveQuoteForClient(){
   const statusEl = document.getElementById('save-quote-status');
   const clientName = document.getElementById('save-client-name').value.trim();
   if(!clientName){ statusEl.textContent = 'Enter a client name first.'; return; }
+  const clientEmailForCollisionCheck = document.getElementById('save-client-email').value.trim();
   // Include the service so the same client getting two different quotes the
   // same day (e.g. Standard + Deep) get distinct auto-generated IDs instead
   // of silently overwriting each other under name-date alone. Shared with
@@ -2201,12 +2200,20 @@ async function saveQuoteForClient(){
   document.getElementById('save-client-id').value = id;
   if(resolved.note) statusEl.textContent = resolved.note;
 
-  const collisionCheck = await checkQuoteIdCollision(id, clientName);
+  const collisionCheck = await checkQuoteIdCollision(id, clientEmailForCollisionCheck);
+  if(collisionCheck.collision === 'unknown'){
+    statusEl.textContent = 'Could not confirm whether this Quote ID is already in use — check your connection and try saving again.';
+    return;
+  }
   if(collisionCheck.collision){
     statusEl.textContent = `Quote ID "${id}" is already used by a different client (${collisionCheck.existingData.clientName}). Please enter a unique Quote ID above and save again.`;
     return;
   }
   const existingData = collisionCheck.existingData;
+  if(!isLoadedQuoteStillFresh(existingData)){
+    statusEl.textContent = 'This quote was saved by someone else since you loaded it — reload it and try again, rather than overwrite their changes.';
+    return;
+  }
 
   const r = computeCurrent();
   const cleanMin = r.hours*60, bufferedMin = cleanMin+60;
@@ -3066,6 +3073,47 @@ const ADDON_LABELS = {
 
 let currentQuote = null;
 
+// Dirty-tracking: true the moment the recipient, price, or any other
+// content field on EITHER quote-creation surface is edited without a
+// subsequent successful save — Send requires this to be false, closing
+// both "edit recipient then Send without Preview/Save" and "Send uses
+// unsaved content because the id/email happened to still be present."
+// Cleared only immediately after a save whose written content matches
+// what's currently displayed (see saveManualQuote/saveQuoteForClient).
+let quoteDirty = false;
+// The `savedAt` value this tab last saw for whatever quote is currently
+// loaded — used to detect "someone else saved a newer version since I
+// loaded this" at save time, the KV-store equivalent of the
+// expectedUpdatedAt idiom used throughout this codebase's Prisma-backed
+// actions. Reset whenever a quote is (re)loaded or freshly saved.
+let lastKnownSavedAt = null;
+
+const DIRTY_TRACKED_FIELD_IDS = new Set([
+  'f-recipient-email','f-name','f-city','f-address','f-date','f-service','f-frequency',
+  'f-low','f-high','f-time','f-validuntil',
+  'a-linens','a-baseboards','a-laundry','a-fridge','a-oven','a-glass','a-pet',
+  'save-client-name','save-client-phone','save-client-address','save-client-email','save-client-zip',
+  'save-walkthrough-date','city-select',
+]);
+function markQuoteDirtyIfTracked(e){
+  if(e.target && e.target.id && DIRTY_TRACKED_FIELD_IDS.has(e.target.id)){
+    quoteDirty = true;
+    if(typeof updateSalesControlsUI === 'function') updateSalesControlsUI(currentQuote || {});
+  }
+}
+document.addEventListener('input', markQuoteDirtyIfTracked, true);
+document.addEventListener('change', markQuoteDirtyIfTracked, true);
+
+// Only meaningful when updating the quote this tab currently has loaded —
+// a brand-new id (no existingData, or an existingData record unrelated to
+// the currently-loaded quote) has nothing to be stale against. Returns
+// false when someone/something else has saved a newer version of this
+// exact quote since this tab last loaded or saved it.
+function isLoadedQuoteStillFresh(existingData){
+  if(!existingData || !currentQuote || existingData.id !== currentQuote.id) return true;
+  return (existingData.savedAt || null) === lastKnownSavedAt;
+}
+
 function toggleBuilder(){
   const panel = document.getElementById('builder-panel');
   const btn = document.getElementById('builder-toggle-btn');
@@ -3129,6 +3177,14 @@ function buildMergedManualQuoteData(formData){
   const base = (currentQuote && currentQuote.id) ? Object.assign({}, currentQuote) : {};
   const merged = Object.assign({}, base, formData);
   merged.clientEmail = formData.clientEmail;
+  // Recomputed fresh from the CURRENT low/high inputs every time this
+  // runs (every Preview/Save) — never carried forward from a stale prior
+  // value. The manual form has no separate computed "suggested" field the
+  // way the Pricing Calculator's computeCurrent() produces one, so without
+  // this, sendQuoteToClient()'s email body would read "Quote pending" for
+  // cost on every manually-built quote regardless of what was entered.
+  const low = parseFloat(formData.low), high = parseFloat(formData.high);
+  merged.suggested = (!isNaN(high) ? high : (!isNaN(low) ? low : 0)).toFixed(2);
   delete merged.quoteIdInput;
   return merged;
 }
@@ -3141,6 +3197,42 @@ function buildMergedManualQuoteData(formData){
 // never a stale or blank one, and a subsequent regenerate+save can't lose
 // the client name (which saveManualQuote requires) just because loading
 // happened on a different tab.
+// The ONE place every quote-loading entry point on either surface (the
+// Pricing Calculator tab's own Save box, the manual "Fill In By Hand" form,
+// "Load a Saved Quote", the Previous Quotes list, and the Walkthrough-
+// update loader below) goes through to adopt a quote's identity. Sets
+// currentQuote, syncs the manual form (syncManualFormFromQuote), AND fills
+// the Pricing Calculator's own save-client-* fields — merging what used to
+// be inline, Pricing-Calculator-only field-filling into this one shared
+// function, so no entry point can set one surface's state without the
+// other's.
+function setActiveQuote(data, opts){
+  // preserveDirty: a live Preview/regenerate re-render of the currently
+  // edited form content, NOT a load or a successful save — must never
+  // clear a dirty flag the viewer's own unsaved edits just set, or Send
+  // would silently re-enable on stale, unsaved content (see generateQuote()
+  // below, the only caller that passes this).
+  const preserveDirty = !!(opts && opts.preserveDirty);
+  currentQuote = data;
+  if(!preserveDirty){
+    quoteDirty = false;
+    lastKnownSavedAt = data.savedAt || null;
+  }
+  syncManualFormFromQuote(data);
+  const setVal = (id, val) => { const el = document.getElementById(id); if(el) el.value = val; };
+  setVal('save-client-name', data.clientName || '');
+  setVal('save-client-id', data.id || '');
+  setVal('save-client-address', data.address || '');
+  setVal('save-client-phone', data.phone || '');
+  setVal('save-client-email', data.clientEmail || '');
+  setVal('save-client-zip', data.zip || '');
+  setVal('save-walkthrough-date', data.walkthroughDate || '');
+  if(data.city){
+    const cityEl = document.getElementById('city-select');
+    if(cityEl) cityEl.value = data.city;
+  }
+}
+
 function syncManualFormFromQuote(data){
   const setVal = (id, val) => { const el = document.getElementById(id); if(el) el.value = val; };
   const setChecked = (id, val) => { const el = document.getElementById(id); if(el) el.checked = !!val; };
@@ -3173,7 +3265,7 @@ function generateQuote(){
     return;
   }
   saveDefaultSenderSettings(data.mailbox, data.sender);
-  renderQuote(buildMergedManualQuoteData(data));
+  renderQuote(buildMergedManualQuoteData(data), { preserveDirty: true });
 }
 
 // Shared with saveQuoteForClient() below — same auto-generate/cleanup rules,
@@ -3199,17 +3291,53 @@ async function resolveQuoteSaveId(typedId, clientName, suffix){
   }
   return { id: cleaned, note: '' };
 }
-async function checkQuoteIdCollision(id, clientName){
+// Safe to treat an existing record under this id as "the same quote, okay
+// to update in place" only when EITHER this id is the one already loaded
+// (currentQuote.id — an explicit load, not a guess) OR the stored
+// clientEmail matches the new entry's clientEmail. A name-only match (two
+// different clients who happen to share a name — and thus the same
+// auto-generated id, since generation is name+date+service) is a REAL
+// collision, never silently treated as the same quote.
+//
+// A caught error (e.g. a genuine storage-read failure) is returned as its
+// own distinct `collision: 'unknown'` state — never folded into the same
+// {collision:false} result as "this id is free," which would let a
+// transient read error silently look identical to "safe to proceed."
+async function checkQuoteIdCollision(id, clientEmail){
+  let existing;
   try{
-    const existing = await window.storage.get('quote:'+id, true);
-    if(existing && existing.value){
-      const existingData = JSON.parse(existing.value);
-      if(existingData.clientName !== clientName){
-        return { collision: true, existingData };
-      }
-      return { collision: false, existingData };
+    existing = await window.storage.get('quote:'+id, true);
+  } catch(e){
+    const msg = (e && e.message) || '';
+    // Every storage backend here (portal/Postgres, localStorage, Firebase)
+    // signals "no such key" the same deliberate way: a thrown Error whose
+    // message starts with "Key not found:" — not a null return. That's the
+    // normal, expected outcome for a brand-new quote ID, not a failure, so
+    // it must resolve as "no existing quote," not as 'unknown'. Anything
+    // else caught here (a real network/storage failure) is genuinely
+    // unknown and must not be treated as "safe to proceed."
+    if (msg.indexOf('Key not found:') === 0){
+      return { collision: false, existingData: null };
     }
-  } catch(e){}
+    return { collision: 'unknown', error: msg || 'Could not check for an existing quote.' };
+  }
+  if(existing && existing.value){
+    let existingData;
+    try{
+      existingData = JSON.parse(existing.value);
+    } catch(e){
+      return { collision: 'unknown', error: 'Could not read the existing quote under this ID.' };
+    }
+    const sameAsLoaded = !!(currentQuote && currentQuote.id === id);
+    const sameEmail = !!(
+      clientEmail && existingData.clientEmail &&
+      clientEmail.trim().toLowerCase() === String(existingData.clientEmail).trim().toLowerCase()
+    );
+    if(!sameAsLoaded && !sameEmail){
+      return { collision: true, existingData };
+    }
+    return { collision: false, existingData };
+  }
   return { collision: false, existingData: null };
 }
 
@@ -3244,6 +3372,10 @@ async function saveManualQuote(){
       statusEl.textContent = 'This quote no longer exists in storage (it may have been deleted elsewhere) — use "New Client / Clear" to start fresh, or clear the Quote ID field above to save it as a new quote.';
       return;
     }
+    if(!isLoadedQuoteStillFresh(existingData)){
+      statusEl.textContent = 'This quote was saved by someone else since you loaded it — reload it and try again, rather than overwrite their changes.';
+      return;
+    }
   } else {
     const idFieldEl = document.getElementById('f-quote-id');
     const resolved = await resolveQuoteSaveId(idFieldEl.value, clientName, data.service);
@@ -3251,7 +3383,11 @@ async function saveManualQuote(){
     idFieldEl.value = id;
     if(resolved.note) statusEl.textContent = resolved.note;
 
-    const collisionCheck = await checkQuoteIdCollision(id, clientName);
+    const collisionCheck = await checkQuoteIdCollision(id, email);
+    if(collisionCheck.collision === 'unknown'){
+      statusEl.textContent = 'Could not confirm whether this Quote ID is already in use — check your connection and try saving again.';
+      return;
+    }
     if(collisionCheck.collision){
       statusEl.textContent = `Quote ID "${id}" is already used by a different client (${collisionCheck.existingData.clientName}). Please enter a unique Quote ID above and save again.`;
       return;
@@ -3276,6 +3412,10 @@ async function saveManualQuote(){
     if(result){
       statusEl.textContent = `Saved. Quote ID: ${id}.`;
       document.getElementById('f-quote-id').value = id;
+      // renderQuote -> setActiveQuote clears quoteDirty and updates
+      // lastKnownSavedAt from `merged` — only now, immediately after a
+      // save whose written content matches what's about to be displayed,
+      // never before a save attempt and never on a failed one.
       renderQuote(merged);
       if(typeof refreshPreviousQuotesList === 'function') refreshPreviousQuotesList();
     } else {
@@ -3287,11 +3427,17 @@ async function saveManualQuote(){
 }
 
 // The only intentional way to break the link to whatever quote is currently
-// loaded — clears id/recipient/everything so the manual form's next Save
-// creates a genuinely new, separate quote rather than silently updating the
-// one that was just here.
+// loaded — clears id/recipient/everything on BOTH surfaces (the manual
+// form's own fields and the Pricing Calculator's save-client-* fields) so
+// either form's next Save creates a genuinely new, separate quote rather
+// than silently updating the one that was just here. Bound to a "New
+// Client / Clear" button on both the manual form and the Pricing
+// Calculator's own Save box — same function, not two separate ones, so
+// they can't drift out of sync with each other.
 function clearManualQuoteForNewClient(){
   currentQuote = null;
+  quoteDirty = false;
+  lastKnownSavedAt = null;
   ['f-name','f-city','f-address','f-recipient-email','f-quote-id','f-date','f-time','f-validuntil','f-low','f-high'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.value = '';
@@ -3304,7 +3450,13 @@ function clearManualQuoteForNewClient(){
     const el = document.getElementById(id);
     if(el) el.checked = false;
   });
+  ['save-client-name','save-client-id','save-client-address','save-client-phone','save-client-email','save-client-zip','save-walkthrough-date'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.value = '';
+  });
   document.getElementById('f-save-status').textContent = 'Cleared — ready for a new, unrelated client/quote.';
+  const saveQuoteStatusEl = document.getElementById('save-quote-status');
+  if(saveQuoteStatusEl) saveQuoteStatusEl.textContent = 'Cleared — ready for a new, unrelated client/quote.';
   const emptyEl = document.getElementById('empty-state');
   const quoteViewEl = document.getElementById('quote-view');
   if(emptyEl) emptyEl.style.display = '';
@@ -3464,12 +3616,10 @@ function formatPhone(raw){
   return `(${tenDigits.slice(0,3)}) ${tenDigits.slice(3,6)}-${tenDigits.slice(6)}`;
 }
 
-function renderQuote(data){
-  currentQuote = data;
+function renderQuote(data, opts){
+  setActiveQuote(data, opts);
   document.getElementById('empty-state').style.display = 'none';
   document.getElementById('quote-view').classList.add('open');
-
-  syncManualFormFromQuote(data);
 
   const firstName = (data.clientName||'').split(' ')[0] || 'there';
   document.getElementById('q-hero-title').textContent = `A Cleaner, Calmer Home Awaits`;
@@ -3537,8 +3687,15 @@ function updateSalesControlsUI(data){
   const sendBtn = document.getElementById('sc-send-btn');
   const sendStatus = document.getElementById('sc-send-status');
   if(!data.id){
+    // Never been saved at all — the more fundamental problem, and the
+    // more actionable message, regardless of quoteDirty (freshly typed,
+    // never-saved content is trivially "dirty" too, but "save this first"
+    // is what the viewer actually needs to do).
     sendBtn.disabled = true;
     sendStatus.textContent = 'Save this quote (with a client email) first to enable sending.';
+  } else if(quoteDirty){
+    sendBtn.disabled = true;
+    sendStatus.textContent = 'You have unsaved changes — save before sending.';
   } else if(!data.clientEmail){
     sendBtn.disabled = true;
     sendStatus.textContent = 'Add a client email and save again to enable sending.';
@@ -3615,8 +3772,22 @@ async function sendQuoteToClient(){
   if(sendBtn.disabled) return;
   sendBtn.disabled = true;
 
+  // Never saved at all — the more fundamental, more actionable problem,
+  // checked before quoteDirty (freshly typed, never-saved content is
+  // trivially "dirty" too, but "save this first" is what's actually needed).
   if(!currentQuote || !currentQuote.id){
     sendStatus.textContent = 'Save this quote (with a client email) first to enable sending.';
+    sendBtn.disabled = false;
+    return;
+  }
+
+  // Closes "edit the recipient (or price/content) directly, then Send
+  // without ever regenerating/resaving" — quoteDirty is set by the
+  // document-level input/change listener the instant any tracked field
+  // changes, independent of whether currentQuote.clientEmail happens to
+  // still look present/unchanged.
+  if(quoteDirty){
+    sendStatus.textContent = 'You have unsaved changes — save before sending.';
     sendBtn.disabled = false;
     return;
   }

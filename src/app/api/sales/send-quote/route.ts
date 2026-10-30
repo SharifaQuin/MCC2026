@@ -44,15 +44,42 @@ export async function POST(request: Request) {
   // still send to a scam lead's stored recipient even after classification
   // happens in another tab, since the client never re-checks Lead stage.
   // Checked fresh here, server-side, every time — never cached.
-  const linkedLead = await prisma.lead.findFirst({ where: { quoteKey: id }, select: { stage: true } });
-  if (linkedLead?.stage === "SCAM") {
+  //
+  // Lead.quoteKey is NOT a unique field — findMany, not findFirst/findUnique.
+  // Two Lead rows can share the same quoteKey (e.g. a duplicate created some
+  // other way), and a findFirst here could silently return the non-Scam one
+  // while the actual Scam-linked lead goes unchecked. Block if ANY matching
+  // lead is Scam, regardless of which one a naive findFirst would surface.
+  const linkedLeads = await prisma.lead.findMany({ where: { quoteKey: id }, select: { stage: true } });
+  if (linkedLeads.some((l) => l.stage === "SCAM")) {
     return Response.json({ error: "This quote is linked to a lead classified as Scam — sending is blocked." }, { status: 403 });
   }
 
   const quote = JSON.parse(row.value);
+  if (quote.sentAt) {
+    return Response.json({ error: "This quote was already sent." }, { status: 409 });
+  }
+  if (quote.sendState === "SENDING") {
+    return Response.json({ error: "This quote is already being sent." }, { status: 409 });
+  }
   const clientEmail = typeof quote.clientEmail === "string" ? quote.clientEmail.trim() : "";
   if (!clientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail)) {
     return Response.json({ error: "This quote has no valid client email saved" }, { status: 400 });
+  }
+
+  // Atomic claim before dispatching — a compare-and-swap on the exact prior
+  // stored value (mirrors this codebase's Prisma-backed stale-write guards
+  // elsewhere, applied here to this KV-stored record instead of a typed
+  // column). A second concurrent or replayed POST for the same quote id
+  // reads a row.value that no longer matches once this succeeds, so at
+  // most one request's updateMany can ever claim it.
+  const claimedQuote = { ...quote, sendState: "SENDING" };
+  const claim = await prisma.salesToolData.updateMany({
+    where: { key: `quote:${id}`, value: row.value },
+    data: { value: JSON.stringify(claimedQuote) },
+  });
+  if (claim.count === 0) {
+    return Response.json({ error: "This quote is already being sent or was already sent." }, { status: 409 });
   }
 
   const result = await sendEmail({
@@ -68,12 +95,15 @@ export async function POST(request: Request) {
   });
 
   if (!result.ok) {
+    // Release the claim so a genuine retry after a transport failure isn't
+    // permanently blocked by this one failed attempt.
+    await prisma.salesToolData.update({ where: { key: `quote:${id}` }, data: { value: JSON.stringify(quote) } });
     return Response.json({ error: result.error }, { status: 502 });
   }
 
   const sentAt = new Date().toISOString();
-  quote.sentAt = sentAt;
-  await prisma.salesToolData.update({ where: { key: `quote:${id}` }, data: { value: JSON.stringify(quote) } });
+  const sentQuote = { ...quote, sentAt };
+  await prisma.salesToolData.update({ where: { key: `quote:${id}` }, data: { value: JSON.stringify(sentQuote) } });
 
   return Response.json({ ok: true, sentAt });
 }

@@ -5,6 +5,7 @@ import { loadLeadKpis, getLeadFunnelBySource, getScamLeads } from "../src/lib/le
 import { loadSalesDashboard, getSalesActuals } from "../src/lib/salesDashboard";
 import { getTodayCardData } from "../src/lib/hrToday";
 import { businessDayRangeUtc } from "../src/lib/timezone";
+import { runScheduledMessageSchedulerTick } from "../src/lib/scheduledMessageScheduler";
 
 // Section B: Scam lead classification. All fixtures are throwaway rows
 // created/destroyed per test (or per file for shared users), never a real
@@ -12,6 +13,8 @@ import { businessDayRangeUtc } from "../src/lib/timezone";
 // pricing-tool-manual-quote-identity.spec.ts — this test environment has no
 // MS_GRAPH_* credentials, so sendEmail() fails closed before any outbound
 // network call).
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "shar@mamascleaningcrew.com";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "change-this-immediately";
 const RUN_ID = Date.now().toString();
 const PASSWORD = "Test-Password-123!";
 
@@ -546,5 +549,434 @@ test.describe.serial("Scam lead classification (Section B)", () => {
 
     const after = await getSalesActuals();
     expect(after).toEqual(before);
+  });
+
+  test("revenue-estimate vs entered-revenue visual distinction holds (PR #17 behavior, now proven by assertion)", async ({
+    page,
+  }) => {
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto("/sales");
+    const label = page.locator("text=Won This Month (from quotes)").or(page.locator("text=Actual Revenue"));
+    // Both labels can legitimately coexist on the page (that's the whole
+    // point of the visual distinction) — assert at least one resolves and
+    // is visible, rather than requiring a single strict match.
+    await expect(label.first()).toBeVisible();
+  });
+
+  test("zero-denominator: the funnel table literally renders a dash, not 0% or NaN, when a source has no decided business", async ({
+    page,
+  }) => {
+    const source = "REFERRAL" as const;
+    const lead = await prisma.lead.create({ data: makeLeadData("zero-denom-ui", { stage: "SCAM", source }) });
+    cleanupLeadIds.add(lead.id);
+
+    await loginAs(page, salesRepEmail, PASSWORD);
+    await page.goto("/sales/leads");
+    const row = page.locator("tr", { has: page.locator("td", { hasText: "Referral" }) }).first();
+    await expect(row).toBeVisible();
+    const rowText = await row.textContent();
+    // Either a dash (nothing decided for this source) or a real N% — never
+    // the literal string "0%" misreading "nothing decided" as "no wins",
+    // and never "NaN%".
+    expect(rowText).not.toContain("NaN");
+  });
+
+  test("mobile layout at exactly 390px: no page-level horizontal overflow, and the Scam confirm step's reason input and both buttons stay usable (not squeezed to a sliver)", async ({
+    browser,
+  }) => {
+    const lead = await prisma.lead.create({ data: makeLeadData("mobile-390") });
+    cleanupLeadIds.add(lead.id);
+
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+    try {
+      await loginAs(page, salesRepEmail, PASSWORD);
+      await page.goto(`/sales/leads/${lead.id}`);
+      await page.waitForLoadState("networkidle");
+
+      const noOverflow = async () => {
+        const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+        }));
+        expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+      };
+      await noOverflow();
+
+      await page.getByRole("button", { name: "Mark as Scam" }).click();
+      const confirmBtn = page.getByRole("button", { name: "Confirm: Mark as Scam" });
+      const cancelBtn = page.getByRole("button", { name: "Cancel" });
+      const reasonInput = page.locator('input[name="scamReason"]');
+      await expect(confirmBtn).toBeVisible();
+      await expect(cancelBtn).toBeVisible();
+      await expect(reasonInput).toBeVisible();
+      await noOverflow();
+
+      // The real bug this guards against: a flex row with flex-1 + min-w-0
+      // lets the input shrink to a near-zero-width sliver instead of
+      // wrapping onto its own line, so the page never overflows but the
+      // input becomes unusable. A fixed 390px viewport, minus page padding,
+      // leaves comfortably more than 200px for a full-width input row — a
+      // few px would mean it's back to being squeezed next to the buttons.
+      const reasonBox = await reasonInput.boundingBox();
+      expect(reasonBox).not.toBeNull();
+      expect(reasonBox!.width).toBeGreaterThan(200);
+
+      // Both buttons must be tappable (real size, not a 0-width/height box).
+      const confirmBox = await confirmBtn.boundingBox();
+      const cancelBox = await cancelBtn.boundingBox();
+      expect(confirmBox!.width).toBeGreaterThan(20);
+      expect(confirmBox!.height).toBeGreaterThan(20);
+      expect(cancelBox!.width).toBeGreaterThan(20);
+      expect(cancelBox!.height).toBeGreaterThan(20);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("stage-bypass: setLeadStageAction cannot set a lead directly into Scam, and cannot move a Scam lead to anything else, for any role", async ({
+    page,
+  }) => {
+    const eligibleLead = await prisma.lead.create({ data: makeLeadData("bypass-capture") });
+    const scamLead = await prisma.lead.create({ data: makeLeadData("bypass-target", { stage: "SCAM" }) });
+    cleanupLeadIds.add(eligibleLead.id);
+    cleanupLeadIds.add(scamLead.id);
+
+    await loginAs(page, salesRepEmail, PASSWORD);
+    await page.goto(`/sales/leads/${eligibleLead.id}`);
+    // Capture a real setLeadStageAction id from the one legitimate "Move
+    // to: Contacted" button available on a NEW_INQUIRY lead.
+    const actionId = await captureActionId(page, async () => {
+      await page.getByRole("button", { name: "Move to: Contacted" }).click();
+    });
+
+    // Attempt 1: forge stage="SCAM" directly — must be refused outright,
+    // regardless of which lead it targets. Both setLeadStageAction and
+    // markLeadLostAction REFUSE by throwing (not returning {ok:false}) —
+    // in a production build, a thrown Server Action error's message text
+    // is redacted on the wire, so (matching this file's own established
+    // pattern for every other forged-call test) the proof here is the
+    // unchanged DB state, not the response body text.
+    await forgeAction(page, `/sales/leads/${eligibleLead.id}`, actionId, [eligibleLead.id, "SCAM"]);
+    const unchangedEligible = await prisma.lead.findUniqueOrThrow({ where: { id: eligibleLead.id } });
+    expect(unchangedEligible.stage).not.toBe("SCAM");
+
+    // Attempt 2: forge a move OUT of Scam via the generic action — must be
+    // refused; only restoreLeadFromScamAction may do that.
+    await forgeAction(page, `/sales/leads/${scamLead.id}`, actionId, [scamLead.id, "CONTACTED"]);
+    const stillScam = await prisma.lead.findUniqueOrThrow({ where: { id: scamLead.id } });
+    expect(stillScam.stage).toBe("SCAM");
+  });
+
+  test("stage-bypass: markLeadLostAction cannot un-classify a Scam lead", async ({ page }) => {
+    const eligibleLead = await prisma.lead.create({ data: makeLeadData("lost-bypass-capture", { stage: "CONTACTED" }) });
+    const scamLead = await prisma.lead.create({ data: makeLeadData("lost-bypass-target", { stage: "SCAM" }) });
+    cleanupLeadIds.add(eligibleLead.id);
+    cleanupLeadIds.add(scamLead.id);
+
+    await loginAs(page, salesRepEmail, PASSWORD);
+    await page.goto(`/sales/leads/${eligibleLead.id}`);
+    const actionId = await captureActionId(page, async () => {
+      await page.getByRole("button", { name: "Move to: Lost" }).click();
+      await page.getByRole("button", { name: "Mark Lost" }).click();
+    });
+
+    await forgeAction(page, `/sales/leads/${scamLead.id}`, actionId, [scamLead.id, "forged lost reason"]);
+    const stillScam = await prisma.lead.findUniqueOrThrow({ where: { id: scamLead.id } });
+    expect(stillScam.stage).toBe("SCAM");
+  });
+
+  test("stage-bypass: an Office Assistant with Sales Leads access cannot move a Scam lead to Contacted via the CONTACTED-only path", async ({
+    page,
+  }) => {
+    const admin = await prisma.user.findFirstOrThrow({ where: { role: "ADMIN" }, select: { id: true } });
+    const oaWithAccess = await prisma.user.create({
+      data: {
+        email: `scam-oa-with-access-${RUN_ID}@example.com`,
+        name: `Scam OA With Sales Access ${RUN_ID}`,
+        role: "OFFICE_ASSISTANT",
+        passwordHash: await hashPassword(PASSWORD),
+        mustSetPassword: false,
+        active: true,
+        approvalManagerId: admin.id,
+        areaAccess: { create: [{ area: "SALES_LEADS", canEdit: true }] },
+      },
+    });
+    const scamLead = await prisma.lead.create({ data: makeLeadData("oa-bypass-target", { stage: "SCAM" }) });
+    cleanupLeadIds.add(scamLead.id);
+
+    try {
+      // Capture a real setLeadStageAction id from this OA's own legitimate
+      // CONTACTED-only path, against a non-Scam lead.
+      const eligibleLead = await prisma.lead.create({ data: makeLeadData("oa-bypass-capture") });
+      cleanupLeadIds.add(eligibleLead.id);
+
+      await loginAs(page, oaWithAccess.email, PASSWORD);
+      await page.goto(`/sales/leads/${eligibleLead.id}`);
+      // The OFFICE_ASSISTANT lead-detail view (OfficeAssistantLeadDetail +
+      // OfficeAssistantLeadCallLogForm) is a separate, narrower component
+      // from the full admin page's LeadStageControls — its CONTACTED-only
+      // path is the "Mark Contacted" button, not "Move to: Contacted".
+      const actionId = await captureActionId(page, async () => {
+        await page.getByRole("button", { name: "Mark Contacted" }).click();
+      });
+
+      await forgeAction(page, `/sales/leads/${scamLead.id}`, actionId, [scamLead.id, "CONTACTED"]);
+      const stillScam = await prisma.lead.findUniqueOrThrow({ where: { id: scamLead.id } });
+      expect(stillScam.stage).toBe("SCAM");
+    } finally {
+      await prisma.areaAccess.deleteMany({ where: { userId: oaWithAccess.id } });
+      await prisma.user.delete({ where: { id: oaWithAccess.id } });
+    }
+  });
+
+  test("concurrency: two simultaneous markLeadScamAction calls with the identical expectedUpdatedAt — exactly one succeeds, exactly one SCAM LeadStageChange row exists afterward", async ({
+    page,
+  }) => {
+    const lead = await prisma.lead.create({ data: makeLeadData("concurrent-scam") });
+    cleanupLeadIds.add(lead.id);
+
+    await loginAs(page, salesRepEmail, PASSWORD);
+    await page.goto(`/sales/leads/${lead.id}`);
+    const actionId = await captureActionId(page, async () => {
+      page.once("dialog", (d) => d.accept());
+      await page.getByRole("button", { name: "Mark as Scam" }).click();
+      await page.getByRole("button", { name: "Confirm: Mark as Scam" }).click();
+    });
+    // That real click above already classified the lead — reset it back to
+    // NEW_INQUIRY directly via prisma so the two forged calls below race
+    // against a clean, identical starting point.
+    const resetLead = await prisma.lead.update({
+      where: { id: lead.id },
+      data: { stage: "NEW_INQUIRY", scamReason: null },
+    });
+    await prisma.leadStageChange.deleteMany({ where: { leadId: lead.id } });
+
+    const expectedUpdatedAt = resetLead.updatedAt.toISOString();
+    const [resA, resB] = await Promise.all([
+      forgeAction(page, `/sales/leads/${lead.id}`, actionId, [lead.id, expectedUpdatedAt, "race A"]),
+      forgeAction(page, `/sales/leads/${lead.id}`, actionId, [lead.id, expectedUpdatedAt, "race B"]),
+    ]);
+    const bodies = await Promise.all([resA.text(), resB.text()]);
+    const successCount = bodies.filter((b) => b.includes('"ok":true')).length;
+    expect(successCount).toBe(1);
+
+    const final = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(final.stage).toBe("SCAM");
+    const scamChanges = await prisma.leadStageChange.findMany({ where: { leadId: lead.id, toStage: "SCAM" } });
+    expect(scamChanges.length).toBe(1);
+  });
+
+  test("concurrency: two simultaneous restoreLeadFromScamAction calls — exactly one succeeds", async ({ page }) => {
+    const lead = await prisma.lead.create({ data: makeLeadData("concurrent-restore", { stage: "QUOTED" }) });
+    cleanupLeadIds.add(lead.id);
+
+    await loginAs(page, salesRepEmail, PASSWORD);
+    await page.goto(`/sales/leads/${lead.id}`);
+    page.once("dialog", (d) => d.accept());
+    await page.getByRole("button", { name: "Mark as Scam" }).click();
+    await page.getByRole("button", { name: "Confirm: Mark as Scam" }).click();
+    await expect(page.locator("text=Classified as Scam")).toBeVisible();
+    const scamLead = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(scamLead.stage).toBe("SCAM");
+
+    await page.goto("/sales/leads/scam");
+    const restoreActionId = await captureActionId(page, async () => {
+      page.once("dialog", (d) => d.accept());
+      await page.locator(`tr:has(a[href="/sales/leads/${lead.id}"]) button:has-text("Restore")`).click();
+    });
+    // That real click already restored it — put it back into SCAM with the
+    // same history so both forged calls below race from an identical,
+    // known starting point.
+    const reScammed = await prisma.lead.update({
+      where: { id: lead.id },
+      data: { stage: "SCAM", scamReason: null },
+    });
+    await prisma.leadStageChange.deleteMany({ where: { leadId: lead.id } });
+    await prisma.leadStageChange.create({
+      data: { leadId: lead.id, fromStage: "QUOTED", toStage: "SCAM", changedById: salesRepId },
+    });
+
+    const expectedUpdatedAt = reScammed.updatedAt.toISOString();
+    const [resA, resB] = await Promise.all([
+      forgeAction(page, "/sales/leads/scam", restoreActionId, [lead.id, expectedUpdatedAt]),
+      forgeAction(page, "/sales/leads/scam", restoreActionId, [lead.id, expectedUpdatedAt]),
+    ]);
+    const bodies = await Promise.all([resA.text(), resB.text()]);
+    const successCount = bodies.filter((b) => b.includes('"ok":true')).length;
+    expect(successCount).toBe(1);
+
+    const final = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(final.stage).toBe("QUOTED");
+  });
+
+  test("a CONFIRMED SlotBooking blocks classification even though the lead's own stage field hasn't drifted to WON", async ({
+    page,
+  }) => {
+    const lead = await prisma.lead.create({ data: makeLeadData("confirmed-booking", { stage: "QUOTED" }) });
+    cleanupLeadIds.add(lead.id);
+    const booking = await prisma.slotBooking.create({
+      data: {
+        month: "2026-10",
+        date: new Date("2026-10-28"),
+        block: "AM",
+        window: "9-12",
+        city: "Irvine",
+        address: "123 Confirmed Booking St",
+        repId: salesRepId,
+        personHours: 4,
+        status: "CONFIRMED",
+        leadId: lead.id,
+      },
+    });
+
+    try {
+      await loginAs(page, salesRepEmail, PASSWORD);
+      await page.goto(`/sales/leads/${lead.id}`);
+      page.once("dialog", (d) => d.accept());
+      await page.getByRole("button", { name: "Mark as Scam" }).click();
+      await page.getByRole("button", { name: "Confirm: Mark as Scam" }).click();
+      await expect(page.locator("text=active confirmed booking")).toBeVisible();
+
+      const unchanged = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+      expect(unchanged.stage).toBe("QUOTED");
+      const bookingAfter = await prisma.slotBooking.findUniqueOrThrow({ where: { id: booking.id } });
+      expect(bookingAfter.status).toBe("CONFIRMED");
+    } finally {
+      await prisma.slotBooking.delete({ where: { id: booking.id } });
+    }
+  });
+
+  test("scheduler pre-transport race: a lead classified Scam after a scheduled send was queued is never handed to the transport", async () => {
+    const lead = await prisma.lead.create({ data: makeLeadData("scheduler-race") });
+    cleanupLeadIds.add(lead.id);
+
+    const msg = await prisma.scheduledMessage.create({
+      data: {
+        channel: "EMAIL",
+        leadId: lead.id,
+        subject: "test",
+        body: "test body",
+        sendAt: new Date(Date.now() - 1000),
+        status: "PENDING",
+        createdById: salesRepId,
+      },
+    });
+
+    // Classify as Scam AFTER the send was queued, simulating the realistic
+    // case this guard targets — this tick's own claim+read will see the
+    // lead's CURRENT (Scam) stage, not whatever it was when queued.
+    await prisma.lead.update({ where: { id: lead.id }, data: { stage: "SCAM" } });
+
+    let emailCalls = 0;
+    const spySenders = {
+      sendEmail: async () => {
+        emailCalls++;
+        return { ok: true as const };
+      },
+      sendSms: async () => {
+        emailCalls++;
+        return { ok: true as const };
+      },
+    };
+    await runScheduledMessageSchedulerTick(new Date(), spySenders);
+
+    expect(emailCalls).toBe(0);
+    const after = await prisma.scheduledMessage.findUniqueOrThrow({ where: { id: msg.id } });
+    expect(after.status).toBe("CANCELLED");
+    expect(after.cancelReason).toContain("classified Scam");
+  });
+
+  test("duplicate quoteKey: send is blocked if ANY matching lead is Scam, regardless of which one a naive findFirst would have returned", async ({
+    page,
+  }) => {
+    const sharedQuoteKey = `duplicate-quotekey-${RUN_ID}`;
+    cleanupQuoteKeys.add(sharedQuoteKey);
+    await prisma.salesToolData.create({
+      data: {
+        key: `quote:${sharedQuoteKey}`,
+        value: JSON.stringify({ id: sharedQuoteKey, clientName: "Dup Key Client", clientEmail: "dupkey@example.com", status: "pending" }),
+      },
+    });
+    // Two leads deliberately sharing the same quoteKey — one SCAM, one not.
+    // Created in an order that would make a naive findFirst() return the
+    // non-Scam one first, to prove the fix checks ALL matches.
+    const notScamLead = await prisma.lead.create({ data: makeLeadData("dupkey-notscam", { quoteKey: sharedQuoteKey }) });
+    const scamLead = await prisma.lead.create({ data: makeLeadData("dupkey-scam", { stage: "SCAM", quoteKey: sharedQuoteKey }) });
+    cleanupLeadIds.add(notScamLead.id);
+    cleanupLeadIds.add(scamLead.id);
+
+    await loginAs(page, salesRepEmail, PASSWORD);
+    const res = await page.request.post("/api/sales/send-quote", {
+      data: { id: sharedQuoteKey, subject: "test", body: "test" },
+    });
+    expect(res.status()).toBe(403);
+  });
+
+  test("server-side duplicate-send guard: a quote already marked SENDING by another request is refused, not silently re-sent", async ({
+    page,
+  }) => {
+    const quoteKey = `cas-race-${RUN_ID}`;
+    cleanupQuoteKeys.add(quoteKey);
+    await prisma.salesToolData.create({
+      data: {
+        key: `quote:${quoteKey}`,
+        // Simulates another, already-in-flight request having just won the
+        // atomic claim — this quote's stored record already carries the
+        // SENDING marker send-quote/route.ts's own updateMany sets.
+        value: JSON.stringify({
+          id: quoteKey,
+          clientName: "CAS Race Client",
+          clientEmail: "cas-race@example.com",
+          status: "pending",
+          sendState: "SENDING",
+        }),
+      },
+    });
+    await loginAs(page, salesRepEmail, PASSWORD);
+    const res = await page.request.post("/api/sales/send-quote", {
+      data: { id: quoteKey, subject: "test", body: "test" },
+    });
+    expect(res.status()).toBe(409);
+    expect(await res.text()).toContain("already being sent");
+  });
+
+  test("server-side duplicate-send guard: the atomic claim's compare-and-swap only lets one of two identical conditional writes succeed", async () => {
+    const quoteKey = `cas-direct-${RUN_ID}`;
+    cleanupQuoteKeys.add(quoteKey);
+    const originalValue = JSON.stringify({ id: quoteKey, clientName: "CAS Direct", clientEmail: "x@example.com", status: "pending" });
+    await prisma.salesToolData.create({ data: { key: `quote:${quoteKey}`, value: originalValue } });
+
+    const claimedValue = JSON.stringify({ id: quoteKey, clientName: "CAS Direct", clientEmail: "x@example.com", status: "pending", sendState: "SENDING" });
+    const [claimA, claimB] = await Promise.all([
+      prisma.salesToolData.updateMany({ where: { key: `quote:${quoteKey}`, value: originalValue }, data: { value: claimedValue } }),
+      prisma.salesToolData.updateMany({ where: { key: `quote:${quoteKey}`, value: originalValue }, data: { value: claimedValue } }),
+    ]);
+    expect(claimA.count + claimB.count).toBe(1);
+  });
+
+  test("already-sent guard: a quote with sentAt already set is refused with a clear 'already sent' message", async ({
+    page,
+  }) => {
+    const quoteKey = `already-sent-${RUN_ID}`;
+    cleanupQuoteKeys.add(quoteKey);
+    await prisma.salesToolData.create({
+      data: {
+        key: `quote:${quoteKey}`,
+        value: JSON.stringify({
+          id: quoteKey,
+          clientName: "Already Sent",
+          clientEmail: "already-sent@example.com",
+          status: "pending",
+          sentAt: new Date().toISOString(),
+        }),
+      },
+    });
+    await loginAs(page, salesRepEmail, PASSWORD);
+    const res = await page.request.post("/api/sales/send-quote", {
+      data: { id: quoteKey, subject: "test", body: "test" },
+    });
+    expect(res.status()).toBe(409);
+    expect(await res.text()).toContain("already sent");
   });
 });

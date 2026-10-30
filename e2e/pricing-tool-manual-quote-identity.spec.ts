@@ -68,6 +68,20 @@ async function deleteStoredQuote(page: Page, id: string) {
   await page.request.post("/api/sales/storage", { data: { op: "delete", key: `quote:${id}` } });
 }
 
+// Calls the pricing tool's own global sendQuoteToClient() directly inside
+// the iframe, bypassing the Send button's disabled attribute — a
+// FrameLocator can't run arbitrary script, only a real Frame can, and a
+// genuinely disabled button can't be clicked at all (Playwright, like a
+// real browser, refuses to dispatch the click), so this is how to prove
+// the function's own guard refuses on its own, not just that the button
+// looks disabled.
+async function invokeSendQuoteToClient(page: Page) {
+  const handle = await page.locator(`iframe[title="${FRAME_TITLE}"]`).elementHandle();
+  const realFrame = await handle?.contentFrame();
+  if (!realFrame) throw new Error("Could not access the pricing tool iframe's real Frame.");
+  await realFrame.evaluate(() => (window as unknown as { sendQuoteToClient: () => void }).sendQuoteToClient());
+}
+
 test.describe.serial("Pricing tool: manual quote-entry flow preserves quote identity (A3)", () => {
   let salesRepId: string;
   const email = `manual-quote-identity-${RUN_ID}@example.com`;
@@ -265,7 +279,9 @@ test.describe.serial("Pricing tool: manual quote-entry flow preserves quote iden
     await expect(frame.locator("#sc-send-status")).toContainText("no longer exists in storage");
   });
 
-  test("duplicate-click on Send cannot double-send (at most one send-quote request fires)", async ({ page }) => {
+  test("duplicate-click on Send cannot double-send (exactly one send-quote request fires, not zero)", async ({
+    page,
+  }) => {
     await loginAs(page, email, PASSWORD);
     const clientName = `Riley Duplicate ${RUN_ID}`;
     const clientEmail = `riley.duplicate.${RUN_ID}@example.com`;
@@ -288,13 +304,15 @@ test.describe.serial("Pricing tool: manual quote-entry flow preserves quote iden
     // Two rapid clicks — the synchronous disable-on-first-click guard must
     // keep the second one from ever reaching the fetch, regardless of how
     // slowly (or quickly, in this no-Graph-configured test environment) the
-    // first click's own request resolves.
+    // first click's own request resolves. Exactly one, not "zero or more":
+    // the first click must still genuinely go through.
     await Promise.all([sendBtn.click(), sendBtn.click()]);
-    await page.waitForTimeout(500);
-    expect(sendRequestCount).toBeLessThanOrEqual(1);
+    await expect.poll(() => sendRequestCount).toBe(1);
   });
 
-  test("stale/unsaved recipient edit is refused on send, not sent to the old address", async ({ page }) => {
+  test("stale/unsaved recipient edit is refused on send — both via Preview and via a direct field edit with no Preview at all", async ({
+    page,
+  }) => {
     await loginAs(page, email, PASSWORD);
     const clientName = `Taylor Unsaved ${RUN_ID}`;
     const originalEmail = `taylor.original.${RUN_ID}@example.com`;
@@ -307,16 +325,94 @@ test.describe.serial("Pricing tool: manual quote-entry flow preserves quote iden
     await expect(frame.locator("#f-save-status")).toContainText("Saved");
     const id = await frame.locator("#f-quote-id").inputValue();
     createdQuoteKeys.add(id);
+    await expect(frame.locator("#sc-send-btn")).toBeEnabled();
 
     // Edit the recipient in the manual form and regenerate the preview, but
-    // do NOT save — currentQuote.clientEmail now differs from storage.
+    // do NOT save — currentQuote.clientEmail now differs from storage. The
+    // dirty-tracking flag (set by editing the field) is what actually
+    // catches this, same mechanism as the no-Preview case below.
     await frame.locator("#f-recipient-email").fill(`taylor.edited-not-saved.${RUN_ID}@example.com`);
     await frame.getByRole("button", { name: "Preview Client Quote →" }).click();
+    await expect(frame.locator("#sc-send-btn")).toBeDisabled();
 
-    await frame.getByRole("button", { name: "Send Quote to Client →" }).click();
-    await expect(frame.locator("#sc-send-status")).toContainText("save your changes before sending");
+    await invokeSendQuoteToClient(page);
+    await expect(frame.locator("#sc-send-status")).toContainText("unsaved changes");
 
-    const stored = await getStoredQuote(page, id);
+    let stored = await getStoredQuote(page, id);
     expect(stored?.clientEmail).toBe(originalEmail);
+
+    // Reload cleanly (quoteDirty clears), then prove the DIRECT-edit path —
+    // no Preview click at all between the edit and Send — is caught the
+    // same way: editing the field alone, with nothing else, must be enough.
+    await frame.locator("#load-id").fill(id);
+    await frame.getByRole("button", { name: "Load", exact: true }).click();
+    await expect(frame.locator("#f-recipient-email")).toHaveValue(originalEmail);
+    await expect(frame.locator("#sc-send-btn")).toBeEnabled();
+
+    await frame.locator("#f-recipient-email").fill(`taylor.direct-edit-no-preview.${RUN_ID}@example.com`);
+    await expect(frame.locator("#sc-send-btn")).toBeDisabled();
+    await invokeSendQuoteToClient(page);
+    await expect(frame.locator("#sc-send-status")).toContainText("unsaved changes");
+
+    stored = await getStoredQuote(page, id);
+    expect(stored?.clientEmail).toBe(originalEmail);
+  });
+
+  test("calculator → manual → calculator round trip keeps id/email/content identical; two different clients sharing the same name never silently overwrite each other", async ({
+    page,
+  }) => {
+    await loginAs(page, email, PASSWORD);
+    const frame = await openManualBuilder(page);
+
+    // Manual → calculator: build+save a quote in the manual form, then
+    // switch to the Pricing Calculator tab's own Save box and confirm it
+    // reflects the exact same loaded identity (setActiveQuote fills both
+    // surfaces from one shared function).
+    const clientName = `Round Trip Client ${RUN_ID}`;
+    const clientEmail = `round-trip-${RUN_ID}@example.com`;
+    await frame.locator("#f-name").fill(clientName);
+    await frame.locator("#f-recipient-email").fill(clientEmail);
+    await frame.locator("#f-city").fill("Irvine");
+    await frame.getByRole("button", { name: "Preview Client Quote →" }).click();
+    await frame.getByRole("button", { name: "Save Quote →" }).click();
+    await expect(frame.locator("#f-save-status")).toContainText("Saved");
+    const id = await frame.locator("#f-quote-id").inputValue();
+    createdQuoteKeys.add(id);
+
+    await frame.locator("#tabbtn-pricing").click();
+    await expect(frame.locator("#save-client-id")).toHaveValue(id);
+    await expect(frame.locator("#save-client-email")).toHaveValue(clientEmail);
+    await expect(frame.locator("#save-client-name")).toHaveValue(clientName);
+
+    // Two different clients who happen to share a name (and thus, without
+    // the email-based collision fix, the same auto-generated id under
+    // name+date+service) must never silently overwrite each other.
+    const sharedName = `Shared Name Collision Test ${RUN_ID}`;
+    await frame.locator("#tabbtn-quote").click();
+    await frame.getByRole("button", { name: "New Client / Clear" }).first().click();
+    const firstEmail = `shared-name-first-${RUN_ID}@example.com`;
+    await frame.locator("#f-name").fill(sharedName);
+    await frame.locator("#f-recipient-email").fill(firstEmail);
+    await frame.getByRole("button", { name: "Preview Client Quote →" }).click();
+    await frame.getByRole("button", { name: "Save Quote →" }).click();
+    await expect(frame.locator("#f-save-status")).toContainText("Saved");
+    const firstId = await frame.locator("#f-quote-id").inputValue();
+    createdQuoteKeys.add(firstId);
+
+    await frame.getByRole("button", { name: "New Client / Clear" }).first().click();
+    const secondEmail = `shared-name-second-${RUN_ID}@example.com`;
+    await frame.locator("#f-name").fill(sharedName);
+    await frame.locator("#f-recipient-email").fill(secondEmail);
+    // Deliberately force the SAME auto-generated id by typing it directly —
+    // simulates the exact collision scenario (two different clients, same
+    // name, no explicit load) rather than relying on both saves happening
+    // in the same auto-generate window.
+    await frame.locator("#f-quote-id").fill(firstId);
+    await frame.getByRole("button", { name: "Preview Client Quote →" }).click();
+    await frame.getByRole("button", { name: "Save Quote →" }).click();
+    await expect(frame.locator("#f-save-status")).toContainText("already used by a different client");
+
+    const first = await getStoredQuote(page, firstId);
+    expect(first?.clientEmail).toBe(firstEmail);
   });
 });

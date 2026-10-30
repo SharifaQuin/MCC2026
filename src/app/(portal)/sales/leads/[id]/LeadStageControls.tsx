@@ -95,9 +95,14 @@ export default function LeadStageControls({
               setLosing(false);
             });
           }}
-          className="flex flex-wrap items-end gap-2 rounded-md border border-red-200 bg-red-50 p-3"
+          className="flex flex-col gap-2 rounded-md border border-red-200 bg-red-50 p-3"
         >
-          <div className="flex-1">
+          {/* A full-width row of its own, not a flex sibling of the buttons
+              below — sharing a row with fixed-width buttons (via flex-1 +
+              min-w-0) lets a narrow viewport squeeze this input down to an
+              unusable sliver instead of actually wrapping, since min-w-0
+              lets it shrink arbitrarily rather than forcing a line break. */}
+          <div>
             <label className="mb-1 block text-xs font-medium text-neutral-700">
               Why was this lead lost? (optional)
             </label>
@@ -107,20 +112,22 @@ export default function LeadStageControls({
               placeholder="e.g. Went with a competitor, price too high"
             />
           </div>
-          <button
-            type="submit"
-            disabled={pending}
-            className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
-          >
-            {pending ? "..." : "Mark Lost"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setLosing(false)}
-            className="rounded-md border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-          >
-            Cancel
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="submit"
+              disabled={pending}
+              className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+            >
+              {pending ? "..." : "Mark Lost"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setLosing(false)}
+              className="rounded-md border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+            >
+              Cancel
+            </button>
+          </div>
         </form>
       )}
 
@@ -145,9 +152,17 @@ export default function LeadStageControls({
               router.refresh();
             });
           }}
-          className="flex flex-wrap items-end gap-2 rounded-md border border-neutral-700 bg-neutral-50 p-3"
+          className="flex flex-col gap-2 rounded-md border border-neutral-700 bg-neutral-50 p-3"
         >
-          <div className="flex-1">
+          {/* A full-width row of its own, not a flex sibling of the buttons
+              below — sharing a row with fixed-width buttons (via flex-1 +
+              min-w-0) lets a narrow viewport squeeze this input down to an
+              unusable sliver instead of actually wrapping, since min-w-0
+              lets it shrink arbitrarily rather than forcing a line break.
+              "Confirm: Mark as Scam" is long enough that this bit at
+              exactly 390px even though the equivalent Lost form, with
+              shorter button text, happened not to. */}
+          <div>
             <label className="mb-1 block text-xs font-medium text-neutral-700">
               Why is this a scam contact? (optional)
             </label>
@@ -157,23 +172,25 @@ export default function LeadStageControls({
               placeholder="e.g. Fake address, asked for wire transfer"
             />
           </div>
-          <button
-            type="submit"
-            disabled={pending}
-            className="rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-60"
-          >
-            {pending ? "..." : "Confirm: Mark as Scam"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setScamming(false);
-              setScamError(null);
-            }}
-            className="rounded-md border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-          >
-            Cancel
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="submit"
+              disabled={pending}
+              className="rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-60"
+            >
+              {pending ? "..." : "Confirm: Mark as Scam"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setScamming(false);
+                setScamError(null);
+              }}
+              className="rounded-md border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+            >
+              Cancel
+            </button>
+          </div>
           {scamError && <p className="w-full text-xs text-red-600">{scamError}</p>}
         </form>
       )}
