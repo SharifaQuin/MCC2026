@@ -179,7 +179,7 @@ export async function getTodayCardData(
     hasSalesAccess
       ? prisma.lead.findMany({
           where: {
-            stage: { notIn: ["WON", "LOST"] },
+            stage: { notIn: ["WON", "LOST", "SCAM"] },
             followUpDueAt: { gte: start, lt: end },
           },
           select: { id: true, firstName: true, lastName: true, followUpDueAt: true },

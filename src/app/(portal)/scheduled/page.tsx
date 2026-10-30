@@ -27,10 +27,18 @@ export default async function ScheduledMessagesPage() {
 
   const messages = await prisma.scheduledMessage.findMany({
     where: {
-      status: { in: ["PENDING", "FAILED"] },
-      OR: [
-        ...(sales.canView ? [{ leadId: { not: null } }] : []),
-        ...(hasRecruitingAccess ? [{ applicantId: { not: null } }] : []),
+      AND: [
+        // A rep's own manual cancellation stays invisible here, same as
+        // always — but a system cancellation (currently just Scam
+        // classification, which always sets cancelReason) stays visible so
+        // "this send was stopped, and why" doesn't just silently vanish.
+        { OR: [{ status: { in: ["PENDING", "FAILED"] } }, { status: "CANCELLED", cancelReason: { not: null } }] },
+        {
+          OR: [
+            ...(sales.canView ? [{ leadId: { not: null } }] : []),
+            ...(hasRecruitingAccess ? [{ applicantId: { not: null } }] : []),
+          ],
+        },
       ],
     },
     include: {
@@ -53,10 +61,12 @@ export default async function ScheduledMessagesPage() {
       body: m.body,
       sendAtIso: m.sendAt.toISOString(),
       sendAtDisplay: formatInBusinessTimezone(m.sendAt),
-      // The where clause above only ever selects PENDING/FAILED rows —
-      // Prisma's generated type just doesn't know that at compile time.
-      status: m.status as "PENDING" | "FAILED",
+      // The where clause above only ever selects PENDING/FAILED/system-
+      // cancelled rows — Prisma's generated type just doesn't know that at
+      // compile time.
+      status: m.status as "PENDING" | "FAILED" | "CANCELLED",
       errorMessage: m.errorMessage,
+      cancelReason: m.cancelReason,
       quietHours: m.channel === "SMS" && isSmsQuietHours(m.sendAt),
       canEdit: recipientType === "LEAD" ? sales.canEdit : hr.canEdit,
     };

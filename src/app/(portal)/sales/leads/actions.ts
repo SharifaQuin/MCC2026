@@ -135,7 +135,23 @@ export async function updateLeadContactInfoAction(
 // lead to Quoted or Won means pricing/booking confirmation, which stays
 // manager-only; marking Lost (a judgment call, not a factual contact
 // status) goes through markLeadLostAction's own, separate block below.
-function assertRoutineLeadStageTransition(role: string, stage: LeadStage) {
+//
+// Also the single place every "routine" stage-change caller — any role —
+// is blocked from touching Scam: neither setting a lead TO Scam (that's
+// markLeadScamAction's job, with its confirm/audit/pending-send-cancel)
+// nor moving a lead that's currently Scam to anything else (that's
+// restoreLeadFromScamAction's job, which derives the correct prior stage
+// from history instead of trusting whatever this call was asked for).
+// This is a fast, clear rejection before any DB write; setLeadStageAction's
+// own atomic updateMany below is what actually closes the race against a
+// concurrent classification, this is just the friendly first layer.
+function assertRoutineLeadStageTransition(role: string, stage: LeadStage, currentStage: LeadStage) {
+  if (stage === "SCAM") {
+    throw new Error("Use the Mark as Scam action to classify a lead as Scam.");
+  }
+  if (currentStage === "SCAM") {
+    throw new Error("This lead is classified as Scam — use Restore to change its stage.");
+  }
   if (role === "OFFICE_ASSISTANT" && stage !== "CONTACTED") {
     throw new Error("This stage change needs the authorized manager.");
   }
@@ -143,16 +159,24 @@ function assertRoutineLeadStageTransition(role: string, stage: LeadStage) {
 
 export async function setLeadStageAction(leadId: string, stage: LeadStage) {
   const session = await assertSalesLeadsEditAccess();
-  assertRoutineLeadStageTransition(session.role, stage);
-
   const current = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
-  await prisma.lead.update({
-    where: { id: leadId },
+  assertRoutineLeadStageTransition(session.role, stage, current.stage);
+
+  // Atomic guard against the race assertRoutineLeadStageTransition's read-
+  // before-write can't close on its own: the `stage: { not: "SCAM" }`
+  // condition is evaluated by the database at write time, not from the
+  // `current` read above, so a lead classified Scam by a concurrent
+  // request after that read (but before this write) still can't be moved.
+  const updated = await prisma.lead.updateMany({
+    where: { id: leadId, stage: { not: "SCAM" } },
     data: {
       stage,
       ...(stage === "CONTACTED" && !current.firstContactedAt ? { firstContactedAt: new Date() } : {}),
     },
   });
+  if (updated.count === 0) {
+    throw new Error("This lead is classified as Scam — use Restore to change its stage.");
+  }
   await prisma.leadStageChange.create({
     data: { leadId, fromStage: current.stage, toStage: stage, changedById: getTrueActorId(session) },
   });
@@ -181,10 +205,19 @@ export async function markLeadLostAction(leadId: string, lostReason: string) {
   // not a factual contact status this role may record on its own.
   if (session.role === "OFFICE_ASSISTANT") throw new Error("Not authorized.");
   const current = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
-  await prisma.lead.update({
-    where: { id: leadId },
+  if (current.stage === "SCAM") {
+    throw new Error("This lead is classified as Scam — use Restore to change its stage.");
+  }
+  // Same atomic race-guard as setLeadStageAction above: evaluated at write
+  // time, not from the `current` read, so a concurrent Scam classification
+  // can't be silently clobbered by this call.
+  const updated = await prisma.lead.updateMany({
+    where: { id: leadId, stage: { not: "SCAM" } },
     data: { stage: "LOST", lostReason: lostReason.trim() || null },
   });
+  if (updated.count === 0) {
+    throw new Error("This lead is classified as Scam — use Restore to change its stage.");
+  }
   await prisma.leadStageChange.create({
     data: { leadId, fromStage: current.stage, toStage: "LOST", changedById: getTrueActorId(session) },
   });
@@ -192,6 +225,201 @@ export async function markLeadLostAction(leadId: string, lostReason: string) {
   revalidatePath(`/sales/leads/${leadId}`);
   revalidatePath("/sales/leads");
   revalidatePath("/sales");
+}
+
+export interface MarkLeadScamResult {
+  ok: boolean;
+  error?: string;
+}
+
+// Thrown only for an expected, user-facing refusal from inside a
+// $transaction callback below — distinguishes "the business rule said no"
+// (roll back, return a clean {ok:false, error}) from a genuine unexpected
+// error (roll back too, but rethrow so it surfaces as a real failure).
+class ScamActionRefusal extends Error {}
+
+// Mirrors markLeadLostAction's shape, plus the extra protections the owner
+// explicitly asked for that Lost itself doesn't have: a stale-write check
+// (Lost has none today — deliberately not touched here, out of scope) and
+// an explicit refusal to convert an already-WON lead or a lead with an
+// active confirmed booking, since nothing server-side stops either today
+// (LeadStageControls' NEXT_STAGES map is UI-only, and a booking's own
+// status can drift from the lead's stage). expectedUpdatedAt must be the
+// ISO string of the lead's updatedAt as last read by the caller.
+//
+// Everything below runs inside ONE interactive transaction: the stale-
+// write/WON/booking checks and the actual stage write are not separate
+// read-then-write steps — the write itself is the only thing that decides
+// whether this succeeds (`updateMany`'s `where` is evaluated by the
+// database at write time, never from an earlier read), and a thrown
+// refusal rolls back every write made so far in this call automatically.
+// Two concurrent calls with the same expectedUpdatedAt can't both succeed:
+// only one `updateMany` can match the stale `updatedAt`/`stage` condition.
+export async function markLeadScamAction(
+  leadId: string,
+  expectedUpdatedAt: string,
+  reason?: string
+): Promise<MarkLeadScamResult> {
+  const { session, canEdit } = await requireDepartmentAccess("SALES");
+  if (!canEdit) return { ok: false, error: "Not authorized." };
+  // Office Assistant never reaches here (requireDepartmentAccess("SALES")
+  // always denies this role — see src/lib/departments.ts), but guard
+  // explicitly anyway: marking a lead Scam is a business judgment call, not
+  // a factual contact status this role may record on its own.
+  if (session.role === "OFFICE_ASSISTANT") throw new Error("Not authorized.");
+
+  const actorId = getTrueActorId(session);
+  const trimmedReason = reason?.trim() || null;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Read-only refusal, not an automatic financial change: a booking
+      // already confirmed for this lead needs a human to look at it before
+      // anyone reclassifies the lead that owns it — never cancel/touch the
+      // booking itself here.
+      const confirmedBooking = await tx.slotBooking.findFirst({
+        where: { leadId, status: "CONFIRMED" },
+        select: { id: true },
+      });
+      if (confirmedBooking) {
+        throw new ScamActionRefusal(
+          "This lead has an active confirmed booking — needs manual review before reclassifying as Scam."
+        );
+      }
+
+      // Only for producing the friendlier of two error messages below —
+      // the ACTUAL guard against a concurrent change is the atomic
+      // updateMany's own where clause, not this read.
+      const current = await tx.lead.findUniqueOrThrow({ where: { id: leadId } });
+      if (current.stage === "WON") {
+        throw new ScamActionRefusal(
+          "This lead is already Won — an already-booked job needs manual review, not an automatic reclassification. Contact the owner."
+        );
+      }
+
+      const updated = await tx.lead.updateMany({
+        where: { id: leadId, updatedAt: new Date(expectedUpdatedAt), stage: { notIn: ["SCAM", "WON"] } },
+        data: { stage: "SCAM", scamReason: trimmedReason },
+      });
+      if (updated.count !== 1) {
+        throw new ScamActionRefusal("This lead changed since you loaded it — reload the page and try again.");
+      }
+
+      await tx.leadStageChange.create({
+        data: { leadId, fromStage: current.stage, toStage: "SCAM", changedById: actorId },
+      });
+      await tx.auditLogEntry.create({
+        data: {
+          actorId,
+          action: "LEAD_MARKED_SCAM",
+          recordType: "Lead",
+          recordId: leadId,
+          changedFields: { fromStage: { from: current.stage, to: "SCAM" }, reason: { from: null, to: trimmedReason } },
+        },
+      });
+
+      // Bulk-cancel every pending scheduled send for this lead — a scam
+      // contact should never still get a follow-up text/email queued up
+      // after this. This can't intercept a row the 60s-interval scheduler
+      // already claimed into SENDING in the exact instant before this
+      // transaction commits — closed separately in
+      // scheduledMessageScheduler.ts's own pre-transport stage check, which
+      // narrows (but can't fully eliminate) that window. SENT/FAILED
+      // history is untouched either way.
+      await tx.scheduledMessage.updateMany({
+        where: { leadId, status: "PENDING" },
+        data: { status: "CANCELLED", cancelReason: "Lead marked Scam" },
+      });
+    });
+  } catch (err) {
+    if (err instanceof ScamActionRefusal) return { ok: false, error: err.message };
+    throw err;
+  }
+
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath("/sales/leads");
+  revalidatePath("/sales/leads/scam");
+  revalidatePath("/sales");
+  revalidatePath("/scheduled");
+  return { ok: true };
+}
+
+export interface RestoreLeadFromScamResult {
+  ok: boolean;
+  error?: string;
+}
+
+// The prior stage is read from this lead's own stage-change history (the
+// most recent row whose toStage is SCAM) rather than a new field — that
+// history already exists and is the single source of truth for "what was
+// this lead before it got classified." Never auto-resends anything the
+// Scam action cancelled; restoring only ever changes stage/scamReason.
+// Same atomic-transaction shape as markLeadScamAction above, for the same
+// concurrent-request reasons — two simultaneous Restore calls can't both
+// succeed, and can't each append a conflicting history row.
+export async function restoreLeadFromScamAction(
+  leadId: string,
+  expectedUpdatedAt: string
+): Promise<RestoreLeadFromScamResult> {
+  const { session, canEdit } = await requireDepartmentAccess("SALES");
+  if (!canEdit) return { ok: false, error: "Not authorized." };
+  if (session.role === "OFFICE_ASSISTANT") throw new Error("Not authorized.");
+
+  const actorId = getTrueActorId(session);
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const current = await tx.lead.findUniqueOrThrow({ where: { id: leadId } });
+      if (current.stage !== "SCAM") {
+        throw new ScamActionRefusal("This lead isn't currently classified as Scam — nothing to restore.");
+      }
+
+      const lastScamChange = await tx.leadStageChange.findFirst({
+        where: { leadId, toStage: "SCAM" },
+        orderBy: { createdAt: "desc" },
+      });
+      // Refuse rather than guess: no history row at all, or a row whose own
+      // fromStage is itself SCAM (a sign of an earlier race/bug corrupting
+      // this lead's history), means there's no single true prior stage to
+      // restore to.
+      if (!lastScamChange || lastScamChange.fromStage === "SCAM" || !lastScamChange.fromStage) {
+        throw new ScamActionRefusal(
+          "This lead's restoration history is missing or ambiguous — contact the owner for manual review."
+        );
+      }
+      const restoredStage: LeadStage = lastScamChange.fromStage;
+
+      const updated = await tx.lead.updateMany({
+        where: { id: leadId, updatedAt: new Date(expectedUpdatedAt), stage: "SCAM" },
+        data: { stage: restoredStage, scamReason: null },
+      });
+      if (updated.count !== 1) {
+        throw new ScamActionRefusal("This lead changed since you loaded it — reload the page and try again.");
+      }
+
+      await tx.leadStageChange.create({
+        data: { leadId, fromStage: "SCAM", toStage: restoredStage, changedById: actorId },
+      });
+      await tx.auditLogEntry.create({
+        data: {
+          actorId,
+          action: "LEAD_RESTORED_FROM_SCAM",
+          recordType: "Lead",
+          recordId: leadId,
+          changedFields: { fromStage: { from: "SCAM", to: restoredStage } },
+        },
+      });
+    });
+  } catch (err) {
+    if (err instanceof ScamActionRefusal) return { ok: false, error: err.message };
+    throw err;
+  }
+
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath("/sales/leads");
+  revalidatePath("/sales/leads/scam");
+  revalidatePath("/sales");
+  return { ok: true };
 }
 
 // For phone calls, walk-ins, or referrals — added directly by a manager,
@@ -297,6 +525,26 @@ export async function sendLeadEmailAction(leadId: string, formData: FormData) {
   if (!subject || !body) return;
 
   const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  // Surfaced the same way a real send failure already is — a FAILED
+  // LeadCommunication row with a clear errorMessage, which
+  // LeadCommunicationPanel already renders inline. No new error-reporting
+  // mechanism, and never a SENT row for a blocked attempt.
+  if (lead.stage === "SCAM") {
+    await prisma.leadCommunication.create({
+      data: {
+        leadId,
+        channel: "EMAIL",
+        direction: "OUTBOUND",
+        subject,
+        body,
+        status: "FAILED",
+        errorMessage: "This lead is classified as Scam — sending is blocked.",
+        sentById: getTrueActorId(session),
+      },
+    });
+    revalidatePath(`/sales/leads/${leadId}`);
+    return;
+  }
   const result = await sendEmail({ to: lead.email, subject, body });
 
   await prisma.leadCommunication.create({
@@ -323,6 +571,21 @@ export async function sendLeadTextAction(leadId: string, formData: FormData) {
   if (!body) return;
 
   const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  if (lead.stage === "SCAM") {
+    await prisma.leadCommunication.create({
+      data: {
+        leadId,
+        channel: "SMS",
+        direction: "OUTBOUND",
+        body,
+        status: "FAILED",
+        errorMessage: "This lead is classified as Scam — sending is blocked.",
+        sentById: getTrueActorId(session),
+      },
+    });
+    revalidatePath(`/sales/leads/${leadId}`);
+    return;
+  }
   const result = await sendSms({ to: lead.phone, text: body });
 
   await prisma.leadCommunication.create({

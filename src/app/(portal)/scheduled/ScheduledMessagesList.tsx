@@ -19,8 +19,9 @@ export interface ScheduledMessageRow {
   body: string;
   sendAtIso: string;
   sendAtDisplay: string;
-  status: "PENDING" | "FAILED";
+  status: "PENDING" | "FAILED" | "CANCELLED";
   errorMessage: string | null;
+  cancelReason: string | null;
   quietHours: boolean;
   canEdit: boolean;
 }
@@ -94,15 +95,24 @@ function Row({ row }: { row: ScheduledMessageRow }) {
         </div>
         <span
           className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-            row.status === "FAILED" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+            row.status === "FAILED"
+              ? "bg-red-100 text-red-700"
+              : row.status === "CANCELLED"
+                ? "bg-neutral-200 text-neutral-600"
+                : "bg-amber-100 text-amber-700"
           }`}
         >
-          {row.status === "FAILED" ? "Failed" : "Pending"}
+          {row.status === "FAILED" ? "Failed" : row.status === "CANCELLED" ? "Cancelled" : "Pending"}
         </span>
       </div>
 
       {row.status === "FAILED" && row.errorMessage && (
         <p className="mt-2 rounded-md bg-red-50 p-2 text-xs text-red-700">Failed to send: {row.errorMessage}</p>
+      )}
+      {row.status === "CANCELLED" && (
+        <p className="mt-2 rounded-md bg-neutral-100 p-2 text-xs text-neutral-600">
+          Stopped: {row.cancelReason ?? "Cancelled"}
+        </p>
       )}
 
       {!editing ? (

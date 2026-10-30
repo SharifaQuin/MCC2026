@@ -116,13 +116,19 @@ function isSameMonth(isoDate: string, now: Date): boolean {
 }
 
 export async function loadSalesDashboard(isAdmin: boolean = false): Promise<SalesDashboard> {
-  const [rows, goal, actuals] = await Promise.all([
+  const [rows, goal, actuals, scamLeads] = await Promise.all([
     prisma.salesToolData.findMany({ where: { key: { startsWith: "quote:" } } }),
     getSalesGoal(),
     getSalesActuals(),
+    // Quotes have no leadId of their own — the link is Lead.quoteKey, which
+    // stores the same string as a quote's own `id`. Building this Set lets
+    // every aggregate below exclude a scam-linked quote WITHOUT touching
+    // the quote's own saved `status` field at all.
+    prisma.lead.findMany({ where: { stage: "SCAM", quoteKey: { not: null } }, select: { quoteKey: true } }),
   ]);
+  const scamQuoteKeys = new Set(scamLeads.map((l) => l.quoteKey).filter((k): k is string => k != null));
 
-  const quotes: QuoteRecord[] = rows
+  const allQuotes: QuoteRecord[] = rows
     .map((row) => {
       try {
         return JSON.parse(row.value) as QuoteRecord;
@@ -131,6 +137,10 @@ export async function loadSalesDashboard(isAdmin: boolean = false): Promise<Sale
       }
     })
     .filter((q): q is QuoteRecord => q !== null);
+
+  // A malformed/missing quoteKey link (q.id absent or not in the Set) is
+  // just treated as "no linked lead to exclude" — never throws.
+  const quotes = allQuotes.filter((q) => !q.id || !scamQuoteKeys.has(q.id));
 
   const now = new Date();
   const won = quotes.filter((q) => q.status === "won");
@@ -180,6 +190,13 @@ export async function loadSalesDashboard(isAdmin: boolean = false): Promise<Sale
 
   return {
     goal,
+    // Judgment call, flagged explicitly rather than assumed silently: the
+    // brief's win/loss exclusion requirement names won/lost/winRate/
+    // wonRevenue*/averageJobValue specifically, but totalQuotes/
+    // pendingCount/topOpportunities (a different kind of figure — open-
+    // pipeline/quote-count, not win/loss) are excluded here too, since
+    // showing a known-scam contact as a "top opportunity" to chase seems
+    // like the bigger risk than a lower quote count.
     totalQuotes: quotes.length,
     pendingCount: pending.length,
     wonCount: won.length,

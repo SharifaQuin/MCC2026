@@ -57,7 +57,7 @@ export default async function LeadsPage({
   const source = searchParams.source?.trim();
   const mineOnly = searchParams.assigned === "mine";
 
-  const [leads, lostCount, funnel] = await Promise.all([
+  const [leads, lostCount, scamCount, funnel] = await Promise.all([
     prisma.lead.findMany({
       where: {
         stage: { notIn: ARCHIVED_LEAD_STAGES },
@@ -77,7 +77,8 @@ export default async function LeadsPage({
       include: { assignedTo: { select: { name: true } } },
       orderBy: { createdAt: "asc" },
     }),
-    prisma.lead.count({ where: { stage: { in: ARCHIVED_LEAD_STAGES } } }),
+    prisma.lead.count({ where: { stage: "LOST" } }),
+    prisma.lead.count({ where: { stage: "SCAM" } }),
     getLeadFunnelBySource(),
   ]);
 
@@ -134,9 +135,17 @@ export default async function LeadsPage({
           </a>
           <a
             href="/api/sales/leads/export"
+            title="Every lead that ever came in, including scam-classified ones"
             className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
           >
-            Export CSV
+            Export CSV (All-Received)
+          </a>
+          <a
+            href="/api/sales/leads/export?filtered=1"
+            title="Matches the working pipeline view — scam-classified leads excluded"
+            className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Export CSV (Filtered)
           </a>
           {canEdit && (
             <>
@@ -221,6 +230,15 @@ export default async function LeadsPage({
         </p>
       )}
 
+      {scamCount > 0 && (
+        <p className="mt-1 text-sm text-neutral-400">
+          <Link href="/sales/leads/scam" className="text-brand-700 hover:underline">
+            {scamCount} scam-classified lead{scamCount === 1 ? "" : "s"}
+          </Link>{" "}
+          not shown here.
+        </p>
+      )}
+
       {funnel.length > 0 && (
         <div className="mt-6 rounded-lg border border-neutral-200 bg-white p-4">
           <p className="mb-3 font-medium text-neutral-900">Leads by Source (All Time)</p>
@@ -233,6 +251,7 @@ export default async function LeadsPage({
                   <th className="py-2 pr-4">Open</th>
                   <th className="py-2 pr-4">Won</th>
                   <th className="py-2 pr-4">Lost</th>
+                  <th className="py-2 pr-4">Scam</th>
                   <th className="py-2 pr-4">Win Rate</th>
                 </tr>
               </thead>
@@ -244,7 +263,10 @@ export default async function LeadsPage({
                     <td className="py-2 pr-4 text-neutral-600">{s.open}</td>
                     <td className="py-2 pr-4 text-neutral-600">{s.won}</td>
                     <td className="py-2 pr-4 text-neutral-600">{s.lost}</td>
-                    <td className="py-2 pr-4 text-neutral-600">{s.winRatePct}%</td>
+                    <td className="py-2 pr-4 text-neutral-600">{s.scam}</td>
+                    <td className="py-2 pr-4 text-neutral-600">
+                      {s.winRatePct === null ? "—" : `${s.winRatePct}%`}
+                    </td>
                   </tr>
                 ))}
               </tbody>

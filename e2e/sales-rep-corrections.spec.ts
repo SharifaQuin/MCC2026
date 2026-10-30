@@ -323,7 +323,11 @@ test.describe.serial("Sales-rep corrections (browser)", () => {
       await expect(overdueRow).toContainText(/overdue/i);
       // Add Lead / search / export chrome is still present (full Sales abilities preserved).
       await expect(page.getByRole("button", { name: "+ Add Lead" }).or(page.getByText("Add Lead"))).toBeVisible();
-      await expect(page.getByRole("link", { name: "Export CSV" })).toBeVisible();
+      // Split into an "All-Received" and a "Filtered" (scam-excluded) export
+      // as part of the Scam classification work — still present, just two
+      // distinctly-labeled links instead of one.
+      await expect(page.getByRole("link", { name: "Export CSV (All-Received)" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Export CSV (Filtered)" })).toBeVisible();
       const leadsSection = page.locator("h2", { hasText: /^Leads$/ }).locator("..");
       await expect(leadsSection.getByText(plainLead.lastName)).toBeVisible();
       await logout(page);
