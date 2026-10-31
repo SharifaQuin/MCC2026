@@ -5,6 +5,8 @@ import { loadLeadKpis } from "@/lib/leads";
 import { resolveActiveSlotMonth, getNextOpenSlots } from "@/lib/slotCapacitySummary";
 import { setSalesGoalAction, setSalesActualsAction } from "@/app/(portal)/sales/actions";
 import { getOverdueSalesChecklistTasks } from "@/lib/hrToday";
+import { getChecklistTasksForRole } from "@/lib/financials";
+import AssignedChecklist from "@/components/AssignedChecklist";
 import AdSpendForm from "./AdSpendForm";
 import NextOpenSlotsCard from "./NextOpenSlotsCard";
 
@@ -27,14 +29,29 @@ export default async function SalesPage() {
   // not these three financial inputs.
   const isAdmin = session.role === "ADMIN";
   const isSalesRep = session.role === "SALES_REP";
-  const [dash, leadKpis, overdueSalesTasks] = await Promise.all([
+  const [dash, leadKpis, overdueSalesTasks, assignedTasks] = await Promise.all([
     loadSalesDashboard(isAdmin),
     loadLeadKpis(),
     // Her sales-only equivalent of the general Today card — see
     // getOverdueSalesChecklistTasks' own comment for why she doesn't see
     // the general one at all (it's HR/recruiting/staffing content).
     isSalesRep ? getOverdueSalesChecklistTasks() : Promise.resolve([]),
+    // Her general assigned/shared checklist — the same query /todo's
+    // non-admin branch already runs. She lands here, not on Home (see
+    // src/app/(portal)/page.tsx's SALES_REP redirect), so this is the only
+    // place she'd otherwise ever see these.
+    isSalesRep ? getChecklistTasksForRole(session.role, session.sub) : Promise.resolve([]),
   ]);
+
+  const assignedTaskRows = assignedTasks.map((t) => ({
+    id: t.id,
+    task: t.task,
+    effectiveStatus: t.effectiveStatus,
+    notes: t.notes,
+    targetDate: t.targetDate ? t.targetDate.toISOString() : null,
+    dueFridayOfWeek: t.dueFridayOfWeek,
+    frequency: t.frequency,
+  }));
 
   const activeSlotMonth = await resolveActiveSlotMonth();
   const nextOpenSlots = activeSlotMonth ? await getNextOpenSlots(activeSlotMonth, 5, undefined, isAdmin) : [];
@@ -56,6 +73,20 @@ export default async function SalesPage() {
             ))}
           </div>
         </div>
+      )}
+
+      {isSalesRep && (
+        <section className="mb-6 rounded-lg border border-neutral-200 bg-white p-6">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+            <h2 className="text-lg font-medium text-neutral-900">Your Assigned Tasks</h2>
+            <Link href="/todo" className="text-xs font-medium text-brand-700 hover:underline">
+              Open full To-Do list →
+            </Link>
+          </div>
+          <div className="mt-4">
+            <AssignedChecklist tasks={assignedTaskRows} canEdit={true} />
+          </div>
+        </section>
       )}
 
       <section className="rounded-lg border border-neutral-200 bg-white p-6">

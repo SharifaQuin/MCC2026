@@ -278,7 +278,12 @@ test.describe.serial("Sales-rep corrections (browser)", () => {
       await loginAs(page, SALES_REP_EMAIL, SALES_REP_PASSWORD);
       await page.goto("/sales");
       await expect(page.getByText("Overdue Sales Tasks")).toBeVisible();
-      await expect(page.getByText(task.task)).toBeVisible();
+      // This same TEAM-visible task now legitimately also appears in the
+      // separate, general "Your Assigned Tasks" widget added below it (the
+      // fix for "Sales Rep can't see her own assigned to-dos anywhere in
+      // her account") — .first() keeps this assertion about the narrower
+      // Overdue Sales Tasks banner specifically, not an exact-count check.
+      await expect(page.getByText(task.task).first()).toBeVisible();
       await expect(page.getByText("Interviews Today")).toHaveCount(0);
       await logout(page);
     } finally {
