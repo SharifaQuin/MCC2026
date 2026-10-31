@@ -515,22 +515,91 @@ export async function holdSlot(input: HoldSlotInput): Promise<{ ok: true; bookin
   });
 }
 
-/** Set/clear the rep's "entered in TCS" checkbox; first check confirms the hold. */
-export async function setEnteredInTcs(bookingId: string, entered: boolean) {
-  const booking = await prisma.slotBooking.findUnique({ where: { id: bookingId } });
-  if (!booking) return { ok: false as const, reason: "Booking not found." };
+/**
+ * Set/clear the rep's "entered in TCS" checkbox; first check confirms the
+ * hold. Confirming (entered: true) is the one place a HOLD becomes
+ * permanent — it must never silently double-book a slot that someone else
+ * has since taken while this hold sat expired, so an expired HOLD gets the
+ * same capacity re-check holdSlot() itself does before it's allowed through.
+ * Clearing (entered: false) is unchanged/out of scope for that re-check.
+ */
+export async function setEnteredInTcs(
+  bookingId: string,
+  entered: boolean
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  return prisma.$transaction(async (tx) => {
+    const booking = await tx.slotBooking.findUnique({ where: { id: bookingId } });
+    if (!booking) return { ok: false, reason: "Booking not found." };
 
-  const now = new Date();
-  const isExpiredHold = booking.status === "HOLD" && booking.holdExpiresAt && booking.holdExpiresAt < now;
-  if (isExpiredHold) return { ok: false as const, reason: "This hold already released — re-book the slot." };
+    const now = new Date();
 
-  await prisma.slotBooking.update({
-    where: { id: bookingId },
-    data: {
-      enteredTcsAt: entered ? now : null,
-      status: entered ? "CONFIRMED" : booking.status,
-      confirmedAt: entered && !booking.confirmedAt ? now : booking.confirmedAt,
-    },
+    if (!entered) {
+      await tx.slotBooking.update({ where: { id: bookingId }, data: { enteredTcsAt: null } });
+      return { ok: true };
+    }
+
+    if (booking.status === "CONFIRMED") return { ok: true }; // idempotent no-op
+
+    if (booking.status !== "HOLD") {
+      return { ok: false, reason: "This booking can't be confirmed." };
+    }
+
+    const isExpired = !!booking.holdExpiresAt && booking.holdExpiresAt < now;
+
+    if (isExpired) {
+      // Re-derive capacity excluding this stale hold, same as holdSlot()'s
+      // own re-check — someone else may have booked over it while expired.
+      const feedMonth = await tx.slotFeedMonth.findUnique({ where: { month: booking.month } });
+      const feedDate = feedMonth
+        ? await tx.slotFeedDate.findUnique({
+            where: { feedMonthId_date: { feedMonthId: feedMonth.id, date: booking.date } },
+          })
+        : null;
+      if (!feedMonth || !feedDate) {
+        return {
+          ok: false,
+          reason: "This hold already released and the capacity feed has since changed — rebook the slot instead.",
+        };
+      }
+
+      const blocks = feedDate.blocks as Record<string, { open: number; windows: string[] }>;
+      const blockDef = blocks[booking.block];
+      if (!blockDef) {
+        return {
+          ok: false,
+          reason: "This hold already released and the capacity feed has since changed — rebook the slot instead.",
+        };
+      }
+
+      const active = await tx.slotBooking.findMany({
+        where: {
+          month: booking.month,
+          date: booking.date,
+          block: booking.block,
+          id: { not: booking.id },
+          OR: [{ status: "CONFIRMED" }, { status: "HOLD", holdExpiresAt: { gt: now } }],
+        },
+      });
+
+      const openInBlock = blockDef.open - active.length;
+      const openHours = feedDate.openPersonHours - active.reduce((s, b) => s + b.personHours, 0);
+
+      if (openInBlock <= 0 || openHours < booking.personHours) {
+        return {
+          ok: false,
+          reason:
+            "This slot was already booked by someone else while this hold was expired — it can't be confirmed without double-booking. Contact the owner to resolve manually.",
+        };
+      }
+    }
+
+    const updated = await tx.slotBooking.updateMany({
+      where: { id: booking.id, status: "HOLD" },
+      data: { enteredTcsAt: now, status: "CONFIRMED", confirmedAt: booking.confirmedAt ?? now },
+    });
+    if (updated.count !== 1) {
+      return { ok: false, reason: "This booking changed — reload and try again." };
+    }
+    return { ok: true };
   });
-  return { ok: true as const };
 }
