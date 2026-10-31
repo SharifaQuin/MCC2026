@@ -571,17 +571,22 @@ export async function setEnteredInTcs(
         };
       }
 
+      // Date-wide, not block-filtered — openPersonHours is a day-wide
+      // number (same as holdSlot()'s own re-check), so hours used by active
+      // bookings in OTHER blocks on this date must count too. The block
+      // count is then derived from this same date-wide set, exactly the way
+      // holdSlot() does it, rather than running a second, narrower query.
       const active = await tx.slotBooking.findMany({
         where: {
           month: booking.month,
           date: booking.date,
-          block: booking.block,
           id: { not: booking.id },
           OR: [{ status: "CONFIRMED" }, { status: "HOLD", holdExpiresAt: { gt: now } }],
         },
       });
 
-      const openInBlock = blockDef.open - active.length;
+      const bookedInBlock = active.filter((b) => b.block === booking.block).length;
+      const openInBlock = blockDef.open - bookedInBlock;
       const openHours = feedDate.openPersonHours - active.reduce((s, b) => s + b.personHours, 0);
 
       if (openInBlock <= 0 || openHours < booking.personHours) {

@@ -38,6 +38,17 @@ test.describe.serial("TCS confirmation keeps a hold booked forever, from /sales/
   const TEST_WINDOW = "8am-10am"; // Morning — generous capacity, used by tests 1/2/4/5
   const OVERBOOK_WINDOW = "12pm-2pm"; // Afternoon — open: 1, used only by test 3
 
+  // A separate date whose two blocks each have plenty of open team-slots
+  // (open: 5) but a small day-wide openPersonHours total — isolates the
+  // hours check from the block-count check. Used only by tests 6/7, which
+  // cover the regression where the expired-hold re-check summed used hours
+  // from the SAME BLOCK only instead of the whole date (openPersonHours is a
+  // day-wide number, same as holdSlot()'s own re-check).
+  const hoursRefuseDate = addDaysIso(6);
+  const hoursAllowDate = addDaysIso(7);
+  const HOURS_BLOCK_A = "9am-11am";
+  const HOURS_BLOCK_B = "1pm-3pm";
+
   test.beforeAll(async () => {
     const admin = await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL }, select: { id: true } });
     adminId = admin.id;
@@ -72,6 +83,39 @@ test.describe.serial("TCS confirmation keeps a hold booked forever, from /sales/
               },
               bookedJobs: [],
             },
+            {
+              date: new Date(hoursRefuseDate + "T00:00:00Z"),
+              weekday: new Date(hoursRefuseDate + "T00:00:00Z").toLocaleDateString("en-US", {
+                weekday: "long",
+                timeZone: "UTC",
+              }),
+              status: "Open",
+              // Day-wide total is tight — just enough for ONE of the two
+              // 4-hour bookings below, not both.
+              openPersonHours: 5,
+              openDollars: 500,
+              blocks: {
+                BlockA: { open: 5, windows: [HOURS_BLOCK_A] },
+                BlockB: { open: 5, windows: [HOURS_BLOCK_B] },
+              },
+              bookedJobs: [],
+            },
+            {
+              date: new Date(hoursAllowDate + "T00:00:00Z"),
+              weekday: new Date(hoursAllowDate + "T00:00:00Z").toLocaleDateString("en-US", {
+                weekday: "long",
+                timeZone: "UTC",
+              }),
+              status: "Open",
+              // Same shape, but day-wide hours are generous enough for both.
+              openPersonHours: 20,
+              openDollars: 2000,
+              blocks: {
+                BlockA: { open: 5, windows: [HOURS_BLOCK_A] },
+                BlockB: { open: 5, windows: [HOURS_BLOCK_B] },
+              },
+              bookedJobs: [],
+            },
           ],
         },
       },
@@ -85,10 +129,13 @@ test.describe.serial("TCS confirmation keeps a hold booked forever, from /sales/
     await prisma.$disconnect();
   });
 
-  async function makeHold(label: string, opts?: { block?: string; window?: string; personHours?: number }) {
+  async function makeHold(
+    label: string,
+    opts?: { block?: string; window?: string; personHours?: number; date?: string }
+  ) {
     const result = await holdSlot({
       month: testMonth,
-      date: testDate,
+      date: opts?.date ?? testDate,
       block: opts?.block ?? "Morning",
       window: opts?.window ?? TEST_WINDOW,
       city: "Irvine",
@@ -200,5 +247,72 @@ test.describe.serial("TCS confirmation keeps a hold booked forever, from /sales/
     const row = page.locator("tr", { hasText: `TCS Case5 ${RUN_ID}` }).first();
     await row.getByRole("button", { name: "Confirm: Entered in TCS" }).first().click();
     await expect(row).toContainText("CONFIRMED", { timeout: 5000 });
+  });
+
+  test("6. An expired hold is refused when the DAY's remaining hours are too tight, even though its own block still has an open slot", async ({}) => {
+    // BlockA's own slot count has plenty of room (open: 5, nothing else ever
+    // booked there) — a block-scoped hours check would wrongly let this
+    // through. The day only has 5 total open person-hours, 4 of which the
+    // (still-active) BlockB booking already uses, leaving 1 — not enough for
+    // this expired hold's 4 hours.
+    const staleId = await makeHold("Case6Stale", {
+      date: hoursRefuseDate,
+      block: "BlockA",
+      window: HOURS_BLOCK_A,
+      personHours: 4,
+    });
+    await prisma.slotBooking.update({
+      where: { id: staleId },
+      data: { holdExpiresAt: new Date(Date.now() - 60_000) },
+    });
+
+    const otherBlockId = await makeHold("Case6Other", {
+      date: hoursRefuseDate,
+      block: "BlockB",
+      window: HOURS_BLOCK_B,
+      personHours: 4,
+    });
+    const otherConfirm = await setEnteredInTcs(otherBlockId, true);
+    expect(otherConfirm.ok).toBe(true);
+
+    const staleConfirm = await setEnteredInTcs(staleId, true);
+    expect(staleConfirm.ok).toBe(false);
+    if (!staleConfirm.ok) {
+      expect(staleConfirm.reason).toMatch(/already booked by someone else/i);
+    }
+
+    const staleAfter = await prisma.slotBooking.findUniqueOrThrow({ where: { id: staleId } });
+    expect(staleAfter.status).toBe("HOLD");
+  });
+
+  test("7. The same expired hold is allowed once the day has enough total open hours", async ({}) => {
+    // Identical block shape to test 6 (BlockA/BlockB, open: 5 each), but this
+    // date's day-wide openPersonHours (20) comfortably covers both 4-hour
+    // bookings — proving the day-wide hours check isn't just always refusing.
+    const staleId = await makeHold("Case7Stale", {
+      date: hoursAllowDate,
+      block: "BlockA",
+      window: HOURS_BLOCK_A,
+      personHours: 4,
+    });
+    await prisma.slotBooking.update({
+      where: { id: staleId },
+      data: { holdExpiresAt: new Date(Date.now() - 60_000) },
+    });
+
+    const otherBlockId = await makeHold("Case7Other", {
+      date: hoursAllowDate,
+      block: "BlockB",
+      window: HOURS_BLOCK_B,
+      personHours: 4,
+    });
+    const otherConfirm = await setEnteredInTcs(otherBlockId, true);
+    expect(otherConfirm.ok).toBe(true);
+
+    const staleConfirm = await setEnteredInTcs(staleId, true);
+    expect(staleConfirm.ok).toBe(true);
+
+    const staleAfter = await prisma.slotBooking.findUniqueOrThrow({ where: { id: staleId } });
+    expect(staleAfter.status).toBe("CONFIRMED");
   });
 });
