@@ -149,7 +149,7 @@ function SlotRow({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-neutral-600">Estimated hours</label>
+              <label className="block text-xs font-medium text-neutral-600">Total staff hours</label>
               <input
                 name="personHours"
                 type="number"
@@ -157,8 +157,11 @@ function SlotRow({
                 step="0.5"
                 required
                 className="mt-0.5 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
-                placeholder="e.g. 3"
+                placeholder="e.g. 5"
               />
+              <p className="mt-0.5 text-[10px] text-neutral-500">
+                Combined hours for everyone on the job, not elapsed time — 2 people × 2.5 hours = 5.
+              </p>
             </div>
             <div>
               <label className="block text-xs font-medium text-neutral-600">Price (optional)</label>
