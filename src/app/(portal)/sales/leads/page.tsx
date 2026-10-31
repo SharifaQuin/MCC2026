@@ -26,7 +26,7 @@ export default async function LeadsPage({
     const leads = await prisma.lead.findMany({
       where: { stage: { notIn: ARCHIVED_LEAD_STAGES } },
       include: { assignedTo: { select: { name: true } } },
-      orderBy: { createdAt: "asc" },
+      orderBy: { createdAt: "desc" },
     });
     return (
       <div>
@@ -75,7 +75,7 @@ export default async function LeadsPage({
           : {}),
       },
       include: { assignedTo: { select: { name: true } } },
-      orderBy: { createdAt: "asc" },
+      orderBy: { createdAt: "desc" },
     }),
     prisma.lead.count({ where: { stage: { in: ARCHIVED_LEAD_STAGES } } }),
     getLeadFunnelBySource(),
