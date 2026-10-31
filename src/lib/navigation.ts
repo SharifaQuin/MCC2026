@@ -119,6 +119,7 @@ export function buildNavGroups({
         { href: "/sales/pricing-tool", label: "Quote Tool" },
         { href: "/sales/quotes", label: "Quotes" },
         { href: "/sales/open-slots", label: "Open Slots" },
+        { href: "/todo", label: labels.todo },
       ],
     });
   }

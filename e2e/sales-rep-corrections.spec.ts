@@ -278,7 +278,12 @@ test.describe.serial("Sales-rep corrections (browser)", () => {
       await loginAs(page, SALES_REP_EMAIL, SALES_REP_PASSWORD);
       await page.goto("/sales");
       await expect(page.getByText("Overdue Sales Tasks")).toBeVisible();
-      await expect(page.getByText(task.task)).toBeVisible();
+      // This same TEAM-visible task now legitimately also appears in the
+      // separate, general "Your Assigned Tasks" widget added below it (the
+      // fix for "Sales Rep can't see her own assigned to-dos anywhere in
+      // her account") — .first() keeps this assertion about the narrower
+      // Overdue Sales Tasks banner specifically, not an exact-count check.
+      await expect(page.getByText(task.task).first()).toBeVisible();
       await expect(page.getByText("Interviews Today")).toHaveCount(0);
       await logout(page);
     } finally {
@@ -318,7 +323,11 @@ test.describe.serial("Sales-rep corrections (browser)", () => {
       await page.goto("/sales/leads");
       await expect(page.getByRole("heading", { name: "Leads & Callbacks" })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Callbacks", exact: true })).toBeVisible();
-      const callbacksSection = page.locator("h2", { hasText: "Callbacks" }).locator("..");
+      // exact: true matters here — the page also now has a "Pipeline Board"
+      // section above this one, under a "Leads & Callbacks" h2 (the Sales
+      // Rep now sees the pipeline board too); a loose "Callbacks" substring
+      // match would also catch that heading and scope far too broadly.
+      const callbacksSection = page.getByRole("heading", { name: "Callbacks", exact: true }).locator("..");
       const overdueRow = callbacksSection.getByRole("row", { name: new RegExp(overdueLead.lastName) });
       await expect(overdueRow).toContainText(/overdue/i);
       // Add Lead / search / export chrome is still present (full Sales abilities preserved).

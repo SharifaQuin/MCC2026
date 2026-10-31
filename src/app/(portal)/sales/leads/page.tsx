@@ -120,7 +120,7 @@ export default async function LeadsPage({
             ← Back to Sales
           </Link>
           <h1 className="mt-1 text-2xl font-semibold">
-            {session.role === "SALES_REP" ? "Leads & Callbacks" : "Lead Pipeline"}
+            {session.role === "SALES_REP" ? "Pipeline & Callbacks" : "Lead Pipeline"}
           </h1>
         </div>
         <div className="flex items-center gap-3">
@@ -207,7 +207,12 @@ export default async function LeadsPage({
       </form>
 
       {session.role === "SALES_REP" ? (
-        <SalesRepLeadsList leads={salesRepLeadRows} />
+        <>
+          <h2 className="mb-3 text-lg font-medium text-neutral-900">Pipeline Board</h2>
+          <LeadPipelineBoard columns={columns} />
+          <h2 className="mb-3 mt-8 text-lg font-medium text-neutral-900">Leads &amp; Callbacks</h2>
+          <SalesRepLeadsList leads={salesRepLeadRows} />
+        </>
       ) : (
         <LeadPipelineBoard columns={columns} />
       )}

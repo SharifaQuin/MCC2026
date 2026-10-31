@@ -5,7 +5,7 @@ import { getSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { hasDepartmentAccess } from "@/lib/departments";
 import { parseAndValidateFeed, importFeed, type ParsedFeedSummary } from "@/lib/slotFeedImport";
-import { holdSlot, cityFromAddress } from "@/lib/slotRecommender";
+import { holdSlot, cityFromAddress, setEnteredInTcs } from "@/lib/slotRecommender";
 import { getTrueActorId } from "@/lib/impersonation";
 
 async function requireManagementEdit() {
@@ -114,6 +114,19 @@ export async function manualBookSlotAction(
   const price = priceRaw ? parseFloat(priceRaw) : undefined;
   const frequency = String(formData.get("frequency") || "onetime");
 
+  // Threaded through from a lead's "Book Open Slot →" link (see
+  // src/app/(portal)/sales/open-slots/page.tsx) — any Sales-view role can
+  // already see any lead (leads aren't per-rep-scoped elsewhere either), so
+  // no new access check is needed beyond requireSalesView() above; this
+  // just confirms the id is still real before linking a booking to it.
+  const leadIdRaw = String(formData.get("leadId") || "").trim();
+  let leadId: string | undefined;
+  if (leadIdRaw) {
+    const lead = await prisma.lead.findUnique({ where: { id: leadIdRaw }, select: { id: true } });
+    if (!lead) return { error: "That lead no longer exists — reload the page." };
+    leadId = lead.id;
+  }
+
   const { address, city } = resolveAddressAndCity(addressOrCity);
 
   const result = await holdSlot({
@@ -126,11 +139,30 @@ export async function manualBookSlotAction(
     personHours,
     price,
     frequency,
+    leadId,
     clientName,
     repId: getTrueActorId(session),
   });
   if (!result.ok) return { error: result.reason };
 
   revalidatePath("/sales");
+  revalidatePath("/sales/bookings");
+  if (leadId) revalidatePath(`/sales/leads/${leadId}`);
   return { bookingId: result.bookingId, holdExpiresAt: result.holdExpiresAt.toISOString() };
+}
+
+// The persistent "Confirm: Entered in TCS" button on /sales/bookings — same
+// setEnteredInTcs() the ephemeral checkbox on the Sales dashboard/open-slots
+// pages already uses, just reachable from a durable list instead of only
+// from the one browser tab that was open right after booking.
+export async function confirmBookingEnteredInTcsAction(
+  bookingId: string
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const session = await requireSalesView();
+  if (!session) return { ok: false, reason: "Not authorized." };
+
+  const result = await setEnteredInTcs(bookingId, true);
+  revalidatePath("/sales/bookings");
+  revalidatePath("/sales");
+  return result;
 }
