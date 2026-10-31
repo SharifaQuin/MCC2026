@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
+import { prisma } from "@/lib/prisma";
 import { resolveActiveSlotMonth, getNextOpenSlots, listLoadedSlotMonths } from "@/lib/slotCapacitySummary";
 import NextOpenSlotsCard from "../NextOpenSlotsCard";
 
@@ -22,7 +23,7 @@ function monthLabel(month: string): string {
 export default async function OpenSlotsPage({
   searchParams,
 }: {
-  searchParams: { month?: string };
+  searchParams: { month?: string; leadId?: string };
 }) {
   const { session } = await requireDepartmentAccess("SALES");
   const isAdmin = session.role === "ADMIN";
@@ -32,6 +33,22 @@ export default async function OpenSlotsPage({
   const activeSlotMonth =
     requestedMonth && loadedMonths.includes(requestedMonth) ? requestedMonth : await resolveActiveSlotMonth();
   const slots = activeSlotMonth ? await getNextOpenSlots(activeSlotMonth, 500, undefined, isAdmin) : [];
+
+  // Arriving from a lead's "Book Open Slot →" link — leads aren't
+  // per-rep-scoped anywhere else in Sales (the pipeline board shows every
+  // lead to every Sales-access role), so no extra scoping is needed here
+  // beyond the SALES department-view access already required above. A
+  // stale/bad leadId is silently ignored rather than breaking the page.
+  const leadId = searchParams.leadId;
+  const lead = leadId
+    ? await prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { id: true, firstName: true, lastName: true, address: true },
+      })
+    : null;
+  const leadPrefill = lead
+    ? { leadId: lead.id, clientName: `${lead.firstName} ${lead.lastName}`, address: lead.address ?? "" }
+    : undefined;
 
   const currentIndex = activeSlotMonth ? loadedMonths.indexOf(activeSlotMonth) : -1;
   const prevMonth = currentIndex > 0 ? loadedMonths[currentIndex - 1] : null;
@@ -80,7 +97,7 @@ export default async function OpenSlotsPage({
 
       <div className="rounded-lg border border-neutral-200 bg-white p-6">
         {activeSlotMonth ? (
-          <NextOpenSlotsCard slots={slots} month={activeSlotMonth} />
+          <NextOpenSlotsCard slots={slots} month={activeSlotMonth} leadPrefill={leadPrefill} />
         ) : (
           <p className="text-sm text-neutral-500">
             No capacity feed loaded for this month yet — ask Management to upload it under Slot Capacity.

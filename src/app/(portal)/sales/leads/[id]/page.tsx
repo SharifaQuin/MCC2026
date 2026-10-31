@@ -282,6 +282,14 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
         >
           Start Quote in Pricing Tool →
         </Link>
+        {canEdit && (
+          <Link
+            href={`/sales/open-slots?leadId=${lead.id}`}
+            className="mt-3 block text-sm text-brand-700 hover:underline"
+          >
+            Book Open Slot →
+          </Link>
+        )}
       </div>
 
       {canEdit ? (

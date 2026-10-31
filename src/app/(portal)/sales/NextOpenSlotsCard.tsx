@@ -52,7 +52,23 @@ function TcsCheckbox({ bookingId }: { bookingId: string }) {
   );
 }
 
-function SlotRow({ slot, index, month }: { slot: NextOpenSlot; index: number; month: string }) {
+export interface LeadPrefill {
+  leadId: string;
+  clientName: string;
+  address: string;
+}
+
+function SlotRow({
+  slot,
+  index,
+  month,
+  leadPrefill,
+}: {
+  slot: NextOpenSlot;
+  index: number;
+  month: string;
+  leadPrefill?: LeadPrefill;
+}) {
   const [open, setOpen] = useState(false);
   const [state, formAction] = useFormState<ManualBookState, FormData>(manualBookSlotAction, {});
 
@@ -96,7 +112,11 @@ function SlotRow({ slot, index, month }: { slot: NextOpenSlot; index: number; mo
           onClick={() => setOpen((o) => !o)}
           className="shrink-0 rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
         >
-          {open ? "Cancel" : "Book for a call-in client"}
+          {open
+            ? "Cancel"
+            : leadPrefill
+              ? `Book Open Slot for ${leadPrefill.clientName.split(" ")[0]}`
+              : "Book for a call-in client"}
         </button>
       </div>
 
@@ -106,12 +126,14 @@ function SlotRow({ slot, index, month }: { slot: NextOpenSlot; index: number; mo
           <input type="hidden" name="date" value={slot.date} />
           <input type="hidden" name="block" value={slot.block} />
           <input type="hidden" name="window" value={slot.window} />
+          {leadPrefill && <input type="hidden" name="leadId" value={leadPrefill.leadId} />}
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-xs font-medium text-neutral-600">Client name</label>
               <input
                 name="clientName"
                 required
+                defaultValue={leadPrefill?.clientName}
                 className="mt-0.5 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
                 placeholder="e.g. Priya Shah"
               />
@@ -121,6 +143,7 @@ function SlotRow({ slot, index, month }: { slot: NextOpenSlot; index: number; mo
               <input
                 name="addressOrCity"
                 required
+                defaultValue={leadPrefill?.address}
                 className="mt-0.5 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
                 placeholder="e.g. Irvine, CA"
               />
@@ -171,7 +194,15 @@ function SlotRow({ slot, index, month }: { slot: NextOpenSlot; index: number; mo
   );
 }
 
-export default function NextOpenSlotsCard({ slots, month }: { slots: NextOpenSlot[]; month: string }) {
+export default function NextOpenSlotsCard({
+  slots,
+  month,
+  leadPrefill,
+}: {
+  slots: NextOpenSlot[];
+  month: string;
+  leadPrefill?: LeadPrefill;
+}) {
   if (slots.length === 0) {
     return (
       <p className="mt-3 text-sm text-neutral-500">
@@ -184,7 +215,7 @@ export default function NextOpenSlotsCard({ slots, month }: { slots: NextOpenSlo
   return (
     <ul className="mt-4 divide-y divide-neutral-100">
       {slots.map((s, i) => (
-        <SlotRow key={`${s.date}-${s.block}-${s.window}`} slot={s} index={i} month={month} />
+        <SlotRow key={`${s.date}-${s.block}-${s.window}`} slot={s} index={i} month={month} leadPrefill={leadPrefill} />
       ))}
     </ul>
   );
