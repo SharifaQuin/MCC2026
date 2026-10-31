@@ -318,7 +318,11 @@ test.describe.serial("Sales-rep corrections (browser)", () => {
       await page.goto("/sales/leads");
       await expect(page.getByRole("heading", { name: "Leads & Callbacks" })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Callbacks", exact: true })).toBeVisible();
-      const callbacksSection = page.locator("h2", { hasText: "Callbacks" }).locator("..");
+      // exact: true matters here — the page also now has a "Pipeline Board"
+      // section above this one, under a "Leads & Callbacks" h2 (the Sales
+      // Rep now sees the pipeline board too); a loose "Callbacks" substring
+      // match would also catch that heading and scope far too broadly.
+      const callbacksSection = page.getByRole("heading", { name: "Callbacks", exact: true }).locator("..");
       const overdueRow = callbacksSection.getByRole("row", { name: new RegExp(overdueLead.lastName) });
       await expect(overdueRow).toContainText(/overdue/i);
       // Add Lead / search / export chrome is still present (full Sales abilities preserved).
