@@ -11,6 +11,10 @@ export interface SalesRepLeadRow {
   stage: LeadStage;
   source: LeadSource;
   followUpDueAt: string | null;
+  // Business-day-aware — computed server-side by getFollowUpUrgency (see
+  // src/lib/leads.ts) so this list and Home's Today card never disagree
+  // about what's overdue. null when there's no follow-up date at all.
+  followUpUrgency: "overdue" | "due_today" | null;
   assignedToName: string | null;
 }
 
@@ -23,7 +27,6 @@ const money = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDi
 // (search/filter, export, Add Lead, Mine/All, lead detail, permitted
 // edits) lives in the surrounding page chrome, unchanged for her.
 export default function SalesRepLeadsList({ leads }: { leads: SalesRepLeadRow[] }) {
-  const now = Date.now();
   const callbacks = leads
     .filter((l) => l.followUpDueAt !== null)
     .sort((a, b) => new Date(a.followUpDueAt!).getTime() - new Date(b.followUpDueAt!).getTime());
@@ -52,7 +55,7 @@ export default function SalesRepLeadsList({ leads }: { leads: SalesRepLeadRow[] 
               </thead>
               <tbody>
                 {callbacks.map((l) => {
-                  const overdue = new Date(l.followUpDueAt!).getTime() < now;
+                  const overdue = l.followUpUrgency === "overdue";
                   return (
                     <tr key={l.id} className="border-b border-neutral-100 last:border-0">
                       <td className="px-4 py-3">

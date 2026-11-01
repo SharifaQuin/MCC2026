@@ -6,6 +6,7 @@ import {
   ARCHIVED_LEAD_STAGES,
   LEAD_SOURCE_LABELS,
   getLeadFunnelBySource,
+  getFollowUpUrgency,
 } from "@/lib/leads";
 import LeadPipelineBoard from "./LeadPipelineBoard";
 import AddLeadPanel from "./AddLeadPanel";
@@ -109,6 +110,7 @@ export default async function LeadsPage({
     stage: l.stage,
     source: l.source,
     followUpDueAt: l.followUpDueAt ? l.followUpDueAt.toISOString() : null,
+    followUpUrgency: l.followUpDueAt ? getFollowUpUrgency(l.followUpDueAt) : null,
     assignedToName: l.assignedTo?.name ?? null,
   }));
 

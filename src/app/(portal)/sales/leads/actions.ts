@@ -284,6 +284,31 @@ export async function setLeadDealDetailsAction(leadId: string, formData: FormDat
   revalidatePath("/sales/leads");
 }
 
+// One-click "mark this lead's follow-up done" — clears only this lead's
+// followUpDueAt (nothing else is touched, no other lead is affected, and
+// this never runs automatically e.g. on Won/Lost) while leaving a LeadNote
+// behind recording what was cleared and when, so the Activity & Notes feed
+// still shows what happened even after the date itself is gone.
+export async function markLeadFollowUpDoneAction(
+  leadId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const session = await assertSalesLeadsEditAccess();
+  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId }, select: { followUpDueAt: true } });
+  if (!lead.followUpDueAt) return { ok: false, error: "No follow-up date is set on this lead." };
+  const dueDateLabel = lead.followUpDueAt.toLocaleDateString();
+  await prisma.$transaction([
+    prisma.lead.update({ where: { id: leadId }, data: { followUpDueAt: null } }),
+    prisma.leadNote.create({
+      data: { leadId, authorId: getTrueActorId(session), body: `Follow-up (was due ${dueDateLabel}) marked done.` },
+    }),
+  ]);
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath("/sales/leads");
+  revalidatePath("/");
+  revalidatePath("/sales");
+  return { ok: true };
+}
+
 export async function sendLeadEmailAction(leadId: string, formData: FormData) {
   const { session, canEdit } = await requireDepartmentAccess("SALES");
   if (!canEdit) return;

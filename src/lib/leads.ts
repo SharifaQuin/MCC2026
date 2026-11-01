@@ -4,6 +4,7 @@ import { sendEmail } from "@/lib/email";
 import { postSlackDMToOwner } from "@/lib/slack";
 import { csvEscape } from "@/lib/export";
 import { formatPhone } from "@/lib/formatPhone";
+import { businessDayRangeUtc } from "@/lib/timezone";
 
 // Mirrors the Pricing Calculator's SERVICES/SERVICE_LABELS in
 // src/content/sales-pricing-tool.html exactly (same key strings) — a lead
@@ -151,21 +152,58 @@ export const PRIMARY_NEXT_LEAD_STAGE: Record<string, { stage: LeadStage; label: 
   QUOTED: { stage: "WON", label: "Mark Won" },
 };
 
+// Everyone who should be bcc'd on a new-lead alert email beyond the single
+// `to` recipient: every active, non-test Sales Rep, plus every active,
+// non-test Office Assistant who's been granted SALES_LEADS area access
+// (any AreaAccess row for that area — view or edit, doesn't matter, per the
+// owner's own confirmed rule for "who handles new inquiries"). Exported so
+// tests can assert on it directly.
+export async function getNewLeadAlertBccEmails(excludeEmail?: string | null): Promise<string[]> {
+  const [salesReps, officeAssistants] = await Promise.all([
+    prisma.user.findMany({
+      where: { role: "SALES_REP", active: true, isTestAccount: false },
+      select: { email: true },
+    }),
+    prisma.user.findMany({
+      where: {
+        role: "OFFICE_ASSISTANT",
+        active: true,
+        isTestAccount: false,
+        areaAccess: { some: { area: "SALES_LEADS" } },
+      },
+      select: { email: true },
+    }),
+  ]);
+
+  const emails = new Set<string>();
+  for (const u of [...salesReps, ...officeAssistants]) {
+    if (excludeEmail && u.email.toLowerCase() === excludeEmail.toLowerCase()) continue;
+    emails.add(u.email);
+  }
+  return [...emails];
+}
+
 // Pings the owner (email + best-effort Slack DM) whenever a new lead comes
 // in from the public website form — response-time is a tracked KPI, so fast
 // visibility matters here more than it does for most notifications.
 // Best-effort: never blocks or throws, since a missed notification shouldn't
 // fail the form submission itself.
-export async function notifyNewLead(lead: {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  serviceInterest: string | null;
-  message: string | null;
-  source?: LeadSource;
-}) {
+// `sendEmailFn` is injectable (same DI convention as MessageSenders in
+// src/lib/messageSenders.ts) so tests can spy on the bcc list this builds
+// without a mocking framework.
+export async function notifyNewLead(
+  lead: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    serviceInterest: string | null;
+    message: string | null;
+    source?: LeadSource;
+  },
+  sendEmailFn: typeof sendEmail = sendEmail
+) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
   const profileUrl = `${appUrl}/sales/leads/${lead.id}`;
   const originLine =
@@ -186,10 +224,12 @@ export async function notifyNewLead(lead: {
   const notifyEmail = process.env.SALES_NOTIFY_EMAIL || process.env.MS_GRAPH_SENDER_EMAIL;
   if (notifyEmail) {
     try {
-      await sendEmail({
+      const bcc = await getNewLeadAlertBccEmails(notifyEmail);
+      await sendEmailFn({
         to: notifyEmail,
         subject: `New lead: ${lead.firstName} ${lead.lastName}`,
         body: summaryLines.join("\n"),
+        ...(bcc.length ? { bcc } : {}),
       });
     } catch {
       // Swallow — a notification failure should never break the lead form.
@@ -199,6 +239,19 @@ export async function notifyNewLead(lead: {
   await postSlackDMToOwner(
     [`:tada: New lead: *${lead.firstName} ${lead.lastName}*`, `<${profileUrl}|View lead>`].join("\n")
   );
+}
+
+export type FollowUpUrgency = "overdue" | "due_today";
+
+// The one place "is this follow-up due or overdue" is decided — Sales's
+// Callbacks list and Home's Today card must never disagree, so both call
+// this instead of each doing their own date-vs-now comparison.
+// Only call this on a followUpDueAt you already know is < end of today's
+// business day — i.e. "due or overdue" — never on a future date; it
+// doesn't handle the "upcoming" case because neither caller needs it.
+export function getFollowUpUrgency(followUpDueAt: Date, now: Date = new Date()): FollowUpUrgency {
+  const { start } = businessDayRangeUtc(now);
+  return followUpDueAt < start ? "overdue" : "due_today";
 }
 
 function currentMonthKey(now: Date = new Date()): string {
@@ -255,7 +308,7 @@ export async function loadLeadKpis(): Promise<LeadKpis> {
       prisma.lead.findMany({
         where: {
           stage: { notIn: ["NEW_INQUIRY", "WON", "LOST"] },
-          followUpDueAt: { not: null, lt: new Date() },
+          followUpDueAt: { not: null, lt: businessDayRangeUtc().start },
         },
         select: { id: true, firstName: true, lastName: true, stage: true, followUpDueAt: true },
         orderBy: { followUpDueAt: "asc" },

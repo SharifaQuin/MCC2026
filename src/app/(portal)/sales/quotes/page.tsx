@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
 import { prisma } from "@/lib/prisma";
 import { formatPhone } from "@/lib/formatPhone";
+import QuoteNextStepForm from "./QuoteNextStepForm";
 
 const SERVICE_LABELS: Record<string, string> = {
   standard: "Standard Clean",
@@ -27,6 +28,10 @@ interface QuoteRecord {
   status?: QuoteStatus;
   savedAt?: string;
   sentAt?: string | null;
+  // Missing from a quote until someone sets it via the inline form below —
+  // undefined/null both mean "not set," never computed or defaulted here.
+  nextStep?: string | null;
+  followUpDate?: string | null;
 }
 
 function statusBadgeClasses(status: QuoteStatus) {
@@ -48,7 +53,7 @@ export default async function SalesQuotesPage({
 }: {
   searchParams: Promise<{ status?: string }>;
 }) {
-  await requireDepartmentAccess("SALES");
+  const { canEdit } = await requireDepartmentAccess("SALES");
   const { status: statusFilter } = await searchParams;
 
   const rows = await prisma.salesToolData.findMany({
@@ -79,6 +84,14 @@ export default async function SalesQuotesPage({
 
   const filterLink = (value: string | null) =>
     value ? `/sales/quotes?status=${value}` : "/sales/quotes";
+
+  // Visibility aid: pending quotes with nothing scheduled yet — a quote
+  // can't just sit in Quoted forever with no next step or follow-up date.
+  // Purely informational: never blocks saving, never gates a lead's stage,
+  // never auto-messages anyone.
+  const needsScheduling = quotes.filter(
+    (q) => (q.status || "pending") === "pending" && (!q.nextStep || !q.followUpDate)
+  );
 
   return (
     <div>
@@ -123,6 +136,27 @@ export default async function SalesQuotesPage({
         </Link>
       </div>
 
+      {needsScheduling.length > 0 && (
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-medium text-amber-900">
+            {needsScheduling.length} open quote{needsScheduling.length === 1 ? "" : "s"} need
+            {needsScheduling.length === 1 ? "s" : ""} a next step scheduled
+          </p>
+          <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            {needsScheduling.map((q) => (
+              <li key={q.id}>
+                <Link
+                  href={`/sales/pricing-tool?quote=${encodeURIComponent(q.id)}`}
+                  className="text-amber-800 underline hover:text-amber-900"
+                >
+                  {q.clientName || "(no name)"}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="mt-6 overflow-x-auto rounded-lg border border-neutral-200 bg-white">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-neutral-200 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
@@ -131,6 +165,8 @@ export default async function SalesQuotesPage({
               <th className="px-4 py-3">Service</th>
               <th className="px-4 py-3">Quote</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Next Step</th>
+              <th className="px-4 py-3">Follow-up Date</th>
               <th className="px-4 py-3">Saved</th>
               <th className="px-4 py-3">Sent</th>
             </tr>
@@ -138,7 +174,7 @@ export default async function SalesQuotesPage({
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-neutral-500">
+                <td colSpan={8} className="px-4 py-8 text-center text-neutral-500">
                   No quotes {statusFilter ? `with status "${statusFilter}"` : "saved yet"}.
                 </td>
               </tr>
@@ -165,6 +201,23 @@ export default async function SalesQuotesPage({
                     {q.status === "won" ? "Won" : q.status === "lost" ? "Lost" : "Pending"}
                   </span>
                 </td>
+                {/* An outcome (won/lost) has already been decided for those
+                    quotes — they, and any quote a non-editing viewer can't
+                    change, show the stored value as plain text, never a
+                    form. Only a pending quote for a canEdit viewer gets the
+                    inline editor, which occupies both columns at once. */}
+                {(q.status || "pending") === "pending" && canEdit ? (
+                  <td className="px-4 py-3" colSpan={2}>
+                    <QuoteNextStepForm quoteId={q.id} nextStep={q.nextStep ?? null} followUpDate={q.followUpDate ?? null} />
+                  </td>
+                ) : (
+                  <>
+                    <td className="px-4 py-3 text-neutral-600">{q.nextStep || "—"}</td>
+                    <td className="px-4 py-3 text-neutral-600">
+                      {q.followUpDate ? new Date(q.followUpDate).toLocaleDateString() : "—"}
+                    </td>
+                  </>
+                )}
                 <td className="px-4 py-3 text-neutral-500">
                   {q.savedAt ? new Date(q.savedAt).toLocaleDateString() : "—"}
                 </td>
