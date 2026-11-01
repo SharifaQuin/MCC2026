@@ -308,7 +308,7 @@ export async function loadLeadKpis(): Promise<LeadKpis> {
       prisma.lead.findMany({
         where: {
           stage: { notIn: ["NEW_INQUIRY", "WON", "LOST"] },
-          followUpDueAt: { not: null, lt: new Date() },
+          followUpDueAt: { not: null, lt: businessDayRangeUtc().start },
         },
         select: { id: true, firstName: true, lastName: true, stage: true, followUpDueAt: true },
         orderBy: { followUpDueAt: "asc" },

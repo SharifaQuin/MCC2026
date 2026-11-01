@@ -28,10 +28,12 @@ test.describe.serial("Sales Callbacks and Home Today card agree on overdue/due-t
   let overdueLeadId: string;
   let dueTodayLeadId: string;
   let futureLeadId: string;
+  let earlierTodayLeadId: string;
 
   const OVERDUE_NAME = `FollowupOverdue${RUN_ID}`;
   const DUE_TODAY_NAME = `FollowupDueToday${RUN_ID}`;
   const FUTURE_NAME = `FollowupFuture${RUN_ID}`;
+  const EARLIER_TODAY_NAME = `FollowupEarlierToday${RUN_ID}`;
 
   test.beforeAll(async () => {
     const salesRep = await prisma.user.create({
@@ -56,8 +58,13 @@ test.describe.serial("Sales Callbacks and Home Today card agree on overdue/due-t
     const laterToday = new Date(end.getTime() - 60 * 1000);
     // Tomorrow's business day — must stay excluded from "due or overdue".
     const tomorrow = new Date(end.getTime() + 60 * 60 * 1000);
+    // Earlier today — already in the past relative to "now" (so the OLD
+    // `lt: new Date()` check in loadLeadKpis would have wrongly called this
+    // overdue), but still >= start of today's business day, so the correct
+    // business-day rule must NOT call it overdue.
+    const earlierToday = new Date(start.getTime() + 60 * 1000);
 
-    const [overdueLead, dueTodayLead, futureLead] = await Promise.all([
+    const [overdueLead, dueTodayLead, futureLead, earlierTodayLead] = await Promise.all([
       prisma.lead.create({
         data: {
           firstName: OVERDUE_NAME,
@@ -91,14 +98,26 @@ test.describe.serial("Sales Callbacks and Home Today card agree on overdue/due-t
           followUpDueAt: tomorrow,
         },
       }),
+      prisma.lead.create({
+        data: {
+          firstName: EARLIER_TODAY_NAME,
+          lastName: "Lead",
+          email: `followup-earliertoday-${RUN_ID}@example.com`,
+          phone: "9495558884",
+          source: "WEBSITE_FORM",
+          stage: "CONTACTED",
+          followUpDueAt: earlierToday,
+        },
+      }),
     ]);
     overdueLeadId = overdueLead.id;
     dueTodayLeadId = dueTodayLead.id;
     futureLeadId = futureLead.id;
+    earlierTodayLeadId = earlierTodayLead.id;
   });
 
   test.afterAll(async () => {
-    const ids = [overdueLeadId, dueTodayLeadId, futureLeadId];
+    const ids = [overdueLeadId, dueTodayLeadId, futureLeadId, earlierTodayLeadId];
     await prisma.leadStageChange.deleteMany({ where: { leadId: { in: ids } } });
     await prisma.lead.deleteMany({ where: { id: { in: ids } } });
     await prisma.user.delete({ where: { id: salesRepId } }).catch(() => {});
@@ -159,5 +178,31 @@ test.describe.serial("Sales Callbacks and Home Today card agree on overdue/due-t
 
     const followUpsBlock = page.getByText("Follow-Ups Due", { exact: true }).locator("xpath=..");
     await expect(followUpsBlock.locator("li", { hasText: FUTURE_NAME })).toHaveCount(0);
+  });
+
+  // loadLeadKpis's "Needs attention" widget (src/lib/leads.ts) used to flag
+  // overdueFollowUps with a plain `lt: new Date()` check — a follow-up due
+  // earlier today (already in the past instant-wise) would be wrongly
+  // called overdue there even though Callbacks correctly called it "due
+  // today." Both now share the same business-day boundary.
+  test("Sales dashboard Needs attention: a follow-up due earlier today is NOT shown as overdue", async ({ page }) => {
+    await loginAs(page, SALES_REP_EMAIL, SALES_REP_PASSWORD);
+    await page.goto("/sales");
+
+    // This lead's stage (CONTACTED) also can't match the "new" reason, so
+    // any appearance in Needs attention here would only be the overdue bug.
+    await expect(page.getByText(EARLIER_TODAY_NAME)).toHaveCount(0);
+  });
+
+  test("Sales dashboard Needs attention: a follow-up overdue from a prior day shows there too, matching Callbacks", async ({
+    page,
+  }) => {
+    await loginAs(page, SALES_REP_EMAIL, SALES_REP_PASSWORD);
+    await page.goto("/sales");
+
+    const needsAttention = page.getByText("Needs attention", { exact: true }).locator("xpath=..");
+    const overdueItem = needsAttention.getByRole("link", { name: new RegExp(OVERDUE_NAME) });
+    await expect(overdueItem).toBeVisible();
+    await expect(overdueItem).toContainText("follow-up overdue");
   });
 });
