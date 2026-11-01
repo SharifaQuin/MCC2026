@@ -5,6 +5,7 @@ import { NEEDS_DECISION_STAGES, SCHEDULING_STAGES } from "@/lib/recruiting";
 import { businessDayRangeUtc } from "@/lib/timezone";
 import { effectiveChecklistStatus } from "@/lib/financials";
 import { getDueStatus } from "@/lib/checklistDisplay";
+import { getFollowUpUrgency } from "@/lib/leads";
 import type { ApplicantStage } from "@prisma/client";
 
 export interface HrTodayItem {
@@ -89,6 +90,7 @@ export interface TodayFollowUp {
   leadId: string;
   name: string;
   followUpDueAt: string;
+  isOverdue: boolean;
 }
 
 export interface TodayOverdueTask {
@@ -180,7 +182,11 @@ export async function getTodayCardData(
       ? prisma.lead.findMany({
           where: {
             stage: { notIn: ["WON", "LOST"] },
-            followUpDueAt: { gte: start, lt: end },
+            // Due or overdue (no lower bound) — a follow-up overdue from a
+            // prior day must still show up here, not just ones due exactly
+            // today, so this card never disagrees with Sales's own
+            // Callbacks list about what's outstanding.
+            followUpDueAt: { lt: end },
           },
           select: { id: true, firstName: true, lastName: true, followUpDueAt: true },
           orderBy: { followUpDueAt: "asc" },
@@ -223,6 +229,7 @@ export async function getTodayCardData(
       leadId: l.id,
       name: `${l.firstName} ${l.lastName}`,
       followUpDueAt: l.followUpDueAt!.toISOString(),
+      isOverdue: getFollowUpUrgency(l.followUpDueAt!, now) === "overdue",
     })),
     overdueTasks,
     pendingPayroll: pendingPayrollEntries.map((p) => ({

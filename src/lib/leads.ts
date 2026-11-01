@@ -4,6 +4,7 @@ import { sendEmail } from "@/lib/email";
 import { postSlackDMToOwner } from "@/lib/slack";
 import { csvEscape } from "@/lib/export";
 import { formatPhone } from "@/lib/formatPhone";
+import { businessDayRangeUtc } from "@/lib/timezone";
 
 // Mirrors the Pricing Calculator's SERVICES/SERVICE_LABELS in
 // src/content/sales-pricing-tool.html exactly (same key strings) — a lead
@@ -238,6 +239,19 @@ export async function notifyNewLead(
   await postSlackDMToOwner(
     [`:tada: New lead: *${lead.firstName} ${lead.lastName}*`, `<${profileUrl}|View lead>`].join("\n")
   );
+}
+
+export type FollowUpUrgency = "overdue" | "due_today";
+
+// The one place "is this follow-up due or overdue" is decided — Sales's
+// Callbacks list and Home's Today card must never disagree, so both call
+// this instead of each doing their own date-vs-now comparison.
+// Only call this on a followUpDueAt you already know is < end of today's
+// business day — i.e. "due or overdue" — never on a future date; it
+// doesn't handle the "upcoming" case because neither caller needs it.
+export function getFollowUpUrgency(followUpDueAt: Date, now: Date = new Date()): FollowUpUrgency {
+  const { start } = businessDayRangeUtc(now);
+  return followUpDueAt < start ? "overdue" : "due_today";
 }
 
 function currentMonthKey(now: Date = new Date()): string {

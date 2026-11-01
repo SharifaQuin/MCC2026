@@ -66,12 +66,13 @@ export default function TodayCard({
         )}
 
         {hasSalesAccess && (
-          <Section title="Follow-Ups Due Today" emptyLabel="Nothing today">
+          <Section title="Follow-Ups Due" emptyLabel="Nothing today">
             {data.followUpsDue.map((l) => (
               <li key={l.leadId} className="text-sm">
                 <Link href={`/sales/leads/${l.leadId}`} className="text-brand-700 hover:underline">
                   {l.name}
                 </Link>
+                {l.isOverdue && <span className="ml-1 text-red-600">— overdue</span>}
               </li>
             ))}
           </Section>
