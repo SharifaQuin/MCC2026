@@ -1,7 +1,7 @@
 "use client";
 
-import { useTransition } from "react";
-import { setLeadDealDetailsAction } from "../actions";
+import { useState, useTransition } from "react";
+import { setLeadDealDetailsAction, markLeadFollowUpDoneAction } from "../actions";
 
 export default function LeadDealDetailsForm({
   leadId,
@@ -15,6 +15,16 @@ export default function LeadDealDetailsForm({
   followUpDueAt: string | null;
 }) {
   const [pending, startTransition] = useTransition();
+  const [markDonePending, startMarkDoneTransition] = useTransition();
+  const [markDoneError, setMarkDoneError] = useState<string | null>(null);
+
+  function handleMarkDone() {
+    setMarkDoneError(null);
+    startMarkDoneTransition(async () => {
+      const result = await markLeadFollowUpDoneAction(leadId);
+      if (!result.ok) setMarkDoneError(result.error);
+    });
+  }
 
   return (
     <form
@@ -50,6 +60,11 @@ export default function LeadDealDetailsForm({
         <input
           type="date"
           name="followUpDate"
+          // Forces the uncontrolled input to pick up a new value after a
+          // server revalidation (e.g. right after "Mark follow-up done"
+          // clears it) — React only re-reads defaultValue when the input
+          // itself remounts.
+          key={followUpDueAt ?? "none"}
           defaultValue={followUpDueAt ? followUpDueAt.slice(0, 10) : ""}
           className="mt-1 rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
         />
@@ -61,6 +76,17 @@ export default function LeadDealDetailsForm({
       >
         {pending ? "Saving..." : "Save"}
       </button>
+      {followUpDueAt && (
+        <button
+          type="button"
+          onClick={handleMarkDone}
+          disabled={markDonePending}
+          className="rounded-md border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
+        >
+          {markDonePending ? "Marking done..." : "Mark follow-up done"}
+        </button>
+      )}
+      {markDoneError && <p className="w-full text-sm text-red-600">{markDoneError}</p>}
     </form>
   );
 }
