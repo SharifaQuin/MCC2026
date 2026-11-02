@@ -5,7 +5,7 @@ import { NEEDS_DECISION_STAGES, SCHEDULING_STAGES } from "@/lib/recruiting";
 import { businessDayRangeUtc } from "@/lib/timezone";
 import { effectiveChecklistStatus } from "@/lib/financials";
 import { getDueStatus } from "@/lib/checklistDisplay";
-import { getFollowUpUrgency } from "@/lib/leads";
+import { getFollowUpUrgency, ARCHIVED_LEAD_STAGES } from "@/lib/leads";
 import type { ApplicantStage } from "@prisma/client";
 
 export interface HrTodayItem {
@@ -181,7 +181,7 @@ export async function getTodayCardData(
     hasSalesAccess
       ? prisma.lead.findMany({
           where: {
-            stage: { notIn: ["WON", "LOST"] },
+            stage: { notIn: ["WON", ...ARCHIVED_LEAD_STAGES] },
             // Due or overdue (no lower bound) — a follow-up overdue from a
             // prior day must still show up here, not just ones due exactly
             // today, so this card never disagrees with Sales's own

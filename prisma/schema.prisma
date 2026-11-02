@@ -1802,6 +1802,13 @@ enum LeadStage {
   QUOTED
   WON
   LOST
+  // A deliberate "pause", not an outcome: staff tried and couldn't reach the
+  // lead (dead phone number, no answer after repeated attempts, etc.) — the
+  // lead comes off the active pipeline board and its callback reminders
+  // stop firing, but it's never counted as Won or Lost and the full record
+  // (notes/communications/stage history) stays intact. One-click reopen
+  // (reopenLeadFromUnableToContactAction) always lands back on CONTACTED.
+  UNABLE_TO_CONTACT
 }
 
 // A prospective client who hasn't (yet) become a paying job — separate from

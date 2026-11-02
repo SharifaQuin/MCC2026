@@ -11,6 +11,7 @@ import {
   LEAD_FREQUENCY_LABELS,
   LEAD_HOW_HEARD_OPTIONS,
   createDraftQuoteForLead,
+  ARCHIVED_LEAD_STAGES,
 } from "@/lib/leads";
 import { maybeSendAfterHoursAutoReply } from "@/lib/leadAutoReply";
 
@@ -98,10 +99,57 @@ export async function submitLeadAction(formData: FormData) {
     if (value) customFields.push({ label: field.label, value });
   }
 
+  // An Unable-to-Contact lead is treated the same as a Lost one here — it's
+  // a paused dead end, not a live inquiry someone is already working — so a
+  // fresh submission from the same email creates a brand-new Lead instead
+  // of silently vanishing into one nobody could reach. Only a genuinely
+  // still-active inquiry (not yet Won/Lost/Unable-to-Contact) is treated as
+  // "already being handled."
   const existing = await prisma.lead.findFirst({
-    where: { email: { equals: email, mode: "insensitive" }, stage: { notIn: ["WON", "LOST"] } },
+    where: { email: { equals: email, mode: "insensitive" }, stage: { notIn: ["WON", ...ARCHIVED_LEAD_STAGES] } },
   });
   if (existing) {
+    redirect("/lead-form/thank-you");
+  }
+
+  // Unable-to-Contact is different from the other archived stages above: it
+  // means the lead never actually talked to us, not that the deal is over —
+  // so a repeat inquiry from that same email is someone trying again, not a
+  // new client. Reopen the existing lead (back onto the active pipeline,
+  // restoring its normal follow-up/needs-scheduling visibility purely as a
+  // side effect of the stage change) instead of creating a duplicate Lead
+  // nobody would think to connect to the earlier contact attempts.
+  // `orderBy: updatedAt desc` because Lead.email isn't unique — if more than
+  // one Unable-to-Contact lead somehow matches, reopen whichever was touched
+  // most recently.
+  const unableToContactMatch = await prisma.lead.findFirst({
+    where: { email: { equals: email, mode: "insensitive" }, stage: "UNABLE_TO_CONTACT" },
+    orderBy: { updatedAt: "desc" },
+  });
+  if (unableToContactMatch) {
+    await prisma.lead.update({ where: { id: unableToContactMatch.id }, data: { stage: "CONTACTED" } });
+    await prisma.leadStageChange.create({
+      data: {
+        leadId: unableToContactMatch.id,
+        fromStage: "UNABLE_TO_CONTACT",
+        toStage: "CONTACTED",
+        changedById: null,
+      },
+    });
+
+    const resubmissionDetails: string[] = [];
+    if (serviceKey) resubmissionDetails.push(`Service interest: ${LEAD_SERVICE_LABELS[serviceKey] ?? serviceKey}`);
+    if (message) resubmissionDetails.push(`Message: ${message}`);
+    await prisma.leadNote.create({
+      data: {
+        leadId: unableToContactMatch.id,
+        authorId: null,
+        body:
+          "Automatically reopened: a new inquiry came in through the lead form for this same email address while this lead was marked Unable to Contact." +
+          (resubmissionDetails.length > 0 ? ` ${resubmissionDetails.join(" — ")}` : ""),
+      },
+    });
+
     redirect("/lead-form/thank-you");
   }
 

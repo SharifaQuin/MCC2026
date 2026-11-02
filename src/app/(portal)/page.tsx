@@ -19,11 +19,22 @@ import TraineeHome from "./TraineeHome";
 import TrainerHome from "./TrainerHome";
 import { getTrainingExperienceVersion } from "@/lib/rookieJourney";
 
-function Stat({ label, value, href }: { label: string; value: number | string; href?: string }) {
+function Stat({
+  label,
+  value,
+  href,
+  caption,
+}: {
+  label: string;
+  value: number | string;
+  href?: string;
+  caption?: React.ReactNode;
+}) {
   const content = (
     <>
       <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">{label}</p>
       <p className="mt-0.5 text-xl font-semibold text-neutral-900">{value}</p>
+      {caption && <p className="mt-0.5 text-xs text-neutral-500">{caption}</p>}
     </>
   );
   if (href) {
@@ -139,6 +150,16 @@ export default async function HomePage() {
   // this comparison is based on, just the plain stage list as before.
   const reachedStages =
     isAdmin && latestFinancials ? reachedGrowthStages(growthStaircase, latestFinancials.revenueTotal) : null;
+
+  // Shared between the Sales section's header badge (unchanged) and the
+  // Monthly Goal Stat tile's new caption — same data already computed here,
+  // no new computation.
+  const salesGoalHit = !!sales && sales.goal > 0 && sales.revenueTowardGoal >= sales.goal;
+  const salesGoalProgressText = sales
+    ? salesGoalHit
+      ? "Goal hit this month! 🎉"
+      : `${money(sales.revenueRemaining)} to hit this month's goal`
+    : "";
 
   const checklistItems = checklistTasks.map((t) => ({
     id: t.id,
@@ -260,14 +281,10 @@ export default async function HomePage() {
                 {sales.goal > 0 && (
                   <span
                     className={`rounded-full px-3 py-1 text-xs font-medium ${
-                      sales.revenueTowardGoal >= sales.goal
-                        ? "bg-green-100 text-green-800"
-                        : "bg-amber-100 text-amber-800"
+                      salesGoalHit ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"
                     }`}
                   >
-                    {sales.revenueTowardGoal >= sales.goal
-                      ? "Goal hit this month! 🎉"
-                      : `${money(sales.revenueRemaining)} to hit this month's goal`}
+                    {salesGoalProgressText}
                   </span>
                 )}
               </div>
@@ -277,7 +294,11 @@ export default async function HomePage() {
                   value={money(sales.revenueTowardGoal)}
                   href="/sales/quotes?status=won"
                 />
-                <Stat label="Monthly Goal" value={sales.goal > 0 ? money(sales.goal) : "Not set"} />
+                <Stat
+                  label="Monthly Goal"
+                  value={sales.goal > 0 ? money(sales.goal) : "Not set"}
+                  caption={sales.goal > 0 ? salesGoalProgressText : undefined}
+                />
                 <Stat
                   label="Cleanings Needed"
                   value={
