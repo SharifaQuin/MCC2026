@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
 import { loadSalesDashboard } from "@/lib/salesDashboard";
-import { loadLeadKpis } from "@/lib/leads";
+import { loadLeadKpis, getMonthlyLeadOutcomeCounts } from "@/lib/leads";
 import { resolveActiveSlotMonth, getNextOpenSlots } from "@/lib/slotCapacitySummary";
 import { setSalesGoalAction, setSalesActualsAction } from "@/app/(portal)/sales/actions";
 import { getOverdueSalesChecklistTasks } from "@/lib/hrToday";
@@ -10,11 +10,22 @@ import AssignedChecklist from "@/components/AssignedChecklist";
 import AdSpendForm from "./AdSpendForm";
 import NextOpenSlotsCard from "./NextOpenSlotsCard";
 
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function Stat({
+  label,
+  value,
+  accent,
+  caption,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+  caption?: React.ReactNode;
+}) {
   return (
     <div className="rounded-md bg-neutral-50 p-3">
       <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">{label}</p>
       <p className={`mt-0.5 text-xl font-semibold ${accent ? "text-brand-700" : "text-neutral-900"}`}>{value}</p>
+      {caption && <p className="mt-0.5 text-xs text-neutral-500">{caption}</p>}
     </div>
   );
 }
@@ -29,9 +40,10 @@ export default async function SalesPage() {
   // not these three financial inputs.
   const isAdmin = session.role === "ADMIN";
   const isSalesRep = session.role === "SALES_REP";
-  const [dash, leadKpis, overdueSalesTasks, assignedTasks] = await Promise.all([
+  const [dash, leadKpis, monthlyLeadOutcomes, overdueSalesTasks, assignedTasks] = await Promise.all([
     loadSalesDashboard(isAdmin),
     loadLeadKpis(),
+    getMonthlyLeadOutcomeCounts(),
     // Her sales-only equivalent of the general Today card — see
     // getOverdueSalesChecklistTasks' own comment for why she doesn't see
     // the general one at all (it's HR/recruiting/staffing content).
@@ -57,6 +69,9 @@ export default async function SalesPage() {
   const nextOpenSlots = activeSlotMonth ? await getNextOpenSlots(activeSlotMonth, 5, undefined, isAdmin) : [];
 
   const goalHit = dash.goal > 0 && dash.revenueTowardGoal >= dash.goal;
+  // Shared between the header badge (unchanged, already existed) and the
+  // Monthly Goal Stat tile's new caption below — same text, two places.
+  const goalProgressText = goalHit ? "Goal hit! 🎉" : `${money(dash.revenueRemaining)} to go`;
 
   return (
     <div>
@@ -98,7 +113,7 @@ export default async function SalesPage() {
                 goalHit ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"
               }`}
             >
-              {goalHit ? "Goal hit! 🎉" : `${money(dash.revenueRemaining)} to go`}
+              {goalProgressText}
             </span>
           )}
         </div>
@@ -109,14 +124,22 @@ export default async function SalesPage() {
             value={money(dash.revenueTowardGoal)}
             accent
           />
-          <Stat label="Monthly Goal" value={dash.goal > 0 ? money(dash.goal) : "Not set"} />
+          {/* Lead-level (not quote-level) outcome counts, up top and
+              prominent — distinct from the dollar figure above, which is
+              from quotes. All-time Won/Lost counts stay fully visible, just
+              moved to the end of this grid so the month reads first. */}
+          <Stat label="Leads Won This Month" value={String(monthlyLeadOutcomes.wonThisMonth)} />
+          <Stat label="Leads Lost This Month" value={String(monthlyLeadOutcomes.lostThisMonth)} />
+          <Stat
+            label="Monthly Goal"
+            value={dash.goal > 0 ? money(dash.goal) : "Not set"}
+            caption={dash.goal > 0 ? goalProgressText : undefined}
+          />
           <Stat
             label="Cleanings Needed"
             value={goalHit ? "0" : dash.goal > 0 ? String(dash.cleaningsNeeded) : "—"}
           />
           <Stat label="Pending Quotes" value={String(dash.pendingCount)} />
-          <Stat label="Won (all-time)" value={String(dash.wonCount)} />
-          <Stat label="Lost (all-time)" value={String(dash.lostCount)} />
           <Stat
             label="Win Rate"
             value={dash.winRate === null ? "—" : `${Math.round(dash.winRate * 100)}%`}
@@ -125,6 +148,8 @@ export default async function SalesPage() {
             label="Avg. Job Value"
             value={dash.averageJobValue ? money(dash.averageJobValue) : "—"}
           />
+          <Stat label="Won (all-time)" value={String(dash.wonCount)} />
+          <Stat label="Lost (all-time)" value={String(dash.lostCount)} />
         </div>
 
         {isAdmin && (

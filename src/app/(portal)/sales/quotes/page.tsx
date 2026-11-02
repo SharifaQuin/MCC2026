@@ -85,12 +85,33 @@ export default async function SalesQuotesPage({
   const filterLink = (value: string | null) =>
     value ? `/sales/quotes?status=${value}` : "/sales/quotes";
 
+  // A quote whose linked Lead has been paused Unable-to-Contact shouldn't
+  // nag anyone to schedule a next step on it — quotes are JSON blobs, not
+  // relational, so quoteKey is the only link back to a Lead, and it's NOT
+  // unique (multiple leads could theoretically share one), hence findMany,
+  // never findFirst. Pure visibility filter: never touches the quote's own
+  // stored nextStep/followUpDate/status fields.
+  const candidateQuoteIds = quotes.map((q) => q.id);
+  const unableToContactLeads =
+    candidateQuoteIds.length > 0
+      ? await prisma.lead.findMany({
+          where: { quoteKey: { in: candidateQuoteIds }, stage: "UNABLE_TO_CONTACT" },
+          select: { quoteKey: true },
+        })
+      : [];
+  const unableToContactQuoteKeys = new Set(
+    unableToContactLeads.map((l) => l.quoteKey).filter((k): k is string => k !== null)
+  );
+
   // Visibility aid: pending quotes with nothing scheduled yet — a quote
   // can't just sit in Quoted forever with no next step or follow-up date.
   // Purely informational: never blocks saving, never gates a lead's stage,
   // never auto-messages anyone.
   const needsScheduling = quotes.filter(
-    (q) => (q.status || "pending") === "pending" && (!q.nextStep || !q.followUpDate)
+    (q) =>
+      (q.status || "pending") === "pending" &&
+      (!q.nextStep || !q.followUpDate) &&
+      !unableToContactQuoteKeys.has(q.id)
   );
 
   return (

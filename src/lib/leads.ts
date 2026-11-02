@@ -125,6 +125,7 @@ export const LEAD_STAGE_LABELS: Record<string, string> = {
   QUOTED: "Quoted",
   WON: "Won",
   LOST: "Lost",
+  UNABLE_TO_CONTACT: "Unable to Contact",
 };
 
 export const LEAD_STAGE_TONE: Record<string, string> = {
@@ -133,6 +134,9 @@ export const LEAD_STAGE_TONE: Record<string, string> = {
   QUOTED: "bg-brand-100 text-brand-700",
   WON: "bg-green-100 text-green-700",
   LOST: "bg-red-100 text-red-700",
+  // Muted/neutral, deliberately not red or green — this is a paused state,
+  // not a decided outcome, so it shouldn't read as either a win or a loss.
+  UNABLE_TO_CONTACT: "bg-neutral-200 text-neutral-700",
 };
 
 export const LEAD_PIPELINE_COLUMNS: { stage: LeadStage; label: string }[] = [
@@ -142,7 +146,13 @@ export const LEAD_PIPELINE_COLUMNS: { stage: LeadStage; label: string }[] = [
   { stage: "WON", label: "Won" },
 ];
 
-export const ARCHIVED_LEAD_STAGES: LeadStage[] = ["LOST"];
+// Stages pulled off the active pipeline board/callback reminders but kept
+// fully on file — LOST (a decided outcome) and UNABLE_TO_CONTACT (a paused
+// non-outcome: staff couldn't reach the lead, not a won/lost decision).
+// This one constant drives the Lead Pipeline board's query, loadLeadKpis'
+// openLeads/overdueFollowUps queries, getTodayCardData's followUps query,
+// and getLeadFunnelBySource's "open" bucket — see each call site.
+export const ARCHIVED_LEAD_STAGES: LeadStage[] = ["LOST", "UNABLE_TO_CONTACT"];
 
 // The one obvious "move it forward" action for each pipeline-board column —
 // anything else (mark lost, jump stages) lives on the lead's own detail page.
@@ -293,7 +303,7 @@ export async function loadLeadKpis(): Promise<LeadKpis> {
         select: { createdAt: true, firstContactedAt: true },
       }),
       prisma.lead.findMany({
-        where: { stage: { notIn: ["WON", "LOST"] } },
+        where: { stage: { notIn: ["WON", ...ARCHIVED_LEAD_STAGES] } },
         select: { estimatedValue: true },
       }),
       // Every New Inquiry needs a first response, regardless of age — unlike
@@ -307,7 +317,7 @@ export async function loadLeadKpis(): Promise<LeadKpis> {
       }),
       prisma.lead.findMany({
         where: {
-          stage: { notIn: ["NEW_INQUIRY", "WON", "LOST"] },
+          stage: { notIn: ["NEW_INQUIRY", "WON", ...ARCHIVED_LEAD_STAGES] },
           followUpDueAt: { not: null, lt: businessDayRangeUtc().start },
         },
         select: { id: true, firstName: true, lastName: true, stage: true, followUpDueAt: true },
@@ -723,12 +733,21 @@ export async function getActiveLeadFormFields() {
 export async function getLeadFunnelBySource() {
   const rows = await prisma.lead.groupBy({ by: ["source", "stage"], _count: true });
 
-  const bySource = new Map<string, { total: number; won: number; lost: number; open: number }>();
+  const bySource = new Map<
+    string,
+    { total: number; won: number; lost: number; unableToContact: number; open: number }
+  >();
   for (const row of rows) {
-    const entry = bySource.get(row.source) ?? { total: 0, won: 0, lost: 0, open: 0 };
+    const entry =
+      bySource.get(row.source) ?? { total: 0, won: 0, lost: 0, unableToContact: 0, open: 0 };
     entry.total += row._count;
     if (row.stage === "WON") entry.won += row._count;
     else if (row.stage === "LOST") entry.lost += row._count;
+    // Unable to Contact is a paused non-outcome, not active/open work — give
+    // it its own bucket rather than lumping it into "open" (which would
+    // overstate how much of the pipeline is actually being worked) or into
+    // won/lost (it's neither).
+    else if (row.stage === "UNABLE_TO_CONTACT") entry.unableToContact += row._count;
     else entry.open += row._count;
     bySource.set(row.source, entry);
   }
@@ -741,6 +760,7 @@ export async function getLeadFunnelBySource() {
       open: stats.open,
       won: stats.won,
       lost: stats.lost,
+      unableToContact: stats.unableToContact,
       winRatePct:
         stats.won + stats.lost > 0 ? Math.round((stats.won / (stats.won + stats.lost)) * 100) : 0,
     }))
@@ -775,6 +795,38 @@ export async function getLostLeads() {
       lostReason: l.lostReason,
       lostAt: lostChange?.createdAt ?? l.updatedAt,
       lostByName: lostChange?.changedBy?.name ?? null,
+    };
+  });
+}
+
+// Unable-to-Contact leads are paused off the active pipeline board exactly
+// like Lost ones (same ARCHIVED_LEAD_STAGES treatment), but this is never a
+// decided outcome — there's no lostReason-equivalent text field, just who
+// paused it and when. Mirrors getLostLeads' own shape closely.
+export async function getUnableToContactLeads() {
+  const leads = await prisma.lead.findMany({
+    where: { stage: "UNABLE_TO_CONTACT" },
+    include: {
+      stageChanges: {
+        where: { toStage: "UNABLE_TO_CONTACT" },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        include: { changedBy: { select: { name: true } } },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  return leads.map((l) => {
+    const change = l.stageChanges[0];
+    return {
+      id: l.id,
+      firstName: l.firstName,
+      lastName: l.lastName,
+      source: l.source,
+      estimatedValue: l.estimatedValue,
+      markedAt: change?.createdAt ?? l.updatedAt,
+      markedByName: change?.changedBy?.name ?? null,
     };
   });
 }
@@ -848,6 +900,43 @@ export async function syncQuoteStatusForLead(
   } catch {
     // Malformed quote JSON — best-effort sync, skip silently.
   }
+}
+
+// Calendar-month Won/Lost lead counts, from LeadStageChange rather than the
+// quote blobs loadSalesDashboard's wonCount/lostCount are built from — this
+// is the real, reliable record of when a lead actually reached that
+// outcome, independent of whether its quote ever got a recalculated price
+// (see the Item 2 diagnosis). Mirrors loadLeadKpis' own leadsThisMonth
+// groupBy's exact calendar-month boundary (new Date(y, m, 1)) for
+// consistency — this is a calendar month, not a business-day window.
+//
+// Counts LeadStageChange rows, not distinct leads: every current app code
+// path that sets Lead.stage pairs it with exactly one matching
+// LeadStageChange row (verified by auditing every prisma.lead.update that
+// sets `stage` and every prisma.lead.create — none bypasses this), and
+// nothing in this app can move a lead off Won or Lost once reached (no
+// "next stage" is ever offered from WON, and LOST's only next stage is
+// CONTACTED), so a lead can only ever contribute one Won row and one Lost
+// row in its lifetime to this count — except in the genuinely legitimate
+// edge case of LOST -> CONTACTED -> WON/LOST again, which really is a
+// second, real outcome event and should count again.
+//
+// Reliability caveat: this only guarantees accuracy for outcomes reached
+// through this app's own code. Any pre-existing production data from
+// before this tracking existed, or any direct database edit made outside
+// the app, would have no corresponding LeadStageChange row and would be
+// silently undercounted for whatever month the outcome actually happened
+// in. Nothing is backfilled here to paper over that.
+export async function getMonthlyLeadOutcomeCounts(
+  now: Date = new Date()
+): Promise<{ wonThisMonth: number; lostThisMonth: number }> {
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const [wonThisMonth, lostThisMonth] = await Promise.all([
+    prisma.leadStageChange.count({ where: { toStage: "WON", createdAt: { gte: monthStart, lt: monthEnd } } }),
+    prisma.leadStageChange.count({ where: { toStage: "LOST", createdAt: { gte: monthStart, lt: monthEnd } } }),
+  ]);
+  return { wonThisMonth, lostThisMonth };
 }
 
 // Eligible assignees for a lead — anyone with Sales department access, plus

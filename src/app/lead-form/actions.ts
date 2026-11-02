@@ -11,6 +11,7 @@ import {
   LEAD_FREQUENCY_LABELS,
   LEAD_HOW_HEARD_OPTIONS,
   createDraftQuoteForLead,
+  ARCHIVED_LEAD_STAGES,
 } from "@/lib/leads";
 import { maybeSendAfterHoursAutoReply } from "@/lib/leadAutoReply";
 
@@ -98,8 +99,14 @@ export async function submitLeadAction(formData: FormData) {
     if (value) customFields.push({ label: field.label, value });
   }
 
+  // An Unable-to-Contact lead is treated the same as a Lost one here — it's
+  // a paused dead end, not a live inquiry someone is already working — so a
+  // fresh submission from the same email creates a brand-new Lead instead
+  // of silently vanishing into one nobody could reach. Only a genuinely
+  // still-active inquiry (not yet Won/Lost/Unable-to-Contact) is treated as
+  // "already being handled."
   const existing = await prisma.lead.findFirst({
-    where: { email: { equals: email, mode: "insensitive" }, stage: { notIn: ["WON", "LOST"] } },
+    where: { email: { equals: email, mode: "insensitive" }, stage: { notIn: ["WON", ...ARCHIVED_LEAD_STAGES] } },
   });
   if (existing) {
     redirect("/lead-form/thank-you");
