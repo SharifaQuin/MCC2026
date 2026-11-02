@@ -902,6 +902,43 @@ export async function syncQuoteStatusForLead(
   }
 }
 
+// Calendar-month Won/Lost lead counts, from LeadStageChange rather than the
+// quote blobs loadSalesDashboard's wonCount/lostCount are built from — this
+// is the real, reliable record of when a lead actually reached that
+// outcome, independent of whether its quote ever got a recalculated price
+// (see the Item 2 diagnosis). Mirrors loadLeadKpis' own leadsThisMonth
+// groupBy's exact calendar-month boundary (new Date(y, m, 1)) for
+// consistency — this is a calendar month, not a business-day window.
+//
+// Counts LeadStageChange rows, not distinct leads: every current app code
+// path that sets Lead.stage pairs it with exactly one matching
+// LeadStageChange row (verified by auditing every prisma.lead.update that
+// sets `stage` and every prisma.lead.create — none bypasses this), and
+// nothing in this app can move a lead off Won or Lost once reached (no
+// "next stage" is ever offered from WON, and LOST's only next stage is
+// CONTACTED), so a lead can only ever contribute one Won row and one Lost
+// row in its lifetime to this count — except in the genuinely legitimate
+// edge case of LOST -> CONTACTED -> WON/LOST again, which really is a
+// second, real outcome event and should count again.
+//
+// Reliability caveat: this only guarantees accuracy for outcomes reached
+// through this app's own code. Any pre-existing production data from
+// before this tracking existed, or any direct database edit made outside
+// the app, would have no corresponding LeadStageChange row and would be
+// silently undercounted for whatever month the outcome actually happened
+// in. Nothing is backfilled here to paper over that.
+export async function getMonthlyLeadOutcomeCounts(
+  now: Date = new Date()
+): Promise<{ wonThisMonth: number; lostThisMonth: number }> {
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const [wonThisMonth, lostThisMonth] = await Promise.all([
+    prisma.leadStageChange.count({ where: { toStage: "WON", createdAt: { gte: monthStart, lt: monthEnd } } }),
+    prisma.leadStageChange.count({ where: { toStage: "LOST", createdAt: { gte: monthStart, lt: monthEnd } } }),
+  ]);
+  return { wonThisMonth, lostThisMonth };
+}
+
 // Eligible assignees for a lead — anyone with Sales department access, plus
 // Admins (who implicitly have every department per resolveUserDepartments).
 export async function getSalesTeamMembers() {
