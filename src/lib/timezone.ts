@@ -122,6 +122,24 @@ export function businessDayRangeUtc(now: Date = new Date()): { start: Date; end:
   };
 }
 
+// The real UTC instant range [start, end) covering one full calendar month in
+// the business timezone — for "this month's" aggregate queries (e.g. monthly
+// Won/Lost lead counts), which need the month's actual start/end moment
+// (accounting for DST and the server's own runtime timezone, which can
+// disagree with the business's actual calendar month near either edge), not
+// a server-local `new Date(y, m, 1)` boundary.
+export function businessMonthRangeUtc(now: Date = new Date()): { start: Date; end: Date } {
+  const [y, m] = businessDateKey(now).split("-").map(Number);
+  const monthStartKey = `${y}-${String(m).padStart(2, "0")}-01`;
+  const nextYear = m === 12 ? y + 1 : y;
+  const nextMonth = m === 12 ? 1 : m + 1;
+  const nextMonthStartKey = `${nextYear}-${String(nextMonth).padStart(2, "0")}-01`;
+  return {
+    start: zonedTimeToUtc(`${monthStartKey}T00:00`),
+    end: zonedTimeToUtc(`${nextMonthStartKey}T00:00`),
+  };
+}
+
 // { year, month, day, weekday, hour, minute } of a Date as read in the
 // business timezone — weekday is ISO-style (Mon=1..Sun=7).
 export function businessTimeParts(date: Date): {

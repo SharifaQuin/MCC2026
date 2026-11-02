@@ -4,7 +4,7 @@ import { sendEmail } from "@/lib/email";
 import { postSlackDMToOwner } from "@/lib/slack";
 import { csvEscape } from "@/lib/export";
 import { formatPhone } from "@/lib/formatPhone";
-import { businessDayRangeUtc } from "@/lib/timezone";
+import { businessDayRangeUtc, businessMonthRangeUtc } from "@/lib/timezone";
 
 // Mirrors the Pricing Calculator's SERVICES/SERVICE_LABELS in
 // src/content/sales-pricing-tool.html exactly (same key strings) — a lead
@@ -906,36 +906,51 @@ export async function syncQuoteStatusForLead(
 // quote blobs loadSalesDashboard's wonCount/lostCount are built from — this
 // is the real, reliable record of when a lead actually reached that
 // outcome, independent of whether its quote ever got a recalculated price
-// (see the Item 2 diagnosis). Mirrors loadLeadKpis' own leadsThisMonth
-// groupBy's exact calendar-month boundary (new Date(y, m, 1)) for
-// consistency — this is a calendar month, not a business-day window.
+// (see the Item 2 diagnosis). The calendar month boundary here is the
+// *business* timezone's (BUSINESS_TIMEZONE, via businessMonthRangeUtc), not
+// the server process's own runtime timezone (Railway containers default to
+// UTC) — a change near either edge of the month can otherwise land in the
+// wrong month's count.
 //
-// Counts LeadStageChange rows, not distinct leads: every current app code
-// path that sets Lead.stage pairs it with exactly one matching
-// LeadStageChange row (verified by auditing every prisma.lead.update that
-// sets `stage` and every prisma.lead.create — none bypasses this), and
-// nothing in this app can move a lead off Won or Lost once reached (no
-// "next stage" is ever offered from WON, and LOST's only next stage is
-// CONTACTED), so a lead can only ever contribute one Won row and one Lost
-// row in its lifetime to this count — except in the genuinely legitimate
-// edge case of LOST -> CONTACTED -> WON/LOST again, which really is a
-// second, real outcome event and should count again.
+// Counts one outcome per lead, not one row per LeadStageChange: this asks,
+// for each lead with at least one Won/Lost transition inside the business-
+// timezone month window, "what was its *latest* Won/Lost transition in that
+// window?" and tallies leads by that answer (the `distinct: ["leadId"]` +
+// `orderBy: { createdAt: "desc" }` combination keeps exactly the most recent
+// matching row per lead). This intentionally differs from counting every
+// matching row: a lead that was re-decided within the same month (e.g.
+// Lost -> reopened -> Lost again, or Lost -> reopened -> Won) now counts
+// exactly once, under whichever outcome it last landed on that month —
+// rather than being counted twice, or having an earlier same-month Lost
+// still counted after it was later overturned to Won. This is purely a
+// smarter counting query over data that already exists: no LeadStageChange
+// row is ever deleted or modified by this, and the full history (including
+// a lead's earlier, superseded outcome in the same month) stays intact and
+// readable from the lead's own detail page.
 //
 // Reliability caveat: this only guarantees accuracy for outcomes reached
 // through this app's own code. Any pre-existing production data from
 // before this tracking existed, or any direct database edit made outside
 // the app, would have no corresponding LeadStageChange row and would be
 // silently undercounted for whatever month the outcome actually happened
-// in. Nothing is backfilled here to paper over that.
+// in. Nothing is backfilled here to paper over that — unrelated to, and
+// unchanged by, the per-lead-latest-outcome fix above.
 export async function getMonthlyLeadOutcomeCounts(
   now: Date = new Date()
 ): Promise<{ wonThisMonth: number; lostThisMonth: number }> {
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const [wonThisMonth, lostThisMonth] = await Promise.all([
-    prisma.leadStageChange.count({ where: { toStage: "WON", createdAt: { gte: monthStart, lt: monthEnd } } }),
-    prisma.leadStageChange.count({ where: { toStage: "LOST", createdAt: { gte: monthStart, lt: monthEnd } } }),
-  ]);
+  const { start, end } = businessMonthRangeUtc(now);
+  const latestOutcomes = await prisma.leadStageChange.findMany({
+    where: { toStage: { in: ["WON", "LOST"] }, createdAt: { gte: start, lt: end } },
+    orderBy: { createdAt: "desc" },
+    distinct: ["leadId"],
+    select: { toStage: true },
+  });
+  let wonThisMonth = 0;
+  let lostThisMonth = 0;
+  for (const { toStage } of latestOutcomes) {
+    if (toStage === "WON") wonThisMonth++;
+    else if (toStage === "LOST") lostThisMonth++;
+  }
   return { wonThisMonth, lostThisMonth };
 }
 

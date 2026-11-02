@@ -112,6 +112,47 @@ export async function submitLeadAction(formData: FormData) {
     redirect("/lead-form/thank-you");
   }
 
+  // Unable-to-Contact is different from the other archived stages above: it
+  // means the lead never actually talked to us, not that the deal is over —
+  // so a repeat inquiry from that same email is someone trying again, not a
+  // new client. Reopen the existing lead (back onto the active pipeline,
+  // restoring its normal follow-up/needs-scheduling visibility purely as a
+  // side effect of the stage change) instead of creating a duplicate Lead
+  // nobody would think to connect to the earlier contact attempts.
+  // `orderBy: updatedAt desc` because Lead.email isn't unique — if more than
+  // one Unable-to-Contact lead somehow matches, reopen whichever was touched
+  // most recently.
+  const unableToContactMatch = await prisma.lead.findFirst({
+    where: { email: { equals: email, mode: "insensitive" }, stage: "UNABLE_TO_CONTACT" },
+    orderBy: { updatedAt: "desc" },
+  });
+  if (unableToContactMatch) {
+    await prisma.lead.update({ where: { id: unableToContactMatch.id }, data: { stage: "CONTACTED" } });
+    await prisma.leadStageChange.create({
+      data: {
+        leadId: unableToContactMatch.id,
+        fromStage: "UNABLE_TO_CONTACT",
+        toStage: "CONTACTED",
+        changedById: null,
+      },
+    });
+
+    const resubmissionDetails: string[] = [];
+    if (serviceKey) resubmissionDetails.push(`Service interest: ${LEAD_SERVICE_LABELS[serviceKey] ?? serviceKey}`);
+    if (message) resubmissionDetails.push(`Message: ${message}`);
+    await prisma.leadNote.create({
+      data: {
+        leadId: unableToContactMatch.id,
+        authorId: null,
+        body:
+          "Automatically reopened: a new inquiry came in through the lead form for this same email address while this lead was marked Unable to Contact." +
+          (resubmissionDetails.length > 0 ? ` ${resubmissionDetails.join(" — ")}` : ""),
+      },
+    });
+
+    redirect("/lead-form/thank-you");
+  }
+
   const serviceInterest = serviceKey ? (LEAD_SERVICE_LABELS[serviceKey] ?? serviceKey) : null;
 
   const lead = await prisma.lead.create({
