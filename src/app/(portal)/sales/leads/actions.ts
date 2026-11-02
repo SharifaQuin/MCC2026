@@ -194,6 +194,49 @@ export async function markLeadLostAction(leadId: string, lostReason: string) {
   revalidatePath("/sales");
 }
 
+// A deliberate "pause," not an outcome — staff tried and couldn't reach the
+// lead. Same access boundary as markLeadLostAction (owner plus a Sales Rep
+// with Sales Edit; Office Assistant explicitly blocked, since this is a
+// business judgment call about where a deal stands, not a factual contact
+// status this narrow role may record on its own) — but, unlike Lost, there's
+// no reason text to collect and the quote's status is never synced: this
+// lead isn't Won or Lost, so its linked quote (if any) must stay exactly as
+// it was.
+export async function markLeadUnableToContactAction(leadId: string) {
+  const { session, canEdit } = await requireDepartmentAccess("SALES");
+  if (!canEdit) return;
+  if (session.role === "OFFICE_ASSISTANT") throw new Error("Not authorized.");
+  const current = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  await prisma.lead.update({ where: { id: leadId }, data: { stage: "UNABLE_TO_CONTACT" } });
+  await prisma.leadStageChange.create({
+    data: { leadId, fromStage: current.stage, toStage: "UNABLE_TO_CONTACT", changedById: getTrueActorId(session) },
+  });
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath("/sales/leads");
+  revalidatePath("/sales");
+}
+
+// The one-click reopen from Unable-to-Contact — always lands on CONTACTED
+// specifically (not whatever stage the lead was in before being paused),
+// mirroring the existing LOST -> CONTACTED one-click reopen pattern. Routed
+// through its own dedicated action rather than setLeadStageAction, which
+// doesn't know about this stage's special reopen semantics and has a
+// slightly different access boundary than wanted here.
+export async function reopenLeadFromUnableToContactAction(leadId: string) {
+  const { session, canEdit } = await requireDepartmentAccess("SALES");
+  if (!canEdit) return;
+  if (session.role === "OFFICE_ASSISTANT") throw new Error("Not authorized.");
+  const current = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  if (current.stage !== "UNABLE_TO_CONTACT") return;
+  await prisma.lead.update({ where: { id: leadId }, data: { stage: "CONTACTED" } });
+  await prisma.leadStageChange.create({
+    data: { leadId, fromStage: "UNABLE_TO_CONTACT", toStage: "CONTACTED", changedById: getTrueActorId(session) },
+  });
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath("/sales/leads");
+  revalidatePath("/sales");
+}
+
 // For phone calls, walk-ins, or referrals — added directly by a manager,
 // skipping the public website form since it wasn't a website inquiry.
 export async function createManualLeadAction(formData: FormData) {
