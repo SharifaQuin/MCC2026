@@ -47,7 +47,30 @@ export async function POST(request: Request) {
       }
       const row = await prisma.salesToolData.findUnique({ where: { key: body.key } });
       if (!row) return Response.json({ error: "Not found" }, { status: 404 });
-      return Response.json({ key: row.key, value: row.value, shared: true });
+
+      // Correction round (Item 2): recompute the margin-hold check FRESH on
+      // every read too — not just at save ("set", below) and send
+      // (send-quote/route.ts) — so reopening a quote (loadQuoteForUpdate(),
+      // loadQuote()) never shows a stale stored `marginHold` (e.g. saved
+      // before this correction, or before some other code path that skipped
+      // a full "set"). This never rewrites the row itself — a GET stays
+      // side-effect-free, exactly like before — it only adds the freshly
+      // computed fields to THIS response, the same pattern "set" already
+      // uses below.
+      const getResponseBody: Record<string, unknown> = { key: row.key, value: row.value, shared: true };
+      if (body.key.startsWith("quote:")) {
+        try {
+          const parsedForMargin = JSON.parse(row.value);
+          const marginEvaluation = evaluateQuoteMarginHold(parsedForMargin);
+          getResponseBody.marginHold = marginEvaluation.held;
+          if (marginEvaluation.held && isAdmin) {
+            getResponseBody.marginHoldReason = describeMarginHold(marginEvaluation);
+          }
+        } catch (error) {
+          console.error(`Margin evaluation failed for ${body.key}:`, error);
+        }
+      }
+      return Response.json(getResponseBody);
     }
 
     case "set": {

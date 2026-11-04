@@ -1,6 +1,7 @@
 import { test, expect, type Page, type Frame } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/lib/password";
+import { minAcceptablePrice, evaluateQuoteMarginHold } from "../src/lib/pricingMargin";
 
 // Covers the pricing/quote tool's recurring-Standard pricing (Item 1), the
 // Initial/Ongoing split (Item 2), its hourly-entry safeguards (Item 5), and
@@ -482,7 +483,13 @@ test.describe.serial("Recurring Standard pricing + margin protection", () => {
       const adminResult = await seedQuote(page, heldId, heldQuote);
       expect(adminResult.marginHold).toBe(true);
       expect(typeof adminResult.marginHoldReason).toBe("string");
-      expect(adminResult.marginHoldReason).toMatch(/below the 10% floor/);
+      // Correction round (Item 1): a recurring Standard quote is now held
+      // for the "unverified-cost" reason (unconditional, while
+      // COST_DATA_VERIFIED is false) BEFORE the genuine-margin check even
+      // matters — this fixture happens to also be genuinely below the 10%
+      // floor, but that's no longer what the reason text leads with.
+      expect(adminResult.marginHoldReason).toMatch(/provisional/i);
+      expect(adminResult.marginHoldReason).toMatch(/not yet been reconciled|unreconciled/i);
       expect(adminResult.marginHoldReason).toMatch(/\$\d/);
 
       const persisted = await getStoredQuote(page, heldId);
@@ -542,7 +549,12 @@ test.describe.serial("Recurring Standard pricing + margin protection", () => {
         return sendQuoteToClient();
       });
       const adminStatus = await adminFrame.locator("#sc-send-status").textContent();
-      expect(adminStatus).toContain("Held — below the 10% margin floor");
+      // Correction round (Item 1): this recurring-Standard quote is held
+      // for the unconditional "unverified-cost" reason now, not necessarily
+      // a genuine below-the-floor margin — the refusal text is picked to
+      // match what's actually held (see send-quote/route.ts).
+      expect(adminStatus).toContain("Held.");
+      expect(adminStatus).toMatch(/provisional/i);
       expect(adminStatus).toMatch(/\$\d/);
       expect(await adminFrame.locator("#sc-send-btn").isDisabled()).toBe(true);
 
@@ -631,6 +643,419 @@ test.describe.serial("Recurring Standard pricing + margin protection", () => {
       const result = await seedQuote(page, id, quote);
       expect(result.marginHold).toBe(true); // held on the low end alone
       expect(result.marginHoldReason).toMatch(/below the 10% floor/);
+    });
+  });
+
+  // ── CORRECTION ROUND ────────────────────────────────────────────────────
+  // Covers the 4 corrections made to the above in a follow-up pass: (1) an
+  // unconditional "unverified-cost" hold for every recurring Standard quote
+  // while COST_DATA_VERIFIED is false, regardless of its real computed
+  // margin; (2) the read path (GET / reopen) recomputing marginHold fresh,
+  // not just save/send; (3) the Ongoing leg's price being a flat number
+  // everywhere, never a ±20% range; (4) the first-time-client discount
+  // never applying to recurring Standard's Ongoing (or Initial) leg.
+
+  test.describe("Correction round — Item 1: unconditional unverified-cost hold", () => {
+    test("a generously-priced recurring Standard quote (provisional margin well above 21% on both legs) is still held on save, and refused on send for both roles", async ({
+      page,
+    }) => {
+      const id = `unverified-hold-${RUN_ID}`;
+      createdQuoteIds.add(id);
+      const city = "Irvine";
+      const floorInit = minAcceptablePrice(4, 2, 21, city, "standard")!;
+      const floorOngoing = minAcceptablePrice(1.5, 2, 21, city, "standard")!;
+      const quote = {
+        clientName: `Unverified Hold ${RUN_ID}`,
+        id,
+        clientEmail: `unverified-hold-${RUN_ID}@example.com`,
+        city,
+        service: "standard",
+        frequency: "Weekly",
+        teamSize: 2,
+        initialEstimatedHours: 4,
+        initialEstimatedCost: Number((floorInit * 3).toFixed(2)),
+        initialMinimumHours: 3,
+        timeLowHrs: 1.5,
+        suggested: (floorOngoing * 3).toFixed(2),
+        low: (floorOngoing * 3).toFixed(2),
+        high: (floorOngoing * 3).toFixed(2),
+        status: "pending",
+        sentAt: null,
+      };
+
+      // Confirm, directly against the module, that this fixture's
+      // PROVISIONAL margin is genuinely well above 21% on BOTH legs under
+      // the pre-correction (verified-cost) logic — the point of this test
+      // is that it's held anyway, not that it's secretly cheap.
+      const verifiedOverride = evaluateQuoteMarginHold(quote, { costDataVerified: true });
+      expect(verifiedOverride.held).toBe(false);
+      for (const leg of verifiedOverride.legs) expect(leg.marginPct).toBeGreaterThan(21);
+
+      await loginAsAdmin(page);
+      const saveResult = await seedQuote(page, id, quote);
+      expect(saveResult.marginHold).toBe(true);
+      expect(saveResult.marginHoldReason).toMatch(/provisional/i);
+
+      page.on("dialog", (d) => d.accept()); // Item 5 pre-send confirmation, every time
+
+      const adminFrame = await openPricingFrame(page);
+      await adminFrame.evaluate((data) => {
+        // @ts-expect-error
+        renderQuote(data);
+      }, quote);
+      await adminFrame.evaluate(() => {
+        // @ts-expect-error
+        return sendQuoteToClient();
+      });
+      const adminStatus = await adminFrame.locator("#sc-send-status").textContent();
+      expect(adminStatus).toMatch(/provisional/i);
+      expect(adminStatus).toMatch(/not yet been reconciled|unreconciled/i);
+      expect(adminStatus).toMatch(/\$\d/);
+
+      await loginAs(page, repEmail, PASSWORD);
+      const repFrame = await openPricingFrame(page);
+      await repFrame.evaluate((data) => {
+        // @ts-expect-error
+        renderQuote(data);
+      }, quote);
+      await repFrame.evaluate(() => {
+        // @ts-expect-error
+        return sendQuoteToClient();
+      });
+      const repStatus = await repFrame.locator("#sc-send-status").textContent();
+      expect(repStatus).toContain("This quote needs owner review before it can be sent.");
+      expect(repStatus).not.toMatch(/\$\d/);
+      expect(repStatus).not.toMatch(/provisional/i);
+      expect(repStatus).not.toMatch(/unverified|unreconciled/i);
+      expect(repStatus).not.toContain("20.52");
+    });
+  });
+
+  test.describe("Correction round — Item 2: reopen recomputes the margin hold fresh via the real GET path", () => {
+    test("recurring Standard: a stale stored marginHold:false is recomputed to true on GET, and the row itself is never rewritten", async ({
+      page,
+    }) => {
+      await loginAsAdmin(page);
+      const id = `reopen-recompute-standard-${RUN_ID}`;
+      createdQuoteIds.add(id);
+      const city = "Irvine";
+      const floorInit = minAcceptablePrice(4, 2, 21, city, "standard")!;
+      const floorOngoing = minAcceptablePrice(1.5, 2, 21, city, "standard")!;
+      const staleData = {
+        clientName: `Reopen Recompute Standard ${RUN_ID}`,
+        id,
+        clientEmail: `reopen-recompute-standard-${RUN_ID}@example.com`,
+        city,
+        service: "standard",
+        frequency: "Weekly",
+        teamSize: 2,
+        initialEstimatedHours: 4,
+        initialEstimatedCost: Number((floorInit * 3).toFixed(2)), // genuinely high provisional margin
+        initialMinimumHours: 3,
+        timeLowHrs: 1.5,
+        suggested: (floorOngoing * 3).toFixed(2),
+        low: (floorOngoing * 3).toFixed(2),
+        high: (floorOngoing * 3).toFixed(2),
+        status: "pending",
+        sentAt: null,
+        marginHold: false, // deliberately stale — bypasses the "set" route, which would itself recompute this
+      };
+      await prisma.salesToolData.upsert({
+        where: { key: `quote:${id}` },
+        create: { key: `quote:${id}`, value: JSON.stringify(staleData) },
+        update: { value: JSON.stringify(staleData) },
+      });
+
+      const before = await getStoredQuote(page, id);
+      expect(before?.marginHold).toBe(false); // the stale value, exactly as seeded
+
+      const freshRes = await page.request.post("/api/sales/storage", { data: { op: "get", key: `quote:${id}` } });
+      const freshBody = await freshRes.json();
+      expect(freshBody.marginHold).toBe(true); // recomputed fresh — unconditional hold (Correction round Item 1)
+
+      const after = await getStoredQuote(page, id);
+      expect(after?.marginHold).toBe(false); // the row itself was never rewritten by the GET
+    });
+
+    test("A la Carte (non-recurring-Standard): a stale stored marginHold:true is recomputed to false on GET when its current fields clear 10% fresh", async ({
+      page,
+    }) => {
+      await loginAsAdmin(page);
+      const id = `reopen-recompute-alacarte-${RUN_ID}`;
+      createdQuoteIds.add(id);
+      const floor = minAcceptablePrice(2, 2, 10, "Tustin", "alacarte")!;
+      const staleData = {
+        clientName: `Reopen Recompute Alacarte ${RUN_ID}`,
+        id,
+        clientEmail: `reopen-recompute-alacarte-${RUN_ID}@example.com`,
+        city: "Tustin",
+        service: "alacarte",
+        frequency: "One-Time",
+        teamSize: 2,
+        timeLowHrs: 2,
+        suggested: (floor * 5).toFixed(2),
+        low: (floor * 5).toFixed(2),
+        high: (floor * 5).toFixed(2),
+        status: "pending",
+        sentAt: null,
+        marginHold: true, // deliberately stale
+      };
+      await prisma.salesToolData.upsert({
+        where: { key: `quote:${id}` },
+        create: { key: `quote:${id}`, value: JSON.stringify(staleData) },
+        update: { value: JSON.stringify(staleData) },
+      });
+
+      const before = await getStoredQuote(page, id);
+      expect(before?.marginHold).toBe(true); // the stale value, exactly as seeded
+
+      const freshRes = await page.request.post("/api/sales/storage", { data: { op: "get", key: `quote:${id}` } });
+      const freshBody = await freshRes.json();
+      expect(freshBody.marginHold).toBe(false); // recomputed fresh — genuinely clears 10%, untouched by Item 1's correction
+
+      const after = await getStoredQuote(page, id);
+      expect(after?.marginHold).toBe(true); // the row itself was never rewritten by the GET
+    });
+  });
+
+  test.describe("Correction round — Item 3: the flat ongoing price matches everywhere", () => {
+    test("the same dollar amount appears in the live calculator, the saved quoteData (low=high=suggested), the client-facing render, and the composed email body", async ({
+      page,
+    }) => {
+      await loginAs(page, repEmail, PASSWORD);
+      const frame = await openPricingFrame(page);
+      await frame.evaluate(() => {
+        // @ts-expect-error
+        selectService("standard");
+        // @ts-expect-error
+        state.sqft = 1800;
+        // @ts-expect-error
+        state.condition = "moderate";
+        // @ts-expect-error
+        setFrequency("monthly");
+      });
+
+      const cvPriceText = await frame.locator("#cv-price").textContent();
+      // Flat — a single number, never a "$X–$Y" range, for the Ongoing price.
+      expect(cvPriceText).toMatch(/^\$\d+\.\d{2}$/);
+
+      const clientName = `Flat Price Client ${RUN_ID}`;
+      await frame.locator("#save-client-name").fill(clientName);
+      await frame.locator("#save-client-email").fill(`flat-price-${RUN_ID}@example.com`);
+      page.once("dialog", (d) => d.accept()); // Item 5 pre-save confirmation
+      await frame.getByRole("button", { name: "Save / Email Quote →" }).click();
+      await expect(frame.locator("#save-quote-status")).toContainText("Saved", { timeout: 10_000 });
+      const id = await frame.locator("#save-client-id").inputValue();
+      createdQuoteIds.add(id);
+
+      const stored = await getStoredQuote(page, id);
+      expect(stored?.low).toBe(stored?.high);
+      expect(stored?.low).toBe(stored?.suggested);
+      const dollarAmount = Number(stored?.suggested);
+      expect(dollarAmount).toBeGreaterThan(0);
+      expect(cvPriceText).toBe(`$${dollarAmount.toFixed(2)}`);
+
+      // Client-facing render's Ongoing price card.
+      await expect(frame.locator("#q-ongoing-price")).toHaveText(`$${dollarAmount.toFixed(0)}`);
+
+      // Composed email body's "Ongoing Cleaning" line — intercepted so
+      // nothing is actually sent.
+      let captured: { subject: string; body: string } | null = null;
+      await page.route("**/api/sales/send-quote", async (route) => {
+        captured = route.request().postDataJSON();
+        await route.fulfill({ json: { ok: true, sentAt: new Date().toISOString() } });
+      });
+      page.once("dialog", (d) => d.accept()); // Item 5 pre-send confirmation
+      await frame.evaluate(() => {
+        // @ts-expect-error
+        sendQuoteToClient();
+      });
+      await expect.poll(() => captured !== null, { timeout: 10_000 }).toBe(true);
+      expect(captured!.body).toContain(`Ongoing Cleaning (Monthly): $${dollarAmount.toFixed(2)} flat rate`);
+      await page.unroute("**/api/sales/send-quote");
+    });
+  });
+
+  test.describe("Correction round — Item 4: the first-time-client discount is inert for recurring Standard", () => {
+    test("checking first-time-client changes neither the Initial nor the Ongoing leg's price at any recurring frequency, and the chip never renders", async ({
+      page,
+    }) => {
+      await loginAsAdmin(page);
+      const frame = await openPricingFrame(page);
+
+      for (const freq of ["monthly", "triweekly", "biweekly", "weekly"]) {
+        const result = await frame.evaluate((f) => {
+          // @ts-expect-error
+          selectService("standard");
+          // @ts-expect-error
+          state.sqft = 1800;
+          // @ts-expect-error
+          state.condition = "moderate";
+          // @ts-expect-error
+          setFrequency(f);
+          // @ts-expect-error
+          const unchecked = computeCurrent();
+          const checkbox = document.getElementById("first-time-client") as HTMLInputElement | null;
+          if (checkbox) checkbox.checked = true;
+          // @ts-expect-error
+          const checked = computeCurrent();
+          if (checkbox) checkbox.checked = false;
+          return {
+            hasCheckbox: !!checkbox,
+            uncheckedPrice: unchecked.price,
+            checkedPrice: checked.price,
+            uncheckedInitial: unchecked.initial ? unchecked.initial.estimatedCost : null,
+            checkedInitial: checked.initial ? checked.initial.estimatedCost : null,
+            checkedFirstTimeDiscount: checked.firstTimeDiscount,
+          };
+        }, freq);
+        expect(result.hasCheckbox, `${freq}: first-time-client checkbox exists`).toBe(true);
+        expect(result.checkedPrice, `${freq}: ongoing price unaffected`).toBeCloseTo(result.uncheckedPrice, 6);
+        expect(result.checkedInitial, `${freq}: initial cost unaffected`).toBeCloseTo(result.uncheckedInitial!, 6);
+        expect(result.checkedFirstTimeDiscount, `${freq}: firstTimeDiscount reports 0`).toBe(0);
+      }
+
+      // The "First-Time -20%" chip never renders for a recurring Standard
+      // quote, even with the checkbox checked.
+      await frame.evaluate(() => {
+        // @ts-expect-error
+        selectService("standard");
+        // @ts-expect-error
+        setFrequency("weekly");
+        const checkbox = document.getElementById("first-time-client") as HTMLInputElement | null;
+        if (checkbox) checkbox.checked = true;
+        // @ts-expect-error
+        recalc();
+      });
+      await expect(frame.locator("#cv-chips")).not.toContainText("First-Time");
+      await frame.evaluate(() => {
+        const checkbox = document.getElementById("first-time-client") as HTMLInputElement | null;
+        if (checkbox) checkbox.checked = false;
+      });
+    });
+
+    test("one-time Standard and A la Carte still get the full 20% first-time discount applied exactly as before this correction", async ({
+      page,
+    }) => {
+      await loginAsAdmin(page);
+      const frame = await openPricingFrame(page);
+
+      const oneTimeStandard = await frame.evaluate(() => {
+        // @ts-expect-error
+        selectService("standard");
+        // @ts-expect-error
+        state.sqft = 1800;
+        // @ts-expect-error
+        state.condition = "moderate";
+        // @ts-expect-error
+        setFrequency("onetime");
+        // @ts-expect-error
+        const unchecked = computeCurrent();
+        const checkbox = document.getElementById("first-time-client") as HTMLInputElement | null;
+        if (checkbox) checkbox.checked = true;
+        // @ts-expect-error
+        const checked = computeCurrent();
+        if (checkbox) checkbox.checked = false;
+        return { unchecked: unchecked.price, checked: checked.price, discount: checked.firstTimeDiscount };
+      });
+      expect(oneTimeStandard.discount).toBeCloseTo(0.2, 6);
+      expect(oneTimeStandard.checked).toBeCloseTo(oneTimeStandard.unchecked * 0.8, 6);
+
+      const alacarte = await frame.evaluate(() => {
+        // @ts-expect-error
+        selectService("alacarte");
+        // @ts-expect-error
+        state.areaQty = { bathroom: 2 };
+        // @ts-expect-error
+        const unchecked = computeCurrent();
+        const checkbox = document.getElementById("first-time-client") as HTMLInputElement | null;
+        if (checkbox) checkbox.checked = true;
+        // @ts-expect-error
+        const checked = computeCurrent();
+        if (checkbox) checkbox.checked = false;
+        return { unchecked: unchecked.price, checked: checked.price, discount: checked.firstTimeDiscount };
+      });
+      expect(alacarte.discount).toBeCloseTo(0.2, 6);
+      expect(alacarte.checked).toBeCloseTo(alacarte.unchecked * 0.8, 6);
+    });
+  });
+
+  test.describe("Correction round — Item 6: owner notices are honest, non-admin stays clean", () => {
+    test("the pricing-tool HTML carries the honest cost-unverified wording for ADMIN; a non-ADMIN response never contains it", async ({
+      page,
+    }) => {
+      await loginAs(page, repEmail, PASSWORD);
+      const repRes = await page.request.get("/api/sales/pricing-tool");
+      const repHtml = await repRes.text();
+      expect(repHtml).not.toContain("provisional");
+      expect(repHtml).not.toContain("Costs Unverified");
+      expect(repHtml).not.toMatch(/not yet been reconciled|unreconciled/);
+      expect(repHtml).not.toContain("20.52");
+      expect(repHtml).not.toContain("AUDIT_OVERHEAD_PER_TECH_HR");
+      expect(repHtml).not.toContain("TECH_WAGE");
+      expect(repHtml).not.toContain("COST_DATA_VERIFIED");
+
+      await loginAsAdmin(page);
+      const adminRes = await page.request.get("/api/sales/pricing-tool");
+      const adminHtml = await adminRes.text();
+      expect(adminHtml).toContain("provisional");
+      expect(adminHtml).toContain("Costs Unverified");
+      expect(adminHtml).toMatch(/not yet been reconciled|unreconciled/);
+      expect(adminHtml).toContain("20.52");
+      expect(adminHtml).toContain("COST_DATA_VERIFIED");
+    });
+
+    test("storage get/set and send-quote refusal never leak provisional/unverified wording, dollar figures, or cost-constant names to a non-ADMIN caller", async ({
+      page,
+    }) => {
+      await loginAsAdmin(page);
+      const id = `owner-notice-${RUN_ID}`;
+      createdQuoteIds.add(id);
+      const quote = {
+        clientName: `Owner Notice ${RUN_ID}`,
+        id,
+        clientEmail: `owner-notice-${RUN_ID}@example.com`,
+        city: "Irvine",
+        service: "standard",
+        frequency: "Monthly",
+        teamSize: 2,
+        initialEstimatedHours: 4,
+        initialEstimatedCost: 480,
+        initialMinimumHours: 3,
+        timeLowHrs: 1.5,
+        suggested: "500.00",
+        low: "500.00",
+        high: "500.00",
+        status: "pending",
+        sentAt: null,
+      };
+      await seedQuote(page, id, quote);
+
+      await loginAs(page, repEmail, PASSWORD);
+      const forbidden = [/provisional/i, /unverified/i, /reconcil/i, /\$\d/, /20\.52/, /TECH_WAGE/, /AUDIT_OVERHEAD/];
+
+      const getRes = await page.request.post("/api/sales/storage", { data: { op: "get", key: `quote:${id}` } });
+      const getBody = await getRes.json();
+      expect(getBody.marginHoldReason).toBeUndefined();
+      expect(getBody.marginHold).toBe(true); // recurring Standard — unconditionally held
+      const getText = JSON.stringify(getBody);
+      for (const pattern of forbidden) expect(getText).not.toMatch(pattern);
+
+      const setRes = await page.request.post("/api/sales/storage", {
+        data: { op: "set", key: `quote:${id}`, value: JSON.stringify(quote) },
+      });
+      const setBody = await setRes.json();
+      expect(setBody.marginHoldReason).toBeUndefined();
+      const setText = JSON.stringify(setBody);
+      for (const pattern of forbidden) expect(setText).not.toMatch(pattern);
+
+      const sendRes = await page.request.post("/api/sales/send-quote", {
+        data: { id, subject: "Test", body: "Test" },
+      });
+      const sendBody = await sendRes.json();
+      expect(sendBody.error).toBe("This quote needs owner review before it can be sent.");
+      const sendText = JSON.stringify(sendBody);
+      for (const pattern of forbidden) expect(sendText).not.toMatch(pattern);
     });
   });
 });

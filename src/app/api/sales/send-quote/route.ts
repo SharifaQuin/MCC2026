@@ -61,8 +61,17 @@ export async function POST(request: Request) {
     // bother retrying until this is re-saved differently" apart from a
     // transient failure (e.g. email transport) worth letting the rep retry.
     if (session.role === "ADMIN") {
+      // Correction round (Item 1): a recurring-Standard quote is now held
+      // for an "unverified-cost" reason, not necessarily a genuine
+      // below-the-floor margin — a hardcoded "below the 10% margin floor"
+      // prefix would misstate why every time that's the actual cause, so
+      // the prefix itself is picked from what's actually held. The specific
+      // per-leg reason (margin-floor OR unverified-cost, each worded
+      // honestly) always comes from describeMarginHold itself.
+      const anyUnverified = marginEvaluation.legs.some((l) => l.held && l.heldReason === "unverified-cost");
+      const prefix = anyUnverified ? "Held." : "Held — below the 10% margin floor.";
       return Response.json(
-        { error: `Held — below the 10% margin floor. ${describeMarginHold(marginEvaluation)}`, marginHold: true },
+        { error: `${prefix} ${describeMarginHold(marginEvaluation)}`, marginHold: true },
         { status: 403 },
       );
     }

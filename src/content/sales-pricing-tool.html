@@ -725,7 +725,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
     <div class="biz-view">
       <div class="biz-hdr">
         <div class="biz-hdr-txt">Cost &amp; Margin Check</div>
-        <div class="biz-hdr-badge">Real Data</div>
+        <div class="biz-hdr-badge">Costs Unverified</div>
       </div>
       <table class="ledger" id="ledger-body"></table>
       <div class="margin-warn-box" id="margin-warn"></div>
@@ -739,7 +739,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
           </div>
         </div>
         <div class="floor-price" id="floor-price"></div>
-        <div class="floor-note">Absolute minimum you can charge and still hit this margin — never show this number to the client. Defaults to 21% (business minimum); lower it here only if you need to book the job.</div>
+        <div class="floor-note">Absolute minimum you can charge and still hit this margin — never show this number to the client. Provisional (based on unverified costs). Defaults to 21% (business minimum); lower it here only if you need to book the job.</div>
       </div>
       <div class="schedule-box" id="schedule-box"></div>
       <div class="hours-note" id="hours-note"></div>
@@ -1469,6 +1469,15 @@ const AUDIT_OVERHEAD_PER_TECH_HR = 20.52;
 function currentOverheadPerHr(){
   return {rate:AUDIT_OVERHEAD_PER_TECH_HR, label:'Sep 2026 audit', real:true};
 }
+// Correction round (Item 4 follow-up) cross-reference: mirrors
+// src/lib/pricingMargin.ts's own `COST_DATA_VERIFIED` export exactly — see
+// that file's header comment for what flipping it to `true` actually
+// requires (a real TCS job-time export, a Gusto payroll export, and the
+// mileage reimbursement log). This copy drives ONLY the informational-only
+// live ledger below (recalc()'s margin-hold box/badge/floor-price wording)
+// — the real, authoritative hold is always computed independently,
+// server-side, in that module; this constant is never read by it.
+const COST_DATA_VERIFIED = false;
 /* ADMIN-ONLY:END */
 const RATE_PER_TECH = 75.00; // Updated July 2026: confirmed client rate (was $65.45 aspirational-vs-current test; now decided at $150/hr team)
 const TEAM_RATE = RATE_PER_TECH * 2;
@@ -2030,11 +2039,27 @@ function computeStandard(){
   const {addonFee, addonHours} = computeAddonsFor('standard');
   const price = corePrice + addonFee;
   const hours = baseHours + addonHours;
-  const lowPrice = Math.max(200, price*0.8), highPrice = Math.max(lowPrice, price*1.2);
+  // Item 3 (correction round): a recurring Standard quote's Ongoing leg is
+  // billed at a single flat number every visit — it never had a genuine
+  // ±20% buildup-variance range to begin with (that range only ever existed
+  // for the one-time cosmetic display). Setting lowPrice/highPrice to null
+  // here is the ONE source-of-truth change that makes every consumer
+  // (recalc()'s cv-price, saveQuoteForClient()'s low/high, renderQuote()'s
+  // priceText, computeCurrent()'s own range-overwrite block below) fall
+  // through to its existing flat-number branch — see each one's own
+  // comments for why no separate patch is needed at any of those sites.
+  // One-time Standard keeps computing its real ±20% range exactly as before.
+  let lowPrice = null, highPrice = null;
+  if(!isRecurring){
+    lowPrice = Math.max(200, price*0.8);
+    highPrice = Math.max(lowPrice, price*1.2);
+  }
   const freqLabel = {onetime:'One-Time',monthly:'Monthly',triweekly:'Tri-Weekly',biweekly:'Bi-Weekly',weekly:'Weekly'}[state.frequency];
   const result = {price, hours, teamSize:2, lowPrice, highPrice,
     note:`Base ${baseHours.toFixed(2)} hrs (real pace data: 1.14 hrs + 0.63 hrs/1,000 sqft, × condition) @ ${isRecurring?'recurring ':''}team rate ($${rate}/hr), ${freqLabel} (${freqDiscount>0?'-'+(freqDiscount*100).toFixed(0)+'%':'base rate'}) + $${addonFee} add-ons`,
-    range:`Quote range: $${lowPrice.toFixed(0)}–$${highPrice.toFixed(0)} (±20%, depending on condition on arrival)`};
+    range: isRecurring
+      ? `Flat rate: $${price.toFixed(0)}/visit — same amount every visit`
+      : `Quote range: $${lowPrice.toFixed(0)}–$${highPrice.toFixed(0)} (±20%, depending on condition on arrival)`};
 
   // Item 2: for any recurring Standard quote, also compute the Initial
   // Cleaning leg — actual time on site at INITIAL_CLEAN_TEAM_RATE, 3-hr/$360
@@ -2141,7 +2166,20 @@ function computeCurrent(){
   }
   r.cityPremium = cityPremium;
 
-  const isFirstTime = document.getElementById('first-time-client') && document.getElementById('first-time-client').checked;
+  // Item 4 (correction round): recurring Standard's Ongoing leg (r.price at
+  // this point, for that case) never gets the first-time-client discount —
+  // that offer is meant to soften a ONE-TIME quote's price at the moment of
+  // conversion, not to silently discount every recurring visit on top of
+  // the recurring frequency discount already applied in computeStandard().
+  // One-time Standard and every other service keep applying it exactly as
+  // before — this is gated specifically on recurring Standard, nothing
+  // broader. r.initial (the Initial leg) was never in this discount code's
+  // path to begin with (it's computed separately in computeStandard(),
+  // before this function ever sees it) — confirmed by a dedicated test
+  // rather than assumed.
+  const isRecurringStandardPricing = state.service==='standard' && state.frequency!=='onetime';
+  const isFirstTime = document.getElementById('first-time-client') && document.getElementById('first-time-client').checked
+    && !isRecurringStandardPricing;
   if(isFirstTime){
     r.price = r.price * (1-FIRST_TIME_DISCOUNT);
     if(r.lowPrice!=null){ r.lowPrice *= (1-FIRST_TIME_DISCOUNT); r.highPrice *= (1-FIRST_TIME_DISCOUNT); }
@@ -2263,7 +2301,12 @@ function buildCRMText(){
     // Item 2: a recurring Standard quote's single "suggested/range" line
     // would otherwise misrepresent it as one flat price — show both legs.
     lines.push(`INITIAL CLEANING (estimate — not a fixed quote): $${r.initial.estimatedCost.toFixed(2)} — ${formatInitialCleanTimeText(r.initial.estimatedHours, r.initial.isOverride)} @ $${r.initial.teamRate}/hr team-of-2, billed for actual time on site ($${r.initial.minimumCost} minimum).`);
-    lines.push(`ONGOING CLEANING (${freqLabel}): $${suggested} flat rate (range ${rangeLine})`);
+    // Item 3 (correction round): rangeLine is now itself just "$${suggested}"
+    // (the Ongoing leg no longer computes a ±20% range — see
+    // computeStandard()), so the old "(range $X)" parenthetical here would
+    // read as a redundant "flat rate (range $X)" — dropped entirely for
+    // this line.
+    lines.push(`ONGOING CLEANING (${freqLabel}): $${suggested} flat rate`);
   } else {
     lines.push(`QUOTED PRICE RANGE: ${rangeLine}`);
     lines.push(`SUGGESTED PRICE: $${suggested}`);
@@ -2339,9 +2382,13 @@ async function loadQuoteForUpdate(){
     // Object.assign above leaves state's current defaults (null/false) in
     // place rather than synthesizing a value, so computeStandard() falls
     // back to the historical default for it, same as any brand-new quote.
-    // Item 3: mirror the server-computed hold status from this saved row —
-    // informational in this tab only (see updateCalcHoldBanner()).
-    lastSavedQuoteMarginHold = (typeof data.marginHold === 'boolean') ? data.marginHold : null;
+    // Item 3: mirror the server-computed hold status — informational in
+    // this tab only (see updateCalcHoldBanner()). Correction round (Item 2):
+    // use the FRESH `result.marginHold` this same `get` call's response
+    // just returned (src/app/api/sales/storage/route.ts's "get" case now
+    // recomputes it on every read), not the possibly-stale `data.marginHold`
+    // embedded in the saved JSON blob itself.
+    lastSavedQuoteMarginHold = (typeof result.marginHold === 'boolean') ? result.marginHold : null;
 
     document.getElementById('save-client-name').value = data.clientName || '';
     document.getElementById('save-client-id').value = data.id || id;
@@ -2654,21 +2701,38 @@ function recalc(){
   const holdBox = document.getElementById('margin-hold');
   if(holdBox){
     const floorForHold10 = minAcceptablePrice(r.hours, r.teamSize, 10);
-    const ongoingHeld = (b.marginPct < 10) || (floorForHold10!=null && lowForWarn < floorForHold10);
-    let initialHeld = false, initialMarginPct = null, initialFloor10 = null;
+    const ongoingGenuineHeld = (b.marginPct < 10) || (floorForHold10!=null && lowForWarn < floorForHold10);
+    let initialMarginPct = null, initialFloor10 = null, initialGenuineHeld = false;
     if(r.initial){
       const initHoursForCost = Math.max(r.initial.estimatedHours, r.initial.minimumHours);
       const ib = costBreakdown(r.initial.estimatedCost, initHoursForCost, 2);
       initialFloor10 = minAcceptablePrice(initHoursForCost, 2, 10);
       initialMarginPct = ib.marginPct;
-      initialHeld = ib.marginPct < 10;
+      initialGenuineHeld = ib.marginPct < 10;
     }
+
+    // Item 1 (correction round): mirrors src/lib/pricingMargin.ts's own
+    // evaluateQuoteMarginHold() exactly — until COST_DATA_VERIFIED is true,
+    // EVERY recurring Standard quote is held unconditionally on BOTH legs,
+    // regardless of what these still-unverified costs compute the margin to
+    // be. This box is purely informational (the real gate is always the
+    // fresh server-side recheck); every other service's display below is
+    // completely unaffected by COST_DATA_VERIFIED.
+    const isRecurringStandardLive = !!r.initial;
+    const unverifiedHold = isRecurringStandardLive && !COST_DATA_VERIFIED;
+
     const heldParts = [];
-    if(ongoingHeld) heldParts.push(`Ongoing Cleaning: ${b.marginPct.toFixed(1)}% margin — below the 10% floor (minimum $${floorForHold10!=null?floorForHold10.toFixed(0):'n/a'}).`);
-    if(initialHeld) heldParts.push(`Initial Cleaning: ${initialMarginPct.toFixed(1)}% margin — below the 10% floor (minimum $${initialFloor10!=null?initialFloor10.toFixed(0):'n/a'}).`);
+    if(unverifiedHold){
+      heldParts.push(`Ongoing Cleaning: HELD — underlying costs (including the $${AUDIT_OVERHEAD_PER_TECH_HR.toFixed(2)}/hr overhead figure) have not yet been reconciled against real payroll/TCS/mileage records. Provisional margin (based on unverified costs): ${b.marginPct.toFixed(1)}% (provisional minimum $${floorForHold10!=null?floorForHold10.toFixed(0):'n/a'}).`);
+      heldParts.push(`Initial Cleaning: HELD — same unverified-cost reason. Provisional margin (based on unverified costs): ${initialMarginPct!=null?initialMarginPct.toFixed(1):'n/a'}% (provisional minimum $${initialFloor10!=null?initialFloor10.toFixed(0):'n/a'}).`);
+    } else {
+      if(ongoingGenuineHeld) heldParts.push(`Ongoing Cleaning: ${b.marginPct.toFixed(1)}% margin — below the 10% floor (minimum $${floorForHold10!=null?floorForHold10.toFixed(0):'n/a'}).`);
+      if(initialGenuineHeld) heldParts.push(`Initial Cleaning: ${initialMarginPct.toFixed(1)}% margin — below the 10% floor (minimum $${initialFloor10!=null?initialFloor10.toFixed(0):'n/a'}).`);
+    }
     if(heldParts.length){
       holdBox.className = 'margin-hold-box show';
-      holdBox.innerHTML = `<strong>HOLD — below the 10% hard floor.</strong> ${heldParts.join(' ')} ${INITIAL_CLEAN_ESTIMATE_DISCLAIMER} Sending is blocked server-side until this is re-saved with different inputs (higher price, or re-measured hours) — there is no override button.`;
+      const headline = unverifiedHold ? 'HOLD — underlying cost data is not yet verified/reconciled.' : 'HOLD — below the 10% hard floor.';
+      holdBox.innerHTML = `<strong>${headline}</strong> ${heldParts.join(' ')} ${INITIAL_CLEAN_ESTIMATE_DISCLAIMER} Sending is blocked server-side until this is re-saved with different inputs (higher price, or re-measured hours) — there is no override button.`;
     } else {
       holdBox.className = 'margin-hold-box';
       holdBox.innerHTML = '';
@@ -2679,7 +2743,7 @@ function recalc(){
 
   const floorPrice = minAcceptablePrice(r.hours, r.teamSize, state.targetMargin);
   document.getElementById('target-margin').value = state.targetMargin;
-  document.getElementById('floor-price').textContent = floorPrice!=null ? `$${floorPrice.toFixed(2)}` : 'Target too high to solve';
+  document.getElementById('floor-price').textContent = floorPrice!=null ? `$${floorPrice.toFixed(2)} (provisional)` : 'Target too high to solve';
 
   const cleanMin = r.hours*60;
   const bufferedMin = cleanMin + 60;
@@ -3470,6 +3534,14 @@ async function loadQuote(){
     const result = await window.storage.get('quote:'+id, true);
     if(result && result.value){
       const data = JSON.parse(result.value);
+      // Correction round (Item 2): overwrite with the FRESH marginHold (and,
+      // for an ADMIN reopening here, its reason) this same `get` call's
+      // response just returned, rather than trusting the possibly-stale
+      // value embedded in the saved JSON blob — updateSalesControlsUI(data),
+      // called from inside renderQuote() below, then naturally uses the
+      // correct, current value with no changes of its own.
+      if(typeof result.marginHold === 'boolean') data.marginHold = result.marginHold;
+      if(typeof result.marginHoldReason === 'string') data.marginHoldReason = result.marginHoldReason;
       statusEl.textContent = 'Quote loaded for ' + (data.clientName||'client') + '.';
       renderQuote(data);
     } else {
@@ -3549,6 +3621,11 @@ async function loadSavedQuoteFromList(id){
     const result = await window.storage.get('quote:'+id, true);
     if(result && result.value){
       const data = JSON.parse(result.value);
+      // Correction round (Item 2): same fresh-marginHold overwrite as
+      // loadQuote() above — this is the same reopen path, just reached from
+      // the Previous Quotes list instead of the ID field.
+      if(typeof result.marginHold === 'boolean') data.marginHold = result.marginHold;
+      if(typeof result.marginHoldReason === 'string') data.marginHoldReason = result.marginHoldReason;
       renderQuote(data);
       const loadIdEl = document.getElementById('load-id');
       if(loadIdEl) loadIdEl.value = id;

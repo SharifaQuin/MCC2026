@@ -29,6 +29,19 @@
 // still-unverified inputs, exactly as they already drive the existing
 // ADMIN-ONLY ledger/floor-price UI that shipped before this PR.
 
+// Correction round (Item 4 follow-up): the cost constants below are STILL
+// exactly as unverified as the header comment above already says — nothing
+// about them has changed here. What's new is enforcing that honestly:
+// until a real reconciliation is actually done — a TCS job-time export, a
+// Gusto payroll export, and the mileage reimbursement log (see PR #24's own
+// "Item 4 — cost verification" section for why none of these three could be
+// obtained in this coding session) — every recurring-Standard quote is held
+// UNCONDITIONALLY below, regardless of what margin these still-unverified
+// costs compute to (see evaluateQuoteMarginHold's isRecurringStandard
+// branch). Flip this to `true` only once that reconciliation has actually
+// happened — never as part of this PR, and never by guessing.
+export const COST_DATA_VERIFIED = false;
+
 export const TECH_WAGE = 25;
 export const WC_RATE = 0.15;
 export const TAX_RATE = 0.105;
@@ -209,6 +222,14 @@ export interface LegMarginResult {
   marginPct: number;
   floorPrice10: number;
   checkedLowEnd: boolean;
+  // Correction round (Item 1): which of the two, materially different,
+  // reasons this leg is held for — 'below-floor' is the original, existing
+  // genuine-margin check (this leg's own computed margin, or its low end,
+  // is actually below the 10% floor). 'unverified-cost' is new: the
+  // isRecurringStandard branch forces this below, regardless of the real
+  // computed marginPct/floorPrice10 (which are kept, unmodified, for
+  // provisional reporting) — see evaluateQuoteMarginHold.
+  heldReason: "unverified-cost" | "below-floor";
 }
 
 export interface QuoteMarginEvaluation {
@@ -258,7 +279,14 @@ function evaluateLeg(
     lowPrice != null ? evaluateMarginHold({ price: lowPrice, hours: lowHoursBasis, teamSize, city, service }) : null;
   const held = main.held || (low ? low.held : false);
   const worse = low && low.marginPct < main.marginPct ? low : main;
-  return { leg, held, marginPct: worse.marginPct, floorPrice10: worse.floorPrice10, checkedLowEnd: !!low };
+  return {
+    leg,
+    held,
+    marginPct: worse.marginPct,
+    floorPrice10: worse.floorPrice10,
+    checkedLowEnd: !!low,
+    heldReason: "below-floor",
+  };
 }
 
 // The single entry point used by both src/app/api/sales/storage/route.ts
@@ -273,7 +301,19 @@ function evaluateLeg(
 // independent hold checks — Initial and Ongoing — and the whole quote is
 // held if EITHER leg is below the 10% floor. Every other quote (every other
 // service, and one-time Standard) gets exactly one check.
-export function evaluateQuoteMarginHold(q: QuoteMarginInput): QuoteMarginEvaluation {
+// Correction round (Item 1): `opts.costDataVerified` lets a caller (tests
+// only — see e2e/pricing-margin-unit.spec.ts) exercise "what if the cost
+// inputs HAD been reconciled" without mutating the real exported
+// COST_DATA_VERIFIED constant. Both server routes that actually enforce
+// this (storage's "set"/"get" cases and send-quote) call this with NO
+// second argument, so they always get the real, current COST_DATA_VERIFIED
+// value — there is no way for a route, or a quote's own saved data, to
+// supply a different value.
+export function evaluateQuoteMarginHold(
+  q: QuoteMarginInput,
+  opts?: { costDataVerified?: boolean },
+): QuoteMarginEvaluation {
+  const costDataVerified = opts?.costDataVerified ?? COST_DATA_VERIFIED;
   const city = q.city || "Other";
   const service = q.service || "";
   const teamSize = Number(q.teamSize) || 2;
@@ -305,6 +345,23 @@ export function evaluateQuoteMarginHold(q: QuoteMarginInput): QuoteMarginEvaluat
     const ongoingPrice = Number(q.suggested);
     const ongoingLow = q.low != null ? Number(q.low) : null;
     legs.push(evaluateLeg("ongoing", ongoingPrice, ongoingLow, ongoingHours, null, teamSize, city, service));
+
+    // Correction round (Item 1): until the underlying cost inputs are
+    // actually reconciled against real payroll/TCS/mileage records, EVERY
+    // recurring Standard quote is held, unconditionally, on BOTH legs —
+    // even when the provisional margin computed from these unverified costs
+    // comes out comfortably above both the 10% floor and the 21% target.
+    // The legs' real, genuine marginPct/floorPrice10 computed just above are
+    // left completely untouched — describeMarginHold (below) reports them,
+    // explicitly labeled "provisional", never hidden or zeroed. This branch
+    // never runs for the "single"-leg path below (every other service, and
+    // one-time Standard) — that path's behavior is byte-for-byte unchanged.
+    if (!costDataVerified) {
+      for (const leg of legs) {
+        leg.held = true;
+        leg.heldReason = "unverified-cost";
+      }
+    }
   } else {
     const hours = Number(q.timeLowHrs);
     const price = Number(q.suggested);
@@ -327,11 +384,27 @@ const LEG_LABELS: Record<QuoteLeg, string> = {
 // caller (never persisted in the quote row, never shown to a non-ADMIN —
 // see the two routes that call this). Never labels anything "verified" —
 // see this module's header / Item 4.
+//
+// Correction round (Item 1): a leg held for 'unverified-cost' gets its own,
+// honest wording — it explicitly names the hold as a cost-data problem (not
+// a margin problem), names the $20.52/hr overhead figure specifically, and
+// reports the leg's real computed margin % and minimum price EXPLICITLY
+// LABELED "provisional" (never claiming they're verified). A leg held for
+// 'below-floor' (every other service, completely unaffected by this
+// correction) keeps the exact wording it had before.
 export function describeMarginHold(evaluation: QuoteMarginEvaluation): string {
   return evaluation.legs
     .filter((l) => l.held)
     .map((l) => {
       const floorText = Number.isFinite(l.floorPrice10) ? `$${l.floorPrice10.toFixed(0)}` : "unavailable";
+      if (l.heldReason === "unverified-cost") {
+        return (
+          `${LEG_LABELS[l.leg]} is held because its underlying costs — including the ` +
+          `$${AUDIT_OVERHEAD_PER_TECH_HR.toFixed(2)}/hr overhead figure — have not yet been reconciled against ` +
+          `real payroll/TCS/mileage records. Provisional margin (based on unverified costs): ${l.marginPct.toFixed(1)}% ` +
+          `(provisional minimum price ${floorText}).`
+        );
+      }
       return `${LEG_LABELS[l.leg]} is at ${l.marginPct.toFixed(1)}% margin — below the 10% floor (minimum price ${floorText}).`;
     })
     .join(" ");

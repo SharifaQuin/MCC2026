@@ -5,6 +5,7 @@ import {
   describeMarginHold,
   minAcceptablePrice,
   costBreakdown,
+  COST_DATA_VERIFIED,
 } from "../src/lib/pricingMargin";
 
 // Item 3/4 — direct, no-browser tests against src/lib/pricingMargin.ts
@@ -104,44 +105,58 @@ test.describe("pricingMargin.ts — low end of a price range", () => {
   });
 });
 
-test.describe("pricingMargin.ts — recurring Standard: two independent legs", () => {
+// Correction round (Item 1): these tests pin the ORIGINAL per-leg
+// genuine-margin logic — which still exists and is still exactly correct,
+// it's just no longer what decides `held` by default while
+// COST_DATA_VERIFIED is false (see the describe block further below for
+// that). Every call here passes `{ costDataVerified: true }` to exercise
+// that logic directly, without needing to touch the real exported
+// COST_DATA_VERIFIED constant — see evaluateQuoteMarginHold's own comment.
+test.describe("pricingMargin.ts — recurring Standard: two independent legs (costDataVerified: true override)", () => {
   const city = "Irvine";
   const service = "standard";
 
   test("only the Initial leg held", async () => {
     const floorInit = minAcceptablePrice(4, 2, 10, city, service)!;
     const floorOngoing = minAcceptablePrice(1.5, 2, 10, city, service)!;
-    const evaluation = evaluateQuoteMarginHold({
-      service,
-      city,
-      frequency: "Weekly",
-      teamSize: 2,
-      initialEstimatedHours: 4,
-      initialEstimatedCost: floorInit * 0.9,
-      initialMinimumHours: 3,
-      timeLowHrs: 1.5,
-      suggested: floorOngoing * 1.6,
-      low: floorOngoing * 1.6 * 0.8,
-    });
+    const evaluation = evaluateQuoteMarginHold(
+      {
+        service,
+        city,
+        frequency: "Weekly",
+        teamSize: 2,
+        initialEstimatedHours: 4,
+        initialEstimatedCost: floorInit * 0.9,
+        initialMinimumHours: 3,
+        timeLowHrs: 1.5,
+        suggested: floorOngoing * 1.6,
+        low: floorOngoing * 1.6 * 0.8,
+      },
+      { costDataVerified: true },
+    );
     expect(evaluation.held).toBe(true);
     expect(evaluation.heldLegs).toEqual(["initial"]);
+    expect(evaluation.legs.find((l) => l.leg === "initial")!.heldReason).toBe("below-floor");
   });
 
   test("only the Ongoing leg held", async () => {
     const floorInit = minAcceptablePrice(4, 2, 10, city, service)!;
     const floorOngoing = minAcceptablePrice(1.5, 2, 10, city, service)!;
-    const evaluation = evaluateQuoteMarginHold({
-      service,
-      city,
-      frequency: "Weekly",
-      teamSize: 2,
-      initialEstimatedHours: 4,
-      initialEstimatedCost: floorInit * 1.6,
-      initialMinimumHours: 3,
-      timeLowHrs: 1.5,
-      suggested: floorOngoing * 0.9,
-      low: floorOngoing * 0.9 * 0.8,
-    });
+    const evaluation = evaluateQuoteMarginHold(
+      {
+        service,
+        city,
+        frequency: "Weekly",
+        teamSize: 2,
+        initialEstimatedHours: 4,
+        initialEstimatedCost: floorInit * 1.6,
+        initialMinimumHours: 3,
+        timeLowHrs: 1.5,
+        suggested: floorOngoing * 0.9,
+        low: floorOngoing * 0.9 * 0.8,
+      },
+      { costDataVerified: true },
+    );
     expect(evaluation.held).toBe(true);
     expect(evaluation.heldLegs).toEqual(["ongoing"]);
   });
@@ -149,33 +164,39 @@ test.describe("pricingMargin.ts — recurring Standard: two independent legs", (
   test("both legs held, and neither held — whole-quote hold is an OR across legs", async () => {
     const floorInit = minAcceptablePrice(4, 2, 10, city, service)!;
     const floorOngoing = minAcceptablePrice(1.5, 2, 10, city, service)!;
-    const bothHeld = evaluateQuoteMarginHold({
-      service,
-      city,
-      frequency: "Weekly",
-      teamSize: 2,
-      initialEstimatedHours: 4,
-      initialEstimatedCost: floorInit * 0.9,
-      initialMinimumHours: 3,
-      timeLowHrs: 1.5,
-      suggested: floorOngoing * 0.9,
-      low: floorOngoing * 0.9 * 0.8,
-    });
+    const bothHeld = evaluateQuoteMarginHold(
+      {
+        service,
+        city,
+        frequency: "Weekly",
+        teamSize: 2,
+        initialEstimatedHours: 4,
+        initialEstimatedCost: floorInit * 0.9,
+        initialMinimumHours: 3,
+        timeLowHrs: 1.5,
+        suggested: floorOngoing * 0.9,
+        low: floorOngoing * 0.9 * 0.8,
+      },
+      { costDataVerified: true },
+    );
     expect(bothHeld.held).toBe(true);
     expect(bothHeld.heldLegs.sort()).toEqual(["initial", "ongoing"]);
 
-    const neitherHeld = evaluateQuoteMarginHold({
-      service,
-      city,
-      frequency: "Weekly",
-      teamSize: 2,
-      initialEstimatedHours: 4,
-      initialEstimatedCost: floorInit * 1.6,
-      initialMinimumHours: 3,
-      timeLowHrs: 1.5,
-      suggested: floorOngoing * 1.6,
-      low: floorOngoing * 1.6 * 0.8,
-    });
+    const neitherHeld = evaluateQuoteMarginHold(
+      {
+        service,
+        city,
+        frequency: "Weekly",
+        teamSize: 2,
+        initialEstimatedHours: 4,
+        initialEstimatedCost: floorInit * 1.6,
+        initialMinimumHours: 3,
+        timeLowHrs: 1.5,
+        suggested: floorOngoing * 1.6,
+        low: floorOngoing * 1.6 * 0.8,
+      },
+      { costDataVerified: true },
+    );
     expect(neitherHeld.held).toBe(false);
     expect(neitherHeld.heldLegs).toEqual([]);
   });
@@ -187,18 +208,21 @@ test.describe("pricingMargin.ts — recurring Standard: two independent legs", (
     const city2 = "Irvine";
     const floorAt1Hr = minAcceptablePrice(1, 2, 10, city2, service)!;
     const floorAt3Hr = minAcceptablePrice(3, 2, 10, city2, service)!;
-    const evaluation = evaluateQuoteMarginHold({
-      service,
-      city: city2,
-      frequency: "Monthly",
-      teamSize: 2,
-      initialEstimatedHours: 1,
-      initialEstimatedCost: 360, // the $360 minimum, billed regardless of the 1-hr estimate
-      initialMinimumHours: 3,
-      timeLowHrs: 2,
-      suggested: 100000, // ongoing leg irrelevant here — made comfortably unheld
-      low: 90000,
-    });
+    const evaluation = evaluateQuoteMarginHold(
+      {
+        service,
+        city: city2,
+        frequency: "Monthly",
+        teamSize: 2,
+        initialEstimatedHours: 1,
+        initialEstimatedCost: 360, // the $360 minimum, billed regardless of the 1-hr estimate
+        initialMinimumHours: 3,
+        timeLowHrs: 2,
+        suggested: 100000, // ongoing leg irrelevant here — made comfortably unheld
+        low: 90000,
+      },
+      { costDataVerified: true },
+    );
     // $360 clears the floor computed at 1 hour but not necessarily at 3 —
     // the point of this test is just that the module used 3, not 1.
     expect(floorAt3Hr).toBeGreaterThan(floorAt1Hr);
@@ -206,6 +230,105 @@ test.describe("pricingMargin.ts — recurring Standard: two independent legs", (
     // Reconstruct what a (wrong) 1-hour-basis check would have said, to
     // prove the module's actual floorPrice10 matches the 3-hour basis, not it.
     expect(initialLeg.floorPrice10).toBeCloseTo(floorAt3Hr, 6);
+  });
+});
+
+// Correction round (Item 1) — new coverage: by default (no override, i.e.
+// exactly how both server routes actually call this), a recurring Standard
+// quote is held UNCONDITIONALLY on both legs while COST_DATA_VERIFIED is
+// false, no matter how profitable its provisional margin is. The real,
+// still-computed marginPct/floorPrice10 survive untouched for provisional
+// reporting; describeMarginHold's text for this reason never claims
+// verification and always says "provisional".
+test.describe("pricingMargin.ts — Item 1 correction: unconditional unverified-cost hold for recurring Standard", () => {
+  const city = "Irvine";
+  const service = "standard";
+
+  test("COST_DATA_VERIFIED is false in this build (pins the precondition every test below assumes)", () => {
+    expect(COST_DATA_VERIFIED).toBe(false);
+  });
+
+  test("both legs held even when deliberately priced well above the 21% target — no override passed, same call shape the real routes use", async () => {
+    const floorInit = minAcceptablePrice(4, 2, 21, city, service)!;
+    const floorOngoing = minAcceptablePrice(1.5, 2, 21, city, service)!;
+    const generousQuote = {
+      service,
+      city,
+      frequency: "Weekly",
+      teamSize: 2,
+      initialEstimatedHours: 4,
+      initialEstimatedCost: floorInit * 2, // comfortably clears even the 21% target
+      initialMinimumHours: 3,
+      timeLowHrs: 1.5,
+      suggested: floorOngoing * 2,
+      low: floorOngoing * 2 * 0.8,
+    };
+
+    // Confirm (module-level, directly) that this fixture's REAL margin is
+    // genuinely well above 21% for both legs, under the pre-correction logic.
+    const verified = evaluateQuoteMarginHold(generousQuote, { costDataVerified: true });
+    expect(verified.held).toBe(false);
+    for (const leg of verified.legs) {
+      expect(leg.marginPct).toBeGreaterThan(21);
+    }
+
+    // The real, default call (no override) still holds both legs.
+    const evaluation = evaluateQuoteMarginHold(generousQuote);
+    expect(evaluation.held).toBe(true);
+    expect(evaluation.heldLegs.sort()).toEqual(["initial", "ongoing"]);
+    for (const leg of evaluation.legs) {
+      expect(leg.held).toBe(true);
+      expect(leg.heldReason).toBe("unverified-cost");
+      // The real, genuine margin is kept — never hidden or zeroed — for
+      // provisional reporting, even though it's not what drove `held` here.
+      expect(leg.marginPct).toBeGreaterThan(21);
+    }
+
+    const reason = describeMarginHold(evaluation);
+    expect(reason.toLowerCase()).toContain("provisional");
+    expect(reason.toLowerCase()).toContain("unverified");
+    expect(reason.toLowerCase()).toMatch(/not yet been reconciled|unreconciled/);
+    expect(reason).toContain("20.52");
+  });
+
+  test("evaluateQuoteMarginHold(q) with no second argument resolves to the real COST_DATA_VERIFIED — proving both server routes (which call it with no override) get this behavior automatically", async () => {
+    const floorInit = minAcceptablePrice(4, 2, 10, city, service)!;
+    const floorOngoing = minAcceptablePrice(1.5, 2, 10, city, service)!;
+    const quote = {
+      service,
+      city,
+      frequency: "Monthly",
+      teamSize: 2,
+      initialEstimatedHours: 4,
+      initialEstimatedCost: floorInit * 3,
+      initialMinimumHours: 3,
+      timeLowHrs: 1.5,
+      suggested: floorOngoing * 3,
+      low: floorOngoing * 3 * 0.8,
+    };
+    const defaultCall = evaluateQuoteMarginHold(quote);
+    const explicitRealValue = evaluateQuoteMarginHold(quote, { costDataVerified: COST_DATA_VERIFIED });
+    expect(defaultCall).toEqual(explicitRealValue);
+    expect(defaultCall.held).toBe(true);
+  });
+
+  test("the single-leg path (every other service, and one-time Standard) never reads costDataVerified at all — passing the override has zero effect on it", async () => {
+    const floor = minAcceptablePrice(2, 2, 10, "Tustin", "alacarte")!;
+    const comfortableQuote = {
+      service: "alacarte",
+      city: "Tustin",
+      teamSize: 2,
+      timeLowHrs: 2,
+      suggested: floor * 5,
+      low: floor * 5 * 0.8,
+    };
+    const withoutOverride = evaluateQuoteMarginHold(comfortableQuote);
+    const withOverrideTrue = evaluateQuoteMarginHold(comfortableQuote, { costDataVerified: true });
+    const withOverrideFalse = evaluateQuoteMarginHold(comfortableQuote, { costDataVerified: false });
+    expect(withoutOverride.held).toBe(false);
+    expect(withOverrideTrue.held).toBe(false);
+    expect(withOverrideFalse.held).toBe(false);
+    expect(withoutOverride.legs[0].heldReason).toBe("below-floor");
   });
 });
 
