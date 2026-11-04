@@ -739,7 +739,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
           </div>
         </div>
         <div class="floor-price" id="floor-price"></div>
-        <div class="floor-note">Absolute minimum you can charge and still hit this margin — never show this number to the client. Provisional (based on unverified costs). Defaults to 21% (business minimum); lower it here only if you need to book the job.</div>
+        <div class="floor-note">Absolute minimum you can charge and still hit this margin — never show this number to the client. Provisional (based on unverified costs). Defaults to 21% (business target); lower it here only if you need to book the job.</div>
       </div>
       <div class="schedule-box" id="schedule-box"></div>
       <div class="hours-note" id="hours-note"></div>
@@ -2677,18 +2677,24 @@ function recalc(){
   const lowForWarn = (r.lowPrice!=null) ? r.lowPrice : r.price;
   const cdw = b.cityDrive;
   const dayTip = cdw.day ? ` Offer ${cdw.day} first — the team is already in ${cdw.borrowed||cdw.city} that day.` : '';
+  // Copy-only follow-up: every figure in this 21%-target box is derived
+  // from the same still-unverified cost inputs (TECH_WAGE, mileage,
+  // AUDIT_OVERHEAD_PER_TECH_HR) as the 10%-floor box above — a "loss" or a
+  // "quote at least $X" minimum here must never read as a confirmed loss or
+  // a verified minimum price. Every dollar figure and margin % is labeled
+  // provisional/based on unverified costs, not just the hard-floor box.
   if(b.margin < 0){
     warnBox.className = 'margin-warn-box show-bad';
-    warnBox.textContent = `Loses $${Math.abs(b.margin).toFixed(2)} at this price. To pay $${TECH_WAGE}/hr and keep 21%, quote at least $${floorForWarn.toFixed(0)} — or trim the scope.${dayTip}`;
+    warnBox.textContent = `Provisional loss (based on unverified costs): $${Math.abs(b.margin).toFixed(2)} at this price. To pay $${TECH_WAGE}/hr and keep 21%, the provisional minimum is $${floorForWarn.toFixed(0)} — or trim the scope.${dayTip}`;
   } else if(b.marginPct < 21){
     warnBox.className = 'margin-warn-box show-bad';
-    warnBox.textContent = `Below the 21% target (${b.marginPct.toFixed(1)}%). Quote at least $${floorForWarn.toFixed(0)} to keep 21% after paying the team $${TECH_WAGE}/hr for cleaning and drive time.${dayTip}`;
+    warnBox.textContent = `Below the 21% target (${b.marginPct.toFixed(1)}% — provisional, based on unverified costs). The provisional minimum to keep 21% after paying the team $${TECH_WAGE}/hr for cleaning and drive time is $${floorForWarn.toFixed(0)}.${dayTip}`;
   } else if(lowForWarn < floorForWarn){
     warnBox.className = 'margin-warn-box show-bad';
-    warnBox.textContent = `The suggested price clears 21% (${b.marginPct.toFixed(1)}%), but the low end of the range ($${lowForWarn.toFixed(0)}) is under the $${floorForWarn.toFixed(0)} floor. Don't close below $${floorForWarn.toFixed(0)}.${dayTip}`;
+    warnBox.textContent = `The suggested price clears 21% (${b.marginPct.toFixed(1)}% — provisional), but the low end of the range ($${lowForWarn.toFixed(0)}) is under the provisional $${floorForWarn.toFixed(0)} floor. Don't close below $${floorForWarn.toFixed(0)} (provisional).${dayTip}`;
   } else {
     warnBox.className = 'margin-warn-box show-good';
-    warnBox.textContent = `Clears the 21% target (${b.marginPct.toFixed(1)}%) with the team paid $${TECH_WAGE}/hr for cleaning and drive time.${dayTip}`;
+    warnBox.textContent = `Clears the 21% target (${b.marginPct.toFixed(1)}% — provisional) with the team paid $${TECH_WAGE}/hr for cleaning and drive time.${dayTip}`;
   }
 
   // Item 3: hard 10% margin floor — a SEPARATE, non-blocking-vs-blocking
@@ -2732,7 +2738,17 @@ function recalc(){
     if(heldParts.length){
       holdBox.className = 'margin-hold-box show';
       const headline = unverifiedHold ? 'HOLD — underlying cost data is not yet verified/reconciled.' : 'HOLD — below the 10% hard floor.';
-      holdBox.innerHTML = `<strong>${headline}</strong> ${heldParts.join(' ')} ${INITIAL_CLEAN_ESTIMATE_DISCLAIMER} Sending is blocked server-side until this is re-saved with different inputs (higher price, or re-measured hours) — there is no override button.`;
+      // Copy-only follow-up: an unverified-cost hold can't be cleared by
+      // re-pricing the quote — the cost DATA is what's unresolved, not this
+      // quote's own price/hours — so it must never say "re-save with
+      // different inputs." That instruction is only ever true for a
+      // genuine below-10%-floor hold (which can only happen once
+      // COST_DATA_VERIFIED is eventually true), where raising the price or
+      // re-measuring hours really would clear it.
+      const tailText = unverifiedHold
+        ? 'Sending stays blocked until the underlying costs are reconciled and verified — there is no override button.'
+        : 'Sending is blocked server-side until this is re-saved with different inputs (higher price, or re-measured hours) — there is no override button.';
+      holdBox.innerHTML = `<strong>${headline}</strong> ${heldParts.join(' ')} ${INITIAL_CLEAN_ESTIMATE_DISCLAIMER} ${tailText}`;
     } else {
       holdBox.className = 'margin-hold-box';
       holdBox.innerHTML = '';
@@ -3702,8 +3718,12 @@ function renderQuote(data){
   if(isRecurringStandardQuote){
     document.getElementById('q-price-eyebrow').textContent = 'Initial Cleaning — Estimate';
     document.getElementById('q-price').textContent = `$${Number(data.initialEstimatedCost).toFixed(0)}`;
+    // Copy-only follow-up: the client page's caption was missing the
+    // hourly team rate the email already states (`@ $120/hr team-of-2`,
+    // see sendQuoteToClient's own Initial Cleaning line) — added here so
+    // the two surfaces read consistently.
     document.getElementById('q-price-caption').textContent =
-      `${formatInitialCleanTimeText(data.initialEstimatedHours, !!data.initialIsOverride)}, billed for actual time on site ($${data.initialMinimumCost || INITIAL_CLEAN_MINIMUM} minimum) — not a fixed quote. ${INITIAL_CLEAN_ESTIMATE_DISCLAIMER}`;
+      `$${data.initialTeamRate || INITIAL_CLEAN_TEAM_RATE}/hour for a team of two — ${formatInitialCleanTimeText(data.initialEstimatedHours, !!data.initialIsOverride)}, billed for actual time on site ($${data.initialMinimumCost || INITIAL_CLEAN_MINIMUM} minimum) — not a fixed quote. ${INITIAL_CLEAN_ESTIMATE_DISCLAIMER}`;
     if(ongoingCard){
       ongoingCard.style.display = '';
       document.getElementById('q-ongoing-price').textContent = priceText;

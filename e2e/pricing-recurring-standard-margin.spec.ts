@@ -1058,4 +1058,163 @@ test.describe.serial("Recurring Standard pricing + margin protection", () => {
       for (const pattern of forbidden) expect(sendText).not.toMatch(pattern);
     });
   });
+
+  // ── COPY-ONLY FOLLOW-UP ─────────────────────────────────────────────────
+  // Four wording-only fixes, no logic changes: (1) an unverified-cost hold's
+  // instruction says costs must be reconciled/verified, not "re-save with
+  // different inputs" (that instruction survives only for a genuine
+  // below-10%-floor hold); (2) the 21%-target warning box's loss/suggested-
+  // price figures are labeled provisional; (3) "21% (business minimum)" is
+  // now "21% (business target)" — 10% is the actual hard minimum; (4) the
+  // client quote page's Initial Cleaning caption states the $120/hr
+  // team-of-two rate, matching the email.
+
+  test.describe("Copy-only follow-up — Item 1: unverified-cost hold instruction never says re-price to clear it", () => {
+    test("a recurring Standard quote's hold box says costs must be reconciled/verified, never 're-saved with different inputs'", async ({
+      page,
+    }) => {
+      await loginAsAdmin(page);
+      const frame = await openPricingFrame(page);
+      await frame.evaluate(() => {
+        // @ts-expect-error
+        selectService("standard");
+        // @ts-expect-error
+        state.sqft = 1800;
+        // @ts-expect-error
+        state.condition = "moderate";
+        // @ts-expect-error
+        setFrequency("weekly");
+      });
+      const holdBox = frame.locator("#margin-hold");
+      await expect(holdBox).toContainText("underlying cost data is not yet verified/reconciled");
+      await expect(holdBox).toContainText("reconciled and verified");
+      await expect(holdBox).not.toContainText("re-saved with different inputs");
+    });
+
+    test("a genuinely below-10%-floor, non-recurring-Standard quote's hold box keeps the original re-price instruction", async ({
+      page,
+    }) => {
+      await loginAsAdmin(page);
+      const frame = await openPricingFrame(page);
+      // A la Carte, minimum-priced (2 small areas => still floored at $149),
+      // in a high-drive-cost city with no logged data ('Other' fallback) —
+      // genuinely loses money at this price, independent of any
+      // unverified-cost gating (that gating only ever applies to recurring
+      // Standard quotes, which this isn't).
+      const holdState = await frame.evaluate(() => {
+        // @ts-expect-error
+        selectService("alacarte");
+        // @ts-expect-error
+        state.areaQty = { bedroom: 1, bathroom: 1 };
+        const citySelect = document.getElementById("city-select") as HTMLSelectElement;
+        citySelect.value = "Other";
+        citySelect.dispatchEvent(new Event("change"));
+        // @ts-expect-error
+        recalc();
+        const box = document.getElementById("margin-hold");
+        return { shown: box?.className.includes("show"), html: box?.innerHTML || "" };
+      });
+      expect(holdState.shown, "fixture must actually be held for this test to prove anything").toBe(true);
+      expect(holdState.html).toContain("re-saved with different inputs");
+      expect(holdState.html).not.toContain("reconciled and verified");
+      expect(holdState.html).not.toContain("underlying cost data is not yet verified/reconciled");
+    });
+  });
+
+  test.describe("Copy-only follow-up — Item 2: the 21%-target warning box labels its figures provisional", () => {
+    test("every branch of the 21%-target warning (loss, below-target, low-end, clears-target) marks its $ and % figures provisional", async ({
+      page,
+    }) => {
+      await loginAsAdmin(page);
+      const frame = await openPricingFrame(page);
+
+      // A genuine loss (same minimum-priced, high-drive-cost fixture used
+      // above) — should read as a PROVISIONAL loss, never a bare claim.
+      const lossText = await frame.evaluate(() => {
+        // @ts-expect-error
+        selectService("alacarte");
+        // @ts-expect-error
+        state.areaQty = { bedroom: 1, bathroom: 1 };
+        const citySelect = document.getElementById("city-select") as HTMLSelectElement;
+        citySelect.value = "Other";
+        citySelect.dispatchEvent(new Event("change"));
+        // @ts-expect-error
+        recalc();
+        return document.getElementById("margin-warn")?.textContent || "";
+      });
+      expect(lossText.toLowerCase()).toContain("provisional");
+      expect(lossText).not.toMatch(/^Loses \$/); // never an unqualified "Loses $X" claim
+
+      // A comfortably-profitable one-time Standard quote — the "clears 21%"
+      // branch — still labels its margin % provisional, not a verified fact.
+      const clearsText = await frame.evaluate(() => {
+        // @ts-expect-error
+        selectService("standard");
+        // @ts-expect-error
+        state.sqft = 1800;
+        // @ts-expect-error
+        state.condition = "light";
+        // @ts-expect-error
+        setFrequency("onetime");
+        const citySelect = document.getElementById("city-select") as HTMLSelectElement;
+        citySelect.value = "Irvine";
+        citySelect.dispatchEvent(new Event("change"));
+        // @ts-expect-error
+        recalc();
+        return document.getElementById("margin-warn")?.textContent || "";
+      });
+      expect(clearsText.toLowerCase()).toContain("provisional");
+    });
+  });
+
+  test.describe('Copy-only follow-up — Item 3: 21% is labeled "business target", not "business minimum"', () => {
+    test("the walk-away-floor note says business target; 10% remains the only thing called a hard/absolute minimum", async ({
+      page,
+    }) => {
+      await loginAsAdmin(page);
+      const frame = await openPricingFrame(page);
+      const floorNoteText = await frame.locator(".floor-note").textContent();
+      expect(floorNoteText).toContain("21% (business target)");
+      expect(floorNoteText).not.toContain("21% (business minimum)");
+    });
+  });
+
+  test.describe("Copy-only follow-up — Item 4: the client quote page's Initial Cleaning card states the hourly team rate", () => {
+    test("the Initial Cleaning caption includes $120/hour for a team of two, consistent with the email", async ({ page }) => {
+      await loginAsAdmin(page);
+      const frame = await openPricingFrame(page);
+      const quote = {
+        clientName: `Rate Caption ${RUN_ID}`,
+        id: `rate-caption-${RUN_ID}`,
+        clientEmail: `rate-caption-${RUN_ID}@example.com`,
+        city: "Irvine",
+        service: "standard",
+        frequency: "Monthly",
+        teamSize: 2,
+        initialEstimatedHours: 4,
+        initialEstimatedCost: 480,
+        initialMinimumHours: 3,
+        initialMinimumCost: 360,
+        initialTeamRate: 120,
+        timeLowHrs: 1.5,
+        suggested: "500.00",
+        low: "500.00",
+        high: "500.00",
+        status: "pending",
+        sentAt: null,
+      };
+      await frame.evaluate((data) => {
+        // @ts-expect-error
+        renderQuote(data);
+      }, quote);
+      const caption = await frame.locator("#q-price-caption").textContent();
+      expect(caption).toContain("$120/hour for a team of two");
+      // Sanity-check the pre-existing parts of this caption (estimated
+      // hours, actual-time billing, the $360 minimum) are still there too —
+      // this copy-only fix only prepends the rate, nothing was removed.
+      expect(caption).toContain("billed for actual time on site");
+      expect(caption).toContain("$360 minimum");
+      expect(caption).toContain("not a fixed quote");
+    });
+  });
 });
