@@ -855,8 +855,11 @@ test.describe.serial("Recurring Standard pricing + margin protection", () => {
       expect(dollarAmount).toBeGreaterThan(0);
       expect(cvPriceText).toBe(`$${dollarAmount.toFixed(2)}`);
 
-      // Client-facing render's Ongoing price card.
-      await expect(frame.locator("#q-ongoing-price")).toHaveText(`$${dollarAmount.toFixed(0)}`);
+      // Client-facing render's Ongoing price card. This PR's Follow-up —
+      // Item 1 fix made this display the exact stored amount (.toFixed(2)),
+      // not a whole-dollar-rounded approximation — see that block's own
+      // tests for the full rounding-mismatch regression coverage.
+      await expect(frame.locator("#q-ongoing-price")).toHaveText(`$${dollarAmount.toFixed(2)}`);
 
       // Composed email body's "Ongoing Cleaning" line — intercepted so
       // nothing is actually sent.
@@ -1215,6 +1218,258 @@ test.describe.serial("Recurring Standard pricing + margin protection", () => {
       expect(caption).toContain("billed for actual time on site");
       expect(caption).toContain("$360 minimum");
       expect(caption).toContain("not a fixed quote");
+    });
+  });
+
+  // ── FOLLOW-UP ROUND ─────────────────────────────────────────────────────
+  // Two remaining fixes: (1) the recurring-Standard Ongoing amount must
+  // match, as the literal same dollar-and-cents figure, across the live
+  // calculator's price AND its flat-rate caption (previously built from a
+  // pre-city-premium/pre-pet-fee price — stale), the saved/reopened record,
+  // the client quote page (previously rounded to whole dollars there only),
+  // and the composed email; (2) the assumptions banner/cost-engine item/
+  // footer no longer make a blanket "real data"/"owner-confirmed" claim
+  // about the (still unverified) cost model, while keeping genuine pricing
+  // decisions (rates, discounts, hot-zone tiers) described as decided.
+
+  test.describe("Follow-up — Item 1: the ongoing amount matches, literally, everywhere", () => {
+    async function followOneQuoteThroughEverySurface(page: Page, opts: { city: string; label: string }) {
+      await loginAsAdmin(page);
+      const frame = await openPricingFrame(page);
+      await frame.evaluate((city) => {
+        // @ts-expect-error
+        selectService("standard");
+        // @ts-expect-error
+        state.sqft = 1800;
+        // @ts-expect-error
+        state.condition = "moderate";
+        // @ts-expect-error
+        setFrequency("monthly");
+        const citySelect = document.getElementById("city-select") as HTMLSelectElement;
+        citySelect.value = city;
+        citySelect.dispatchEvent(new Event("change"));
+        // @ts-expect-error
+        recalc();
+      }, opts.city);
+
+      // Pet fee OFF first: the live calculator's headline price and its
+      // caption underneath must already agree, literally, before any save.
+      const readCalculator = () =>
+        frame.evaluate(() => ({
+          price: document.getElementById("cv-price")?.textContent || "",
+          range: document.getElementById("cv-range")?.textContent || "",
+        }));
+      const extractDollarAmount = (text: string) => {
+        const m = text.match(/\$(\d+\.\d{2})/);
+        return m ? m[1] : null;
+      };
+
+      const beforePet = await readCalculator();
+      const priceAmount = extractDollarAmount(beforePet.price);
+      expect(priceAmount, `${opts.label}: cv-price must be a $X.XX figure`).not.toBeNull();
+      expect(beforePet.range, `${opts.label}: caption must contain the exact same amount as the price`).toContain(
+        `$${priceAmount}`,
+      );
+
+      // Toggle the pet fee ON — the caption must follow the new final
+      // amount, not stay pinned to the pre-toggle number.
+      await frame.evaluate(() => {
+        const checkbox = document.getElementById("pet-fee") as HTMLInputElement | null;
+        if (checkbox) checkbox.checked = true;
+        // @ts-expect-error
+        recalc();
+      });
+      const withPet = await readCalculator();
+      const priceWithPet = extractDollarAmount(withPet.price);
+      expect(priceWithPet, `${opts.label}: cv-price with pet fee must be a $X.XX figure`).not.toBeNull();
+      expect(Number(priceWithPet)).toBeCloseTo(Number(priceAmount) + 25, 2); // pet fee is a flat +$25
+      expect(withPet.range, `${opts.label}: caption must follow the pet-fee-adjusted amount`).toContain(
+        `$${priceWithPet}`,
+      );
+      expect(withPet.range, `${opts.label}: caption must NOT still show the pre-pet-fee amount`).not.toContain(
+        `$${priceAmount}`,
+      );
+
+      // Toggle back off — confirm the caption follows back down too (not a
+      // one-way effect of toggling).
+      await frame.evaluate(() => {
+        const checkbox = document.getElementById("pet-fee") as HTMLInputElement | null;
+        if (checkbox) checkbox.checked = false;
+        // @ts-expect-error
+        recalc();
+      });
+      const afterUnchecking = await readCalculator();
+      expect(extractDollarAmount(afterUnchecking.price)).toBe(priceAmount);
+      expect(afterUnchecking.range).toContain(`$${priceAmount}`);
+
+      // Save (pet fee off, matching `priceAmount`) and follow it through
+      // every remaining surface.
+      const clientName = `Ongoing Match ${opts.label} ${RUN_ID}`;
+      const clientEmail = `ongoing-match-${opts.label.toLowerCase().replace(/\s+/g, "-")}-${RUN_ID}@example.com`;
+      await frame.locator("#save-client-name").fill(clientName);
+      await frame.locator("#save-client-email").fill(clientEmail);
+      page.once("dialog", (d) => d.accept()); // Item 5 pre-save confirmation
+      await frame.getByRole("button", { name: "Save / Email Quote →" }).click();
+      await expect(frame.locator("#save-quote-status")).toContainText("Saved", { timeout: 10_000 });
+      const id = await frame.locator("#save-client-id").inputValue();
+      createdQuoteIds.add(id);
+
+      const stored = await getStoredQuote(page, id);
+      expect(stored?.low, `${opts.label}: saved low must equal the live price`).toBe(`${priceAmount}`);
+      expect(stored?.high).toBe(`${priceAmount}`);
+      expect(stored?.suggested).toBe(`${priceAmount}`);
+      expect(String(stored?.ongoingPrice)).toBe(`${priceAmount}`);
+
+      // Reopen in the Pricing Calculator tab — the caption must still agree
+      // with the (unchanged) reopened price.
+      await frame.locator("#tabbtn-pricing").click();
+      await frame.locator("#pricing-load-id").fill(id);
+      await frame.locator(".btn-load-walkthrough").click();
+      await expect(frame.locator("#walkthrough-load-status")).toContainText("Loaded", { timeout: 10_000 });
+      const reopened = await readCalculator();
+      expect(extractDollarAmount(reopened.price), `${opts.label}: reopened price`).toBe(priceAmount);
+      expect(reopened.range, `${opts.label}: reopened caption`).toContain(`$${priceAmount}`);
+
+      // Client-facing render — the Ongoing card must show the exact same
+      // $X.XX figure, not a whole-dollar-rounded one.
+      await expect(frame.locator("#q-ongoing-price")).toHaveText(`$${priceAmount}`);
+
+      // Composed email body — intercepted so nothing is actually sent.
+      let captured: { subject: string; body: string } | null = null;
+      await page.route("**/api/sales/send-quote", async (route) => {
+        captured = route.request().postDataJSON();
+        await route.fulfill({ json: { ok: true, sentAt: new Date().toISOString() } });
+      });
+      page.once("dialog", (d) => d.accept()); // Item 5 pre-send confirmation
+      await frame.evaluate(() => {
+        // @ts-expect-error
+        sendQuoteToClient();
+      });
+      await expect.poll(() => captured !== null, { timeout: 10_000 }).toBe(true);
+      expect(captured!.body).toContain(`Ongoing Cleaning (Monthly): $${priceAmount} flat rate`);
+      await page.unroute("**/api/sales/send-quote");
+
+      return { id, priceAmount };
+    }
+
+    test("a premium city (Irvine, +3%): the same $X.XX amount follows the quote through the calculator, caption, save/reopen, client page, and email", async ({
+      page,
+    }) => {
+      await followOneQuoteThroughEverySurface(page, { city: "Irvine", label: "Premium" });
+    });
+
+    test("a non-premium city (Tustin, +0%): the same $X.XX amount follows the quote through every surface too — this isn't coincidental on a premium offset", async ({
+      page,
+    }) => {
+      await followOneQuoteThroughEverySurface(page, { city: "Tustin", label: "NonPremium" });
+    });
+
+    test("one-time Standard and A la Carte: their real ±20% range displays are completely unchanged by this fix", async ({
+      page,
+    }) => {
+      await loginAsAdmin(page);
+      const frame = await openPricingFrame(page);
+
+      const oneTimeStandard = await frame.evaluate(() => {
+        // @ts-expect-error
+        selectService("standard");
+        // @ts-expect-error
+        state.sqft = 1800;
+        // @ts-expect-error
+        state.condition = "moderate";
+        // @ts-expect-error
+        setFrequency("onetime");
+        // @ts-expect-error
+        recalc();
+        return {
+          price: document.getElementById("cv-price")?.textContent || "",
+          range: document.getElementById("cv-range")?.textContent || "",
+        };
+      });
+      // Still a real $X–$Y range, whole-dollar, exactly as before this fix —
+      // this fix only ever touches the recurring-Standard flat-rate path.
+      expect(oneTimeStandard.price).toMatch(/^\$\d+–\$\d+$/);
+      expect(oneTimeStandard.range).toMatch(/^Quote range: \$\d+–\$\d+ \(±20%/);
+
+      const alaCarte = await frame.evaluate(() => {
+        // @ts-expect-error
+        selectService("alacarte");
+        // @ts-expect-error
+        state.areaQty = { bathroom: 2, kitchen: 1 };
+        // @ts-expect-error
+        recalc();
+        return {
+          price: document.getElementById("cv-price")?.textContent || "",
+          range: document.getElementById("cv-range")?.textContent || "",
+        };
+      });
+      expect(alaCarte.price).toMatch(/^\$\d+–\$\d+$/);
+      expect(alaCarte.range).toMatch(/^Quote range: \$\d+–\$\d+ \(±20%\)$/);
+    });
+  });
+
+  test.describe("Follow-up — Item 2: no blanket cost-verification claim, pricing decisions stay distinct", () => {
+    test("ADMIN response: the assumptions banner, cost-engine item, and footer no longer claim the cost model is real/owner-confirmed while unverified — genuine pricing decisions are untouched", async ({
+      page,
+    }) => {
+      await loginAsAdmin(page);
+      const res = await page.request.get("/api/sales/pricing-tool");
+      const html = await res.text();
+
+      // The old blanket claims are gone.
+      expect(html).not.toContain("All values below are now real, decided, or owner-confirmed");
+      expect(html).not.toContain("✓ Real data — TCS jobs");
+      expect(html).not.toContain("now reflect real data or owner-confirmed decisions");
+
+      // Each of the three now says the cost model is provisional/unverified.
+      expect(html).toMatch(/provisional and unverified pending reconciliation/);
+      expect(html).toMatch(/not yet independently reconciled or verified as a complete cost model/);
+      expect(html).toMatch(
+        /internal cost model[\s\S]*remains provisional and unverified pending reconciliation with supporting payroll, TCS, and mileage records/,
+      );
+
+      // Genuine pricing decisions are explicitly unaffected and still read
+      // as decided/confirmed — not contaminated by the cost caveat.
+      expect(html).toContain("Sqft pace (Standard):</b> ✓ Real data (July 2026)");
+      expect(html).toContain("Tiered premium (business decision, owner-confirmed)");
+      expect(html).toContain("Frequency discount (Standard):</b> ✓ Decided (July 2026)");
+      expect(html).toMatch(
+        /Core pricing decisions[\s\S]*reflect real data or owner-confirmed business decisions[\s\S]*unaffected by cost verification/,
+      );
+    });
+
+    test("non-ADMIN response: none of the new or old cost-verification wording is present at all — internal cost details stay hidden from sales-only roles", async ({
+      page,
+    }) => {
+      await loginAs(page, repEmail, PASSWORD);
+      const res = await page.request.get("/api/sales/pricing-tool");
+      const html = await res.text();
+
+      // Note: plain "real data" (lowercase) and "owner-confirmed" are
+      // deliberately excluded from this list — both also appear in
+      // unrelated, pre-existing, non-admin-visible text that has nothing to
+      // do with cost-verification claims: a Specialty-service hours note
+      // ("real data showed no reliable link between sqft and time for this
+      // service") and a genuine, already-decided pricing comment ("Airbnb
+      // turnover (July 2026) — owner-confirmed real numbers"). "Real Data"
+      // (capitalized), the form actually used by the cost/pricing-decision
+      // badges this PR cares about, is still checked below.
+      const forbidden = [
+        "provisional",
+        "unverified",
+        "reconciled",
+        "reconciliation",
+        "Real Data",
+        "Cost engine updated",
+        "Costs Unverified",
+        "20.52",
+        "TECH_WAGE",
+        "AUDIT_OVERHEAD_PER_TECH_HR",
+        "This is a working internal tool",
+      ];
+      for (const needle of forbidden) {
+        expect(html, `non-ADMIN response must not contain "${needle}"`).not.toContain(needle);
+      }
     });
   });
 });
