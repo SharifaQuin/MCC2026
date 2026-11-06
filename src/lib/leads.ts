@@ -4,6 +4,7 @@ import { sendEmail } from "@/lib/email";
 import { postSlackDMToOwner } from "@/lib/slack";
 import { csvEscape } from "@/lib/export";
 import { formatPhone } from "@/lib/formatPhone";
+import { businessDayRangeUtc, businessMonthRangeUtc } from "@/lib/timezone";
 
 // Mirrors the Pricing Calculator's SERVICES/SERVICE_LABELS in
 // src/content/sales-pricing-tool.html exactly (same key strings) — a lead
@@ -125,6 +126,7 @@ export const LEAD_STAGE_LABELS: Record<string, string> = {
   WON: "Won",
   LOST: "Lost",
   SCAM: "Scam",
+  UNABLE_TO_CONTACT: "Unable to Contact",
 };
 
 export const LEAD_STAGE_TONE: Record<string, string> = {
@@ -134,6 +136,9 @@ export const LEAD_STAGE_TONE: Record<string, string> = {
   WON: "bg-green-100 text-green-700",
   LOST: "bg-red-100 text-red-700",
   SCAM: "bg-neutral-800 text-white",
+  // Muted/neutral, deliberately not red or green — this is a paused state,
+  // not a decided outcome, so it shouldn't read as either a win or a loss.
+  UNABLE_TO_CONTACT: "bg-neutral-200 text-neutral-700",
 };
 
 export const LEAD_PIPELINE_COLUMNS: { stage: LeadStage; label: string }[] = [
@@ -143,12 +148,18 @@ export const LEAD_PIPELINE_COLUMNS: { stage: LeadStage; label: string }[] = [
   { stage: "WON", label: "Won" },
 ];
 
-// Both Lost and Scam are pulled off the active pipeline board/list — a
-// SCAM-classified lead is never actionable work for a rep, same reasoning
-// as Lost. Each still gets its own separate archive page/count (see
-// getScamLeads/getLostLeads) rather than being merged into one "archived"
-// bucket, since they're different concepts the owner wants to tell apart.
-export const ARCHIVED_LEAD_STAGES: LeadStage[] = ["LOST", "SCAM"];
+// Stages pulled off the active pipeline board/list/callback reminders but
+// kept fully on file — LOST (a decided outcome), SCAM (never actionable
+// work for a rep), and UNABLE_TO_CONTACT (a paused non-outcome: staff
+// couldn't reach the lead, not a won/lost decision). Scam and Unable to
+// Contact each still get their own separate archive page/count (see
+// getScamLeads/getUnableToContactLeads/getLostLeads) rather than being
+// merged into one "archived" bucket, since they're different concepts the
+// owner wants to tell apart. This one constant drives the Lead Pipeline
+// board's query, loadLeadKpis' openLeads/overdueFollowUps queries,
+// getTodayCardData's followUps query, and getLeadFunnelBySource's "open"
+// bucket — see each call site.
+export const ARCHIVED_LEAD_STAGES: LeadStage[] = ["LOST", "SCAM", "UNABLE_TO_CONTACT"];
 
 // The one obvious "move it forward" action for each pipeline-board column —
 // anything else (mark lost, jump stages) lives on the lead's own detail page.
@@ -158,21 +169,58 @@ export const PRIMARY_NEXT_LEAD_STAGE: Record<string, { stage: LeadStage; label: 
   QUOTED: { stage: "WON", label: "Mark Won" },
 };
 
+// Everyone who should be bcc'd on a new-lead alert email beyond the single
+// `to` recipient: every active, non-test Sales Rep, plus every active,
+// non-test Office Assistant who's been granted SALES_LEADS area access
+// (any AreaAccess row for that area — view or edit, doesn't matter, per the
+// owner's own confirmed rule for "who handles new inquiries"). Exported so
+// tests can assert on it directly.
+export async function getNewLeadAlertBccEmails(excludeEmail?: string | null): Promise<string[]> {
+  const [salesReps, officeAssistants] = await Promise.all([
+    prisma.user.findMany({
+      where: { role: "SALES_REP", active: true, isTestAccount: false },
+      select: { email: true },
+    }),
+    prisma.user.findMany({
+      where: {
+        role: "OFFICE_ASSISTANT",
+        active: true,
+        isTestAccount: false,
+        areaAccess: { some: { area: "SALES_LEADS" } },
+      },
+      select: { email: true },
+    }),
+  ]);
+
+  const emails = new Set<string>();
+  for (const u of [...salesReps, ...officeAssistants]) {
+    if (excludeEmail && u.email.toLowerCase() === excludeEmail.toLowerCase()) continue;
+    emails.add(u.email);
+  }
+  return [...emails];
+}
+
 // Pings the owner (email + best-effort Slack DM) whenever a new lead comes
 // in from the public website form — response-time is a tracked KPI, so fast
 // visibility matters here more than it does for most notifications.
 // Best-effort: never blocks or throws, since a missed notification shouldn't
 // fail the form submission itself.
-export async function notifyNewLead(lead: {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  serviceInterest: string | null;
-  message: string | null;
-  source?: LeadSource;
-}) {
+// `sendEmailFn` is injectable (same DI convention as MessageSenders in
+// src/lib/messageSenders.ts) so tests can spy on the bcc list this builds
+// without a mocking framework.
+export async function notifyNewLead(
+  lead: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    serviceInterest: string | null;
+    message: string | null;
+    source?: LeadSource;
+  },
+  sendEmailFn: typeof sendEmail = sendEmail
+) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
   const profileUrl = `${appUrl}/sales/leads/${lead.id}`;
   const originLine =
@@ -193,10 +241,12 @@ export async function notifyNewLead(lead: {
   const notifyEmail = process.env.SALES_NOTIFY_EMAIL || process.env.MS_GRAPH_SENDER_EMAIL;
   if (notifyEmail) {
     try {
-      await sendEmail({
+      const bcc = await getNewLeadAlertBccEmails(notifyEmail);
+      await sendEmailFn({
         to: notifyEmail,
         subject: `New lead: ${lead.firstName} ${lead.lastName}`,
         body: summaryLines.join("\n"),
+        ...(bcc.length ? { bcc } : {}),
       });
     } catch {
       // Swallow — a notification failure should never break the lead form.
@@ -206,6 +256,19 @@ export async function notifyNewLead(lead: {
   await postSlackDMToOwner(
     [`:tada: New lead: *${lead.firstName} ${lead.lastName}*`, `<${profileUrl}|View lead>`].join("\n")
   );
+}
+
+export type FollowUpUrgency = "overdue" | "due_today";
+
+// The one place "is this follow-up due or overdue" is decided — Sales's
+// Callbacks list and Home's Today card must never disagree, so both call
+// this instead of each doing their own date-vs-now comparison.
+// Only call this on a followUpDueAt you already know is < end of today's
+// business day — i.e. "due or overdue" — never on a future date; it
+// doesn't handle the "upcoming" case because neither caller needs it.
+export function getFollowUpUrgency(followUpDueAt: Date, now: Date = new Date()): FollowUpUrgency {
+  const { start } = businessDayRangeUtc(now);
+  return followUpDueAt < start ? "overdue" : "due_today";
 }
 
 function currentMonthKey(now: Date = new Date()): string {
@@ -247,7 +310,7 @@ export async function loadLeadKpis(): Promise<LeadKpis> {
         select: { createdAt: true, firstContactedAt: true },
       }),
       prisma.lead.findMany({
-        where: { stage: { notIn: ["WON", "LOST", "SCAM"] } },
+        where: { stage: { notIn: ["WON", ...ARCHIVED_LEAD_STAGES] } },
         select: { estimatedValue: true },
       }),
       // Every New Inquiry needs a first response, regardless of age — unlike
@@ -261,8 +324,8 @@ export async function loadLeadKpis(): Promise<LeadKpis> {
       }),
       prisma.lead.findMany({
         where: {
-          stage: { notIn: ["NEW_INQUIRY", "WON", "LOST", "SCAM"] },
-          followUpDueAt: { not: null, lt: new Date() },
+          stage: { notIn: ["NEW_INQUIRY", "WON", ...ARCHIVED_LEAD_STAGES] },
+          followUpDueAt: { not: null, lt: businessDayRangeUtc().start },
         },
         select: { id: true, firstName: true, lastName: true, stage: true, followUpDueAt: true },
         orderBy: { followUpDueAt: "asc" },
@@ -701,17 +764,27 @@ export async function getActiveLeadFormFields() {
 export async function getLeadFunnelBySource() {
   const rows = await prisma.lead.groupBy({ by: ["source", "stage"], _count: true });
 
-  const bySource = new Map<string, { total: number; won: number; lost: number; scam: number; open: number }>();
+  const bySource = new Map<
+    string,
+    { total: number; won: number; lost: number; scam: number; unableToContact: number; open: number }
+  >();
   for (const row of rows) {
-    const entry = bySource.get(row.source) ?? { total: 0, won: 0, lost: 0, scam: 0, open: 0 };
+    const entry =
+      bySource.get(row.source) ?? { total: 0, won: 0, lost: 0, scam: 0, unableToContact: 0, open: 0 };
     // total stays fully inclusive (the correct "all-received" figure, never
-    // hidden), but a scam-classified lead must not count as open/working
-    // pipeline — it gets its own bucket instead of falling into the else
-    // branch the way it would have before SCAM existed as a stage.
+    // hidden), but a scam-classified or unable-to-contact lead must not
+    // count as open/working pipeline — each gets its own bucket instead of
+    // falling into the else branch the way it would have before these
+    // stages existed.
     entry.total += row._count;
     if (row.stage === "WON") entry.won += row._count;
     else if (row.stage === "LOST") entry.lost += row._count;
     else if (row.stage === "SCAM") entry.scam += row._count;
+    // Unable to Contact is a paused non-outcome, not active/open work — give
+    // it its own bucket rather than lumping it into "open" (which would
+    // overstate how much of the pipeline is actually being worked) or into
+    // won/lost (it's neither).
+    else if (row.stage === "UNABLE_TO_CONTACT") entry.unableToContact += row._count;
     else entry.open += row._count;
     bySource.set(row.source, entry);
   }
@@ -725,11 +798,13 @@ export async function getLeadFunnelBySource() {
       won: stats.won,
       lost: stats.lost,
       scam: stats.scam,
-      // Win rate already only ever divided won/(won+lost) — scam was never
-      // part of that denominator before SCAM existed either, so no change
-      // needed to that. null (not 0) when there's no decided business yet,
-      // matching salesDashboard.ts's own winRate — 0% would otherwise
-      // misread as "no wins" rather than "nothing decided either way."
+      unableToContact: stats.unableToContact,
+      // Win rate already only ever divided won/(won+lost) — scam and
+      // unable-to-contact were never part of that denominator either, so no
+      // change needed to that. null (not 0) when there's no decided
+      // business yet, matching salesDashboard.ts's own winRate — 0% would
+      // otherwise misread as "no wins" rather than "nothing decided either
+      // way."
       winRatePct:
         stats.won + stats.lost > 0 ? Math.round((stats.won / (stats.won + stats.lost)) * 100) : null,
     }))
@@ -797,6 +872,41 @@ export async function getScamLeads() {
       scamAt: scamChange?.createdAt ?? l.updatedAt,
       scamByName: scamChange?.changedBy?.name ?? null,
       updatedAt: l.updatedAt,
+    };
+  });
+}
+
+// Unable-to-Contact leads are paused off the active pipeline board exactly
+// like Lost ones (same ARCHIVED_LEAD_STAGES treatment), but this is never a
+// decided outcome — there's no lostReason-equivalent text field, just who
+// paused it and when. Mirrors getLostLeads' own shape closely. Kept as its
+// own separate archive/count from getScamLeads — Scam and Unable to Contact
+// are different concepts the owner wants to tell apart, not merged into one
+// generic "archived" listing.
+export async function getUnableToContactLeads() {
+  const leads = await prisma.lead.findMany({
+    where: { stage: "UNABLE_TO_CONTACT" },
+    include: {
+      stageChanges: {
+        where: { toStage: "UNABLE_TO_CONTACT" },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        include: { changedBy: { select: { name: true } } },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  return leads.map((l) => {
+    const change = l.stageChanges[0];
+    return {
+      id: l.id,
+      firstName: l.firstName,
+      lastName: l.lastName,
+      source: l.source,
+      estimatedValue: l.estimatedValue,
+      markedAt: change?.createdAt ?? l.updatedAt,
+      markedByName: change?.changedBy?.name ?? null,
     };
   });
 }
@@ -881,6 +991,58 @@ export async function syncQuoteStatusForLead(
   } catch {
     // Malformed quote JSON — best-effort sync, skip silently.
   }
+}
+
+// Calendar-month Won/Lost lead counts, from LeadStageChange rather than the
+// quote blobs loadSalesDashboard's wonCount/lostCount are built from — this
+// is the real, reliable record of when a lead actually reached that
+// outcome, independent of whether its quote ever got a recalculated price
+// (see the Item 2 diagnosis). The calendar month boundary here is the
+// *business* timezone's (BUSINESS_TIMEZONE, via businessMonthRangeUtc), not
+// the server process's own runtime timezone (Railway containers default to
+// UTC) — a change near either edge of the month can otherwise land in the
+// wrong month's count.
+//
+// Counts one outcome per lead, not one row per LeadStageChange: this asks,
+// for each lead with at least one Won/Lost transition inside the business-
+// timezone month window, "what was its *latest* Won/Lost transition in that
+// window?" and tallies leads by that answer (the `distinct: ["leadId"]` +
+// `orderBy: { createdAt: "desc" }` combination keeps exactly the most recent
+// matching row per lead). This intentionally differs from counting every
+// matching row: a lead that was re-decided within the same month (e.g.
+// Lost -> reopened -> Lost again, or Lost -> reopened -> Won) now counts
+// exactly once, under whichever outcome it last landed on that month —
+// rather than being counted twice, or having an earlier same-month Lost
+// still counted after it was later overturned to Won. This is purely a
+// smarter counting query over data that already exists: no LeadStageChange
+// row is ever deleted or modified by this, and the full history (including
+// a lead's earlier, superseded outcome in the same month) stays intact and
+// readable from the lead's own detail page.
+//
+// Reliability caveat: this only guarantees accuracy for outcomes reached
+// through this app's own code. Any pre-existing production data from
+// before this tracking existed, or any direct database edit made outside
+// the app, would have no corresponding LeadStageChange row and would be
+// silently undercounted for whatever month the outcome actually happened
+// in. Nothing is backfilled here to paper over that — unrelated to, and
+// unchanged by, the per-lead-latest-outcome fix above.
+export async function getMonthlyLeadOutcomeCounts(
+  now: Date = new Date()
+): Promise<{ wonThisMonth: number; lostThisMonth: number }> {
+  const { start, end } = businessMonthRangeUtc(now);
+  const latestOutcomes = await prisma.leadStageChange.findMany({
+    where: { toStage: { in: ["WON", "LOST"] }, createdAt: { gte: start, lt: end } },
+    orderBy: { createdAt: "desc" },
+    distinct: ["leadId"],
+    select: { toStage: true },
+  });
+  let wonThisMonth = 0;
+  let lostThisMonth = 0;
+  for (const { toStage } of latestOutcomes) {
+    if (toStage === "WON") wonThisMonth++;
+    else if (toStage === "LOST") lostThisMonth++;
+  }
+  return { wonThisMonth, lostThisMonth };
 }
 
 // Eligible assignees for a lead — anyone with Sales department access, plus

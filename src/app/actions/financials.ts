@@ -371,6 +371,7 @@ export async function updateChecklistTaskNotesAction(taskId: string, notes: stri
   revalidatePath("/financials");
   revalidatePath("/todo");
   revalidatePath("/");
+  revalidatePath("/sales");
 }
 
 // ADMIN, or any non-admin role on their own shared/assigned task — set,
@@ -392,6 +393,7 @@ export async function updateChecklistTaskTargetDateAction(taskId: string, target
   revalidatePath("/financials");
   revalidatePath("/todo");
   revalidatePath("/");
+  revalidatePath("/sales");
 }
 
 export async function deleteChecklistTaskAction(taskId: string) {
@@ -414,6 +416,7 @@ export async function setChecklistTaskAssigneeAction(taskId: string, assigneeId:
   revalidatePath("/financials");
   revalidatePath("/todo");
   revalidatePath("/");
+  revalidatePath("/sales");
 }
 
 // Any non-admin role may only toggle a TEAM-visibility task or one assigned

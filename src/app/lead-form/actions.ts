@@ -11,6 +11,7 @@ import {
   LEAD_FREQUENCY_LABELS,
   LEAD_HOW_HEARD_OPTIONS,
   createDraftQuoteForLead,
+  ARCHIVED_LEAD_STAGES,
 } from "@/lib/leads";
 import { maybeSendAfterHoursAutoReply } from "@/lib/leadAutoReply";
 
@@ -98,17 +99,67 @@ export async function submitLeadAction(formData: FormData) {
     if (value) customFields.push({ label: field.label, value });
   }
 
-  // SCAM included here (flagged as a product call, not decided silently —
-  // see this PR's description): leaving it OUT would mean a scam-classified
-  // email permanently and silently suppresses any future resubmission from
-  // that same address, including a different real person who later shares
-  // it. Including it means a resubmission from that address always creates
-  // a fresh Lead instead, consistent with "don't auto-block other people
-  // sharing contact details."
+  // Both Scam and Unable-to-Contact are excluded from "already being
+  // handled" here (via ARCHIVED_LEAD_STAGES, which also covers Lost), same
+  // reasoning for each but for different reasons:
+  // - SCAM (flagged as a product call, not decided silently — see this PR's
+  //   description): leaving it OUT would mean a scam-classified email
+  //   permanently and silently suppresses any future resubmission from that
+  //   same address, including a different real person who later shares it.
+  //   A resubmission always creates a fresh Lead instead — the old Scam
+  //   record is untouched by this code path either way — consistent with
+  //   "don't auto-block other people sharing contact details."
+  // - UNABLE_TO_CONTACT is treated the same as a Lost one here — it's a
+  //   paused dead end, not a live inquiry someone is already working. It
+  //   gets special handling below (reopened rather than duplicated), not
+  //   silently treated as "still active" here.
+  // Only a genuinely still-active inquiry (not yet Won/Lost/Scam/Unable-to-
+  // Contact) is treated as "already being handled."
   const existing = await prisma.lead.findFirst({
-    where: { email: { equals: email, mode: "insensitive" }, stage: { notIn: ["WON", "LOST", "SCAM"] } },
+    where: { email: { equals: email, mode: "insensitive" }, stage: { notIn: ["WON", ...ARCHIVED_LEAD_STAGES] } },
   });
   if (existing) {
+    redirect("/lead-form/thank-you");
+  }
+
+  // Unable-to-Contact is different from the other archived stages above: it
+  // means the lead never actually talked to us, not that the deal is over —
+  // so a repeat inquiry from that same email is someone trying again, not a
+  // new client. Reopen the existing lead (back onto the active pipeline,
+  // restoring its normal follow-up/needs-scheduling visibility purely as a
+  // side effect of the stage change) instead of creating a duplicate Lead
+  // nobody would think to connect to the earlier contact attempts.
+  // `orderBy: updatedAt desc` because Lead.email isn't unique — if more than
+  // one Unable-to-Contact lead somehow matches, reopen whichever was touched
+  // most recently.
+  const unableToContactMatch = await prisma.lead.findFirst({
+    where: { email: { equals: email, mode: "insensitive" }, stage: "UNABLE_TO_CONTACT" },
+    orderBy: { updatedAt: "desc" },
+  });
+  if (unableToContactMatch) {
+    await prisma.lead.update({ where: { id: unableToContactMatch.id }, data: { stage: "CONTACTED" } });
+    await prisma.leadStageChange.create({
+      data: {
+        leadId: unableToContactMatch.id,
+        fromStage: "UNABLE_TO_CONTACT",
+        toStage: "CONTACTED",
+        changedById: null,
+      },
+    });
+
+    const resubmissionDetails: string[] = [];
+    if (serviceKey) resubmissionDetails.push(`Service interest: ${LEAD_SERVICE_LABELS[serviceKey] ?? serviceKey}`);
+    if (message) resubmissionDetails.push(`Message: ${message}`);
+    await prisma.leadNote.create({
+      data: {
+        leadId: unableToContactMatch.id,
+        authorId: null,
+        body:
+          "Automatically reopened: a new inquiry came in through the lead form for this same email address while this lead was marked Unable to Contact." +
+          (resubmissionDetails.length > 0 ? ` ${resubmissionDetails.join(" — ")}` : ""),
+      },
+    });
+
     redirect("/lead-form/thank-you");
   }
 

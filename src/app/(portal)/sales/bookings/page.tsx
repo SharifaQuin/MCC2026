@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
 import { prisma } from "@/lib/prisma";
 import { resolveActiveSlotMonth } from "@/lib/slotCapacitySummary";
+import ConfirmTcsButton from "./ConfirmTcsButton";
 
 export const dynamic = "force-dynamic";
 
@@ -129,6 +130,11 @@ export default async function BookingsPage({
                         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[status] ?? ""}`}>
                           {status}
                         </span>
+                        {b.status === "HOLD" && (
+                          <div className="mt-1.5">
+                            <ConfirmTcsButton bookingId={b.id} />
+                          </div>
+                        )}
                       </td>
                       <td className="py-1.5 pr-4 whitespace-nowrap text-neutral-500">{b.rep.name}</td>
                     </tr>
@@ -138,7 +144,9 @@ export default async function BookingsPage({
             </table>
             <p className="mt-3 text-xs text-neutral-400">
               A Hold expires 15 minutes after booking if it isn&rsquo;t confirmed in TCS — shown here
-              as Expired once that happens, and the slot opens back up automatically.
+              as Expired once that happens, and the slot opens back up automatically. You can still
+              confirm a Hold (even an Expired one) with the button above as long as no one else has
+              since booked over it.
             </p>
           </div>
         )}

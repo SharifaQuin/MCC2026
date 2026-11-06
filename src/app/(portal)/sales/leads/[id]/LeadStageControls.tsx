@@ -3,15 +3,26 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { LeadStage } from "@prisma/client";
-import { setLeadStageAction, markLeadLostAction, markLeadScamAction } from "../actions";
+import {
+  setLeadStageAction,
+  markLeadLostAction,
+  markLeadScamAction,
+  markLeadUnableToContactAction,
+  reopenLeadFromUnableToContactAction,
+} from "../actions";
 import { LEAD_STAGE_LABELS } from "@/lib/leads";
 
+// Unable to Contact is offered from any active, non-terminal stage (the
+// brief didn't name specific source stages — this is a judgment call) —
+// it's a pause, not a forward pipeline move, so it's always available
+// alongside whatever the column's own normal next steps are.
 const NEXT_STAGES: Record<string, LeadStage[]> = {
-  NEW_INQUIRY: ["CONTACTED"],
-  CONTACTED: ["QUOTED", "LOST"],
-  QUOTED: ["WON", "LOST"],
+  NEW_INQUIRY: ["CONTACTED", "UNABLE_TO_CONTACT"],
+  CONTACTED: ["QUOTED", "LOST", "UNABLE_TO_CONTACT"],
+  QUOTED: ["WON", "LOST", "UNABLE_TO_CONTACT"],
   WON: [],
   LOST: ["CONTACTED"],
+  UNABLE_TO_CONTACT: ["CONTACTED"],
 };
 
 // WON is excluded here too (same reasoning as NEXT_STAGES.WON being empty)
@@ -42,27 +53,38 @@ export default function LeadStageControls({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
-        {options.map((next) => (
-          <button
-            key={next}
-            type="button"
-            disabled={pending}
-            onClick={() => {
-              if (next === "LOST") {
-                setLosing(true);
-              } else {
-                startTransition(() => setLeadStageAction(leadId, next));
-              }
-            }}
-            className={`rounded-md px-3 py-2 text-sm font-medium disabled:opacity-60 ${
-              next === "LOST"
-                ? "border border-red-300 text-red-700 hover:bg-red-50"
-                : "bg-brand-600 text-white hover:bg-brand-700"
-            }`}
-          >
-            Move to: {LEAD_STAGE_LABELS[next]}
-          </button>
-        ))}
+        {options.map((next) => {
+          const isReopenFromUnableToContact = stage === "UNABLE_TO_CONTACT" && next === "CONTACTED";
+          return (
+            <button
+              key={next}
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                if (next === "LOST") {
+                  setLosing(true);
+                } else if (next === "UNABLE_TO_CONTACT") {
+                  startTransition(() => markLeadUnableToContactAction(leadId));
+                } else if (isReopenFromUnableToContact) {
+                  // Routed through the dedicated reopen action, not
+                  // setLeadStageAction — see its own comment for why.
+                  startTransition(() => reopenLeadFromUnableToContactAction(leadId));
+                } else {
+                  startTransition(() => setLeadStageAction(leadId, next));
+                }
+              }}
+              className={`rounded-md px-3 py-2 text-sm font-medium disabled:opacity-60 ${
+                next === "LOST"
+                  ? "border border-red-300 text-red-700 hover:bg-red-50"
+                  : next === "UNABLE_TO_CONTACT"
+                    ? "border border-neutral-300 text-neutral-600 hover:bg-neutral-50"
+                    : "bg-brand-600 text-white hover:bg-brand-700"
+              }`}
+            >
+              Move to: {LEAD_STAGE_LABELS[next]}
+            </button>
+          );
+        })}
 
         {/* Deliberately styled nothing like the Lost button (black, not
             red) and placed with a gap from it — the owner asked for this

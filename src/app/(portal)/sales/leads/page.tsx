@@ -6,6 +6,7 @@ import {
   ARCHIVED_LEAD_STAGES,
   LEAD_SOURCE_LABELS,
   getLeadFunnelBySource,
+  getFollowUpUrgency,
 } from "@/lib/leads";
 import LeadPipelineBoard from "./LeadPipelineBoard";
 import AddLeadPanel from "./AddLeadPanel";
@@ -26,7 +27,7 @@ export default async function LeadsPage({
     const leads = await prisma.lead.findMany({
       where: { stage: { notIn: ARCHIVED_LEAD_STAGES } },
       include: { assignedTo: { select: { name: true } } },
-      orderBy: { createdAt: "asc" },
+      orderBy: { createdAt: "desc" },
     });
     return (
       <div>
@@ -57,7 +58,7 @@ export default async function LeadsPage({
   const source = searchParams.source?.trim();
   const mineOnly = searchParams.assigned === "mine";
 
-  const [leads, lostCount, scamCount, funnel] = await Promise.all([
+  const [leads, lostCount, scamCount, unableToContactCount, funnel] = await Promise.all([
     prisma.lead.findMany({
       where: {
         stage: { notIn: ARCHIVED_LEAD_STAGES },
@@ -75,10 +76,15 @@ export default async function LeadsPage({
           : {}),
       },
       include: { assignedTo: { select: { name: true } } },
-      orderBy: { createdAt: "asc" },
+      orderBy: { createdAt: "desc" },
     }),
+    // Queried separately (rather than off ARCHIVED_LEAD_STAGES as a single
+    // count) so each stage keeps its own accurate "N not shown here" link —
+    // ARCHIVED_LEAD_STAGES now covers Lost, Scam, and Unable-to-Contact,
+    // which would otherwise silently merge into one misleading number here.
     prisma.lead.count({ where: { stage: "LOST" } }),
     prisma.lead.count({ where: { stage: "SCAM" } }),
+    prisma.lead.count({ where: { stage: "UNABLE_TO_CONTACT" } }),
     getLeadFunnelBySource(),
   ]);
 
@@ -110,6 +116,7 @@ export default async function LeadsPage({
     stage: l.stage,
     source: l.source,
     followUpDueAt: l.followUpDueAt ? l.followUpDueAt.toISOString() : null,
+    followUpUrgency: l.followUpDueAt ? getFollowUpUrgency(l.followUpDueAt) : null,
     assignedToName: l.assignedTo?.name ?? null,
   }));
 
@@ -121,7 +128,7 @@ export default async function LeadsPage({
             ← Back to Sales
           </Link>
           <h1 className="mt-1 text-2xl font-semibold">
-            {session.role === "SALES_REP" ? "Leads & Callbacks" : "Lead Pipeline"}
+            {session.role === "SALES_REP" ? "Pipeline & Callbacks" : "Lead Pipeline"}
           </h1>
         </div>
         <div className="flex items-center gap-3">
@@ -216,7 +223,12 @@ export default async function LeadsPage({
       </form>
 
       {session.role === "SALES_REP" ? (
-        <SalesRepLeadsList leads={salesRepLeadRows} />
+        <>
+          <h2 className="mb-3 text-lg font-medium text-neutral-900">Pipeline Board</h2>
+          <LeadPipelineBoard columns={columns} />
+          <h2 className="mb-3 mt-8 text-lg font-medium text-neutral-900">Leads &amp; Callbacks</h2>
+          <SalesRepLeadsList leads={salesRepLeadRows} />
+        </>
       ) : (
         <LeadPipelineBoard columns={columns} />
       )}
@@ -239,6 +251,15 @@ export default async function LeadsPage({
         </p>
       )}
 
+      {unableToContactCount > 0 && (
+        <p className="mt-2 text-sm text-neutral-400">
+          <Link href="/sales/leads/unable-to-contact" className="text-brand-700 hover:underline">
+            {unableToContactCount} unable-to-contact lead{unableToContactCount === 1 ? "" : "s"}
+          </Link>{" "}
+          not shown here.
+        </p>
+      )}
+
       {funnel.length > 0 && (
         <div className="mt-6 rounded-lg border border-neutral-200 bg-white p-4">
           <p className="mb-3 font-medium text-neutral-900">Leads by Source (All Time)</p>
@@ -252,6 +273,7 @@ export default async function LeadsPage({
                   <th className="py-2 pr-4">Won</th>
                   <th className="py-2 pr-4">Lost</th>
                   <th className="py-2 pr-4">Scam</th>
+                  <th className="py-2 pr-4">Unable to Contact</th>
                   <th className="py-2 pr-4">Win Rate</th>
                 </tr>
               </thead>
@@ -264,6 +286,7 @@ export default async function LeadsPage({
                     <td className="py-2 pr-4 text-neutral-600">{s.won}</td>
                     <td className="py-2 pr-4 text-neutral-600">{s.lost}</td>
                     <td className="py-2 pr-4 text-neutral-600">{s.scam}</td>
+                    <td className="py-2 pr-4 text-neutral-600">{s.unableToContact}</td>
                     <td className="py-2 pr-4 text-neutral-600">
                       {s.winRatePct === null ? "—" : `${s.winRatePct}%`}
                     </td>

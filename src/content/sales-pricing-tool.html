@@ -120,6 +120,14 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .cv-suggested .cv-suggested-label{color:var(--orange);opacity:.75;text-transform:uppercase;letter-spacing:.08em;font-size:13px;font-weight:600;display:block;text-align:center;margin-bottom:2px;}
 .cv-breakdown{margin-top:14px;display:flex;flex-wrap:wrap;gap:6px;}
 .cv-chip{font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.03em;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.75);padding:4px 10px;border-radius:12px;}
+/* Item 2: Initial Cleaning section of the Client-Facing Estimate panel — recurring Standard only */
+.cv-initial-box{margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.15);}
+.cv-initial-label{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.6);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.cv-initial-tag{font-size:9px;letter-spacing:.04em;text-transform:none;background:rgba(232,114,42,.18);border:1px solid rgba(232,114,42,.4);color:var(--orange);padding:2px 8px;border-radius:10px;}
+.cv-initial-price{font-family:'Cormorant Garamond',serif;font-size:30px;color:#fff;margin-top:6px;}
+.cv-initial-sub{font-family:'DM Mono',monospace;font-size:10.5px;color:rgba(255,255,255,.55);margin-top:4px;}
+/* Item 3: generic, non-admin-safe hold notice — no dollar figures */
+.sales-hold-banner{margin:10px 0 0;padding:11px 13px;border-radius:7px;font-size:12.5px;line-height:1.5;background:var(--red-lt);border:1px solid var(--red);color:var(--red);}
 
 /* TEAR LINE */
 .tear{position:relative;height:0;border-top:2px dashed var(--paper-dark);background:var(--paper);}
@@ -143,6 +151,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .margin-warn-box{margin-top:14px;padding:11px 13px;border-radius:7px;font-size:12px;line-height:1.5;display:none;}
 .margin-warn-box.show-bad{display:block;background:var(--red-lt);border:1px solid var(--red);color:var(--red);}
 .margin-warn-box.show-good{display:block;background:var(--green-lt);border:1px solid var(--green);color:var(--green);}
+/* Item 3: hard 10% floor — a separate, distinctly-styled indicator from the
+   21%-target margin-warn-box above (never conflate the two numbers). */
+.margin-hold-box{margin-top:10px;padding:11px 13px;border-radius:7px;font-size:12px;line-height:1.5;display:none;}
+.margin-hold-box.show{display:block;background:#2a0a0a;border:2px solid var(--red);color:#fff;}
 .schedule-box{margin-top:14px;padding:12px 14px;border-radius:7px;background:var(--gold-lt);border:1px solid var(--gold-mid);}
 .floor-box{margin-top:14px;padding:12px 14px;border-radius:7px;background:var(--red-lt);border:1px solid var(--red);}
 .floor-row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
@@ -507,12 +519,12 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 <!-- ADMIN-ONLY:START -->
 <div class="assume-wrap">
   <div class="assume-hdr" onclick="toggleAssumptions()">
-    <div class="assume-hdr-txt"><strong>All values below are now real, decided, or owner-confirmed</strong> — tap to see the full history of what changed and why</div>
+    <div class="assume-hdr-txt"><strong>Pricing decisions below are real, decided, or owner-confirmed — the cost figures they're checked against remain provisional and unverified pending reconciliation</strong> — tap to see the full history of what changed and why</div>
     <div class="assume-toggle" id="assume-toggle-icon">Show ▾</div>
   </div>
   <div class="assume-body" id="assume-body">
     <div class="assume-grid">
-      <div class="assume-item" style="border-left-color:var(--orange);background:rgba(200,110,40,.10);"><b>Cost engine updated (Sep 2026 client audit):</b> ✓ Real data — TCS jobs &amp; payroll Jul 1–Sep 28, 2026. Drive time is now paid at the full $25/hr tech wage (was $16.90), using each city's real drive time per tech and real mileage per visit from TCS drive logs (was a flat 1 hr/tech and a flat per-hour mileage rate). Overhead is now $20.52 per paid tech-hour, cleaning + drive (was $4,452.60/mo ÷ team-hours): rent, admin, insurance beyond workers' comp, fuel, vehicle, recruiting, software, supplies, card-paid supplies/marketing and training hours ÷ 438 client hours/mo. The walk-away floor and margin check below now use these costs. Client prices themselves are unchanged — that stays the owner's decision.</div>
+      <div class="assume-item" style="border-left-color:var(--orange);background:rgba(200,110,40,.10);"><b>Cost engine updated (Sep 2026 client audit):</b> Built from real TCS job &amp; payroll logs, Jul 1–Sep 28, 2026 — not invented, but not yet independently reconciled or verified as a complete cost model (see the Cost &amp; Margin Check panel's own "Costs Unverified" notice, further down). Drive time is now paid at the full $25/hr tech wage (was $16.90), using each city's real drive time per tech and real mileage per visit from TCS drive logs (was a flat 1 hr/tech and a flat per-hour mileage rate). Overhead is now $20.52 per paid tech-hour, cleaning + drive (was $4,452.60/mo ÷ team-hours): rent, admin, insurance beyond workers' comp, fuel, vehicle, recruiting, software, supplies, card-paid supplies/marketing and training hours ÷ 438 client hours/mo. The walk-away floor and margin check below use these still-unverified costs — every figure they produce is provisional until reconciliation is complete. Client prices themselves are unchanged — that stays the owner's decision, and is not affected by whether the cost model is verified.</div>
       <div class="assume-item" style="border-left-color:var(--gold-mid);background:rgba(58,107,69,.12);"><b>Sqft pace (Standard):</b> ✓ Real data (July 2026) — 29 logged recurring light-condition jobs, team of 2 (1 outlier excluded — very light scope). Formula: 1.14 hrs base + 0.63 hrs per 1,000 sqft.</div>
       <div class="assume-item" style="border-left-color:var(--gold-mid);background:rgba(58,107,69,.12);"><b>Client rate:</b> ✓ Decided (July 2026) — $150/hr team ($75/tech), chosen after comparing margin at $130.90/hr vs $150/hr against real overhead. Applies to Standard &amp; A la carte.</div>
       <div class="assume-item" style="border-left-color:var(--gold-mid);background:rgba(58,107,69,.12);"><b>Frequency discount (Standard):</b> ✓ Decided (July 2026) — Weekly -15%, Bi-Weekly -10%, Tri-Weekly -5%, Monthly &amp; One-Time at base rate. Business decision — real CRM job-time data was checked but too inconsistent to derive an exact number.</div>
@@ -660,7 +672,13 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
       <div class="cv-price-sub" id="cv-price-sub"></div>
       <div class="cv-breakdown" id="cv-chips"></div>
       <div class="cv-range" id="cv-range"></div>
+      <div class="cv-initial-box" id="cv-initial-box" style="display:none;">
+        <div class="cv-initial-label">Initial Cleaning <span class="cv-initial-tag">Estimate — not a fixed quote</span></div>
+        <div class="cv-initial-price" id="cv-initial-price"></div>
+        <div class="cv-initial-sub" id="cv-initial-sub"></div>
+      </div>
     </div>
+    <div class="sales-hold-banner" id="sales-hold-banner" style="display:none;">This quote needs owner review before it can be sent.</div>
     <div class="save-quote-box">
       <div class="save-quote-row">
         <input type="text" id="save-client-name" placeholder="Client name">
@@ -708,10 +726,11 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
     <div class="biz-view">
       <div class="biz-hdr">
         <div class="biz-hdr-txt">Cost &amp; Margin Check</div>
-        <div class="biz-hdr-badge">Real Data</div>
+        <div class="biz-hdr-badge">Costs Unverified</div>
       </div>
       <table class="ledger" id="ledger-body"></table>
       <div class="margin-warn-box" id="margin-warn"></div>
+      <div class="margin-hold-box" id="margin-hold"></div>
       <div class="floor-box">
         <div class="floor-row">
           <label for="target-margin">Walk-away floor — target margin</label>
@@ -721,7 +740,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
           </div>
         </div>
         <div class="floor-price" id="floor-price"></div>
-        <div class="floor-note">Absolute minimum you can charge and still hit this margin — never show this number to the client. Defaults to 21% (business minimum); lower it here only if you need to book the job.</div>
+        <div class="floor-note">Absolute minimum you can charge and still hit this margin — never show this number to the client. Provisional (based on unverified costs). Defaults to 21% (business target); lower it here only if you need to book the job.</div>
       </div>
       <div class="schedule-box" id="schedule-box"></div>
       <div class="hours-note" id="hours-note"></div>
@@ -733,7 +752,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 
 <!-- ADMIN-ONLY:START -->
 <div style="max-width:1300px;margin:0 auto;padding:0 32px;">
-  <div class="disclaimer">This is a working internal tool. All core pricing inputs — sqft pacing, rates, frequency/volume discounts, add-ons, overhead, mileage, and hot-zone pricing — now reflect real data or owner-confirmed decisions (July 2026), with drive time, mileage and overhead updated from the Sep 2026 client audit. Competitor pricing research is the one open item not yet incorporated. Review the assumptions banner above for the full history of what changed.</div>
+  <div class="disclaimer">This is a working internal tool. Core pricing decisions — sqft pacing, rates, frequency/volume discounts, add-ons, and hot-zone pricing — reflect real data or owner-confirmed business decisions (July 2026) and are unaffected by cost verification. The internal cost model behind the walk-away floor and margin check (drive time, mileage, and overhead, updated from the Sep 2026 client audit) remains provisional and unverified pending reconciliation with supporting payroll, TCS, and mileage records — see the Cost &amp; Margin Check panel's "Costs Unverified" notice. Competitor pricing research is the one open item not yet incorporated. Review the assumptions banner above for the full history of what changed.</div>
 </div>
 <!-- ADMIN-ONLY:END -->
 
@@ -871,9 +890,14 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
     </div>
 
     <div class="price-card">
-      <div class="price-eyebrow">Your Quote</div>
+      <div class="price-eyebrow" id="q-price-eyebrow">Your Quote</div>
       <div class="price-value" id="q-price"></div>
-      <div class="price-caption">Based on the complimentary walkthrough of your home</div>
+      <div class="price-caption" id="q-price-caption">Based on the complimentary walkthrough of your home</div>
+    </div>
+    <div class="price-card" id="q-ongoing-card" style="display:none;">
+      <div class="price-eyebrow">Ongoing Cleaning</div>
+      <div class="price-value" id="q-ongoing-price"></div>
+      <div class="price-caption" id="q-ongoing-caption"></div>
     </div>
 
     <div class="card">
@@ -1414,6 +1438,18 @@ function switchTab(name){
 // non-ADMIN response along with every function that reads them, so none of
 // these numbers ever reach a Sales Rep's browser in any form.
 /* ADMIN-ONLY:START */
+// Item 3 cross-reference: src/lib/pricingMargin.ts copies TECH_WAGE,
+// WC_RATE, TAX_RATE, MILEAGE_RATE, AUDIT_OVERHEAD_PER_TECH_HR, CITY_DRIVE
+// (and its friends), HK_ROUNDTRIP_MILES, DRIVE_HOURS_PER_TECH, and
+// CA_MIN_WAGE VERBATIM, for the server-side 10% margin-hold check (a
+// non-ADMIN browser never receives this block, so that check can't run
+// client-side) — if any of these change here, update that file to match.
+// This cross-reference comment itself must stay INSIDE the ADMIN-ONLY
+// marker below (not just the constants it names) — it names every one of
+// these constants in plain text, which would otherwise ship to a non-ADMIN
+// browser as readable comment text even though the constants' own VALUES
+// are stripped, the same privacy leak the values themselves are guarded
+// against.
 const TECH_WAGE = 25;
 const WC_RATE = 0.15;
 const TAX_RATE = 0.105;
@@ -1443,12 +1479,65 @@ const AUDIT_OVERHEAD_PER_TECH_HR = 20.52;
 function currentOverheadPerHr(){
   return {rate:AUDIT_OVERHEAD_PER_TECH_HR, label:'Sep 2026 audit', real:true};
 }
+// Correction round (Item 4 follow-up) cross-reference: mirrors
+// src/lib/pricingMargin.ts's own `COST_DATA_VERIFIED` export exactly — see
+// that file's header comment for what flipping it to `true` actually
+// requires (a real TCS job-time export, a Gusto payroll export, and the
+// mileage reimbursement log). This copy drives ONLY the informational-only
+// live ledger below (recalc()'s margin-hold box/badge/floor-price wording)
+// — the real, authoritative hold is always computed independently,
+// server-side, in that module; this constant is never read by it.
+const COST_DATA_VERIFIED = false;
 /* ADMIN-ONLY:END */
 const RATE_PER_TECH = 75.00; // Updated July 2026: confirmed client rate (was $65.45 aspirational-vs-current test; now decided at $150/hr team)
 const TEAM_RATE = RATE_PER_TECH * 2;
 
 // Frequency discount tiers for Standard Clean (business decision, capped at 15% per owner request — real CRM data checked but too noisy to derive precise multipliers)
+// One-time Standard only from here on — every recurring Standard frequency
+// reads RECURRING_STANDARD_DISCOUNTS below instead (see getStandardFreqDiscount()).
 const FREQUENCY_DISCOUNTS = { onetime:0, monthly:0, triweekly:0.05, biweekly:0.10, weekly:0.15 };
+
+// Item 1 (owner decision): recurring Standard Clean uses its own rate and
+// discount schedule, isolated from RATE_PER_TECH/TEAM_RATE and
+// FREQUENCY_DISCOUNTS above — those still drive one-time Standard and every
+// other service (A la Carte, specialty, Housekeeping, Airbnb), completely
+// unchanged. Never read RATE_PER_TECH/TEAM_RATE/FREQUENCY_DISCOUNTS for a
+// recurring Standard quote — see computeStandard() and getStandardFreqDiscount().
+const RECURRING_STANDARD_TEAM_RATE = 120; // $/hr, team of 2 — recurring (ongoing) Standard Clean rate only
+const RECURRING_STANDARD_DISCOUNTS = { monthly:0.05, triweekly:0.10, biweekly:0.15, weekly:0.20 };
+
+// Single source of truth for "which discount table applies" for Standard —
+// every place that shows or uses a Standard frequency discount percentage
+// (the field label, computeStandard() itself, and the recalc() chip) reads
+// through this one function so none of them can silently drift out of sync.
+function getStandardFreqDiscount(freq){
+  if(freq === 'onetime') return FREQUENCY_DISCOUNTS.onetime; // always 0
+  return (RECURRING_STANDARD_DISCOUNTS[freq] != null) ? RECURRING_STANDARD_DISCOUNTS[freq] : FREQUENCY_DISCOUNTS[freq];
+}
+
+// Item 2 (owner decision): the Initial cleaning for a recurring Standard
+// quote is billed separately from the ongoing/flat price above — same
+// $120/hr team-of-2 rate (reused from Item 1, not a new number), actual
+// time on site, 3-hour/$360 minimum, and NEVER discounted by
+// RECURRING_STANDARD_DISCOUNTS. estimatedHours defaults to historical
+// guidance below, but a rep can override it (Item 5) — see computeStandard().
+const INITIAL_CLEAN_TEAM_RATE = RECURRING_STANDARD_TEAM_RATE; // $120/hr, team of 2 — same rate, not separately editable
+const INITIAL_CLEAN_MIN_HOURS = 3;
+const INITIAL_CLEAN_MINIMUM = INITIAL_CLEAN_MIN_HOURS * INITIAL_CLEAN_TEAM_RATE; // 3 * 120 = $360, derived so these can't drift apart
+// Historical guidance only — NOT a sqft-driven formula: 8 verified
+// two-person Initial Standard-Clean jobs logged in TCS ranged 3h18–5h01.
+// This is a planning estimate for the rep/client, never a fixed quote, and
+// never a guarantee that the job's actual time on site will be profitable —
+// see INITIAL_CLEAN_ESTIMATE_DISCLAIMER below (same sentence used for the
+// Item 3 margin-hold copy on this leg).
+const INITIAL_CLEAN_HISTORICAL_HOURS = 4;
+// A hands-free heuristic for a likely hours/rate transposition in the Item 5
+// hourly-entry override (e.g. typing "120" into the hours box, meaning
+// $120/hr, instead of "3" hours at the fixed $120/hr rate): 24 hours for a
+// single two-person Initial Cleaning visit is already 3 full 8-hour working
+// days, which is implausible for one visit — warn, never silently correct.
+const INITIAL_HOURS_IMPLAUSIBLE_THRESHOLD = 24;
+const INITIAL_CLEAN_ESTIMATE_DISCLAIMER = "An hourly estimate does not guarantee the job's actual-time profitability.";
 
 // Airbnb turnover (July 2026) — owner-confirmed real numbers
 const AIRBNB_BUNDLE_HOURS = 0.2;      // ~12 min combined extra for fridge/oven/linens/laundry, done in parallel — not full standalone add-on time
@@ -1626,7 +1715,22 @@ const SERVICES = [
 ];
 
 let state = { service:'standard', sqft:1800, condition:'moderate', frequency:'onetime', addons:{}, areaQty:{}, glassDoors:0, hkHours:4, hkTerm:'monthly', pcTeamSize:2, airbnbFreq:1, airbnbExtraLoads:0, targetMargin:21, firstTimeClient:false,
-  bedrooms:0, fullBaths:0, halfBaths:0, floorTypes:{}, floorDetails:'', notes:'', collectedVia:'calledin', collectedDate:'' };
+  bedrooms:0, fullBaths:0, halfBaths:0, floorTypes:{}, floorDetails:'', notes:'', collectedVia:'calledin', collectedDate:'',
+  // Item 5: Initial-Cleaning hourly-entry override bookkeeping (recurring
+  // Standard only) — null/false means "use the historical default", never
+  // silently synthesized for a legacy quote that predates these fields.
+  initialHoursOverride:null, initialHoursIsOverride:false };
+
+// Item 3: the server-computed marginHold boolean as of the quote's last
+// save/load in THIS tab (Pricing Calculator) — null until a save/load has
+// happened. Purely informational here; see updateCalcHoldBanner() (further
+// down) and the ADMIN-ONLY margin-hold ledger box in recalc() for the two
+// places that read it. The authoritative check always runs fresh,
+// server-side, at send time regardless of this value. Declared up here
+// (not nearer updateCalcHoldBanner's own definition) because recalc() —
+// which calls updateCalcHoldBanner() — runs once at script init time,
+// below, before a later `let` would exist.
+let lastSavedQuoteMarginHold = null;
 
 const FLOOR_TYPES = ['Hardwood','Tile','Carpet','Laminate','Vinyl / LVP','Concrete','Other'];
 const COLLECTED_VIA_LABELS = { calledin:'Called-In', walkthrough:'Complimentary Walkthrough', leadform:'Lead Form', other:'Other' };
@@ -1687,12 +1791,67 @@ function sqftFieldHTML(informationalOnly){
 }
 function frequencyFieldHTML(){
   const opts = [['onetime','One-Time'],['monthly','Monthly'],['triweekly','Tri-Weekly'],['biweekly','Bi-Weekly'],['weekly','Weekly']];
+  const freqDiscount = getStandardFreqDiscount(state.frequency);
+  const isRecurring = state.frequency !== 'onetime';
   return `
   <div class="field-group">
-    <div class="field-label">Cleaning Frequency <span class="val">${FREQUENCY_DISCOUNTS[state.frequency]*100 > 0 ? '-'+(FREQUENCY_DISCOUNTS[state.frequency]*100).toFixed(0)+'%' : 'Base rate'}</span></div>
+    <div class="field-label">Cleaning Frequency <span class="val">${freqDiscount*100 > 0 ? '-'+(freqDiscount*100).toFixed(0)+'%' : 'Base rate'}</span></div>
     <div class="seg">${opts.map(o=>`<button class="seg-btn ${state.frequency===o[0]?'active':''}" onclick="setFrequency('${o[0]}')">${o[1]}</button>`).join('')}</div>
-    <div class="note-box">One-Time and Monthly are priced the same (base rate). More frequent visits get a discount, capped at 15% for Weekly — set as a business decision; real job-time data was checked but was too inconsistent to derive an exact number.</div>
+    <div class="note-box">${isRecurring
+      ? `Recurring Standard Clean is billed at its own $${RECURRING_STANDARD_TEAM_RATE}/hr team rate (separate from the one-time $${TEAM_RATE}/hr rate), with a discount that grows from 5% Monthly to 20% Weekly.`
+      : 'One-Time and Monthly are priced the same (base rate). More frequent visits get a discount, capped at 15% for Weekly — set as a business decision; real job-time data was checked but was too inconsistent to derive an exact number.'}</div>
+  </div>
+  ${isRecurring ? initialCleanFieldHTML() : ''}`;
+}
+function initialCleanFieldHTML(){
+  const r = computeStandard();
+  const init = r.initial;
+  const defaultVal = INITIAL_CLEAN_HISTORICAL_HOURS;
+  const displayHours = init ? init.estimatedHours : defaultVal;
+  return `
+  <div class="field-group" id="initial-clean-group">
+    <div class="field-label">Initial Cleaning — Estimated Hours <span class="val">${state.initialHoursIsOverride ? 'Custom' : 'Historical default'}</span></div>
+    <input type="number" id="initial-hours-input" min="0.25" step="0.25" value="${displayHours}" oninput="updateInitialHours(this.value)">
+    <div class="note-box">Default is ${defaultVal} hrs (around four hours) — historical guidance only, from 8 verified two-person Initial Cleaning jobs logged in TCS (range 3h18–5h01), not a sqft-driven formula. Billed at $${INITIAL_CLEAN_TEAM_RATE}/hr team-of-2 for actual time on site, with a ${INITIAL_CLEAN_MIN_HOURS}-hr / $${INITIAL_CLEAN_MINIMUM} minimum — never discounted. ${INITIAL_CLEAN_ESTIMATE_DISCLAIMER}</div>
+    <div class="note-box" id="initial-hours-warning" style="display:none;color:var(--red);font-style:normal;font-weight:600;"></div>
+    <div class="note-box" id="initial-clean-preview"></div>
   </div>`;
+}
+function updateInitialHours(v){
+  const warnEl = document.getElementById('initial-hours-warning');
+  const n = parseFloat(v);
+  // Item 5: require positive, finite hours before the value is used in any
+  // computation, save, or send — reject NaN/Infinity/zero/negative instead
+  // of silently accepting a bad number. A rejected entry leaves the prior
+  // valid override (or the historical default) in place.
+  if(!isFinite(n) || n <= 0){
+    if(warnEl){ warnEl.style.display = 'block'; warnEl.textContent = 'Enter a positive number of hours — that value was not used.'; }
+    return;
+  }
+  state.initialHoursOverride = n;
+  state.initialHoursIsOverride = true;
+  if(warnEl){
+    if(n > INITIAL_HOURS_IMPLAUSIBLE_THRESHOLD){
+      // Warn, never silently correct, on a likely hours/rate transposition.
+      warnEl.style.display = 'block';
+      warnEl.textContent = `⚠ ${n} hours is unusually high for one visit (more than ${(INITIAL_HOURS_IMPLAUSIBLE_THRESHOLD/8).toFixed(0)} full 8-hour working days) — double-check you didn't type the $${INITIAL_CLEAN_TEAM_RATE}/hr rate into the hours field by mistake.`;
+    } else {
+      warnEl.style.display = 'none';
+      warnEl.textContent = '';
+    }
+  }
+  recalc();
+}
+function resetInitialHoursToDefault(){
+  state.initialHoursOverride = null;
+  state.initialHoursIsOverride = false;
+  buildDynamicFields();
+  recalc();
+}
+function formatInitialCleanTimeText(hours, isOverride){
+  if(!isOverride) return 'around four hours';
+  const rounded = Math.round(hours*4)/4;
+  return `around ${rounded} hour${rounded===1?'':'s'}`;
 }
 function teamSizeFieldHTML(){
   const opts = [[2,'Team of 2'],[3,'Team of 3']];
@@ -1881,16 +2040,62 @@ function computeStandard(){
   // 80 min (1.33 hrs) base per job + 32 min (0.53 hrs) per additional 1,000 sqft, for a team of 2.
   const lightHours = STANDARD_BASE_HRS + (state.sqft/1000) * STANDARD_HRS_PER_1000SQFT;
   const baseHours = lightHours * condMult;
-  const freqDiscount = FREQUENCY_DISCOUNTS[state.frequency];
-  const corePrice = Math.max(200, baseHours*TEAM_RATE) * (1-freqDiscount);
+  const isRecurring = state.frequency !== 'onetime';
+  // Item 1: recurring Standard reads its own isolated rate/discount table;
+  // one-time Standard keeps TEAM_RATE/FREQUENCY_DISCOUNTS exactly as before.
+  const rate = isRecurring ? RECURRING_STANDARD_TEAM_RATE : TEAM_RATE;
+  const freqDiscount = getStandardFreqDiscount(state.frequency);
+  const corePrice = Math.max(200, baseHours*rate) * (1-freqDiscount);
   const {addonFee, addonHours} = computeAddonsFor('standard');
   const price = corePrice + addonFee;
   const hours = baseHours + addonHours;
-  const lowPrice = Math.max(200, price*0.8), highPrice = Math.max(lowPrice, price*1.2);
+  // Item 3 (correction round): a recurring Standard quote's Ongoing leg is
+  // billed at a single flat number every visit — it never had a genuine
+  // ±20% buildup-variance range to begin with (that range only ever existed
+  // for the one-time cosmetic display). Setting lowPrice/highPrice to null
+  // here is the ONE source-of-truth change that makes every consumer
+  // (recalc()'s cv-price, saveQuoteForClient()'s low/high, renderQuote()'s
+  // priceText, computeCurrent()'s own range-overwrite block below) fall
+  // through to its existing flat-number branch — see each one's own
+  // comments for why no separate patch is needed at any of those sites.
+  // One-time Standard keeps computing its real ±20% range exactly as before.
+  let lowPrice = null, highPrice = null;
+  if(!isRecurring){
+    lowPrice = Math.max(200, price*0.8);
+    highPrice = Math.max(lowPrice, price*1.2);
+  }
   const freqLabel = {onetime:'One-Time',monthly:'Monthly',triweekly:'Tri-Weekly',biweekly:'Bi-Weekly',weekly:'Weekly'}[state.frequency];
-  return {price, hours, teamSize:2, lowPrice, highPrice,
-    note:`Base ${baseHours.toFixed(2)} hrs (real pace data: 1.14 hrs + 0.63 hrs/1,000 sqft, × condition) @ team rate, ${freqLabel} (${freqDiscount>0?'-'+(freqDiscount*100).toFixed(0)+'%':'base rate'}) + $${addonFee} add-ons`,
-    range:`Quote range: $${lowPrice.toFixed(0)}–$${highPrice.toFixed(0)} (±20%, depending on condition on arrival)`};
+  const result = {price, hours, teamSize:2, lowPrice, highPrice,
+    note:`Base ${baseHours.toFixed(2)} hrs (real pace data: 1.14 hrs + 0.63 hrs/1,000 sqft, × condition) @ ${isRecurring?'recurring ':''}team rate ($${rate}/hr), ${freqLabel} (${freqDiscount>0?'-'+(freqDiscount*100).toFixed(0)+'%':'base rate'}) + $${addonFee} add-ons`,
+    // This recurring-branch string is always overwritten by computeCurrent()
+    // (see its own `isRecurringStandardPricing` branch further down) once
+    // city premium/pet fee are known — kept in the same 2-decimal format
+    // here only so the two templates never visibly disagree if someone
+    // reads/calls this function directly.
+    range: isRecurring
+      ? `Flat rate: $${price.toFixed(2)}/visit — same amount every visit`
+      : `Quote range: $${lowPrice.toFixed(0)}–$${highPrice.toFixed(0)} (±20%, depending on condition on arrival)`};
+
+  // Item 2: for any recurring Standard quote, also compute the Initial
+  // Cleaning leg — actual time on site at INITIAL_CLEAN_TEAM_RATE, 3-hr/$360
+  // minimum, never discounted. estimatedHours defaults to historical
+  // guidance (INITIAL_CLEAN_HISTORICAL_HOURS) unless the rep has entered a
+  // valid override (Item 5) via state.initialHoursOverride — a rejected or
+  // missing override always falls back to the default, never a bad number.
+  if(isRecurring){
+    const hasValidOverride = !!state.initialHoursIsOverride
+      && typeof state.initialHoursOverride === 'number'
+      && isFinite(state.initialHoursOverride)
+      && state.initialHoursOverride > 0;
+    const estimatedHours = hasValidOverride ? state.initialHoursOverride : INITIAL_CLEAN_HISTORICAL_HOURS;
+    const estimatedCost = Math.max(INITIAL_CLEAN_MINIMUM, estimatedHours*INITIAL_CLEAN_TEAM_RATE);
+    result.initial = {
+      estimatedHours, estimatedCost,
+      minimumHours: INITIAL_CLEAN_MIN_HOURS, minimumCost: INITIAL_CLEAN_MINIMUM,
+      teamRate: INITIAL_CLEAN_TEAM_RATE, isOverride: hasValidOverride,
+    };
+  }
+  return result;
 }
 function computeAlaCarte(){
   let rawHours=0;
@@ -1976,7 +2181,20 @@ function computeCurrent(){
   }
   r.cityPremium = cityPremium;
 
-  const isFirstTime = document.getElementById('first-time-client') && document.getElementById('first-time-client').checked;
+  // Item 4 (correction round): recurring Standard's Ongoing leg (r.price at
+  // this point, for that case) never gets the first-time-client discount —
+  // that offer is meant to soften a ONE-TIME quote's price at the moment of
+  // conversion, not to silently discount every recurring visit on top of
+  // the recurring frequency discount already applied in computeStandard().
+  // One-time Standard and every other service keep applying it exactly as
+  // before — this is gated specifically on recurring Standard, nothing
+  // broader. r.initial (the Initial leg) was never in this discount code's
+  // path to begin with (it's computed separately in computeStandard(),
+  // before this function ever sees it) — confirmed by a dedicated test
+  // rather than assumed.
+  const isRecurringStandardPricing = state.service==='standard' && state.frequency!=='onetime';
+  const isFirstTime = document.getElementById('first-time-client') && document.getElementById('first-time-client').checked
+    && !isRecurringStandardPricing;
   if(isFirstTime){
     r.price = r.price * (1-FIRST_TIME_DISCOUNT);
     if(r.lowPrice!=null){ r.lowPrice *= (1-FIRST_TIME_DISCOUNT); r.highPrice *= (1-FIRST_TIME_DISCOUNT); }
@@ -1989,6 +2207,18 @@ function computeCurrent(){
   }
   if(r.lowPrice!=null){
     r.range = `Quote range: $${r.lowPrice.toFixed(0)}–$${r.highPrice.toFixed(0)}` + (r.lowHours!=null ? ` (${r.lowHours.toFixed(1)}–${r.highHours.toFixed(1)} hrs, depending on buildup)` : ' (±20%)');
+  } else if(isRecurringStandardPricing){
+    // Bug fix: computeStandard() builds this flat-rate caption from its own
+    // pre-adjustment `price` (before city premium and pet fee are applied,
+    // just above) — it can say e.g. "$232" while r.price (and everything
+    // saved/sent) is the correct, final $243.55. Rebuild it here, after
+    // every adjustment above, from the FINAL r.price. Uses the same 2-decimal
+    // precision as cv-price/the saved record/the client page/the email (not
+    // the whole-dollar rounding a real ±20% range uses above) so this caption
+    // reads as the literal same amount as every other surface, never a
+    // rounded-differently one. (First-time discount never applies to this
+    // leg, so it doesn't need to be accounted for separately here.)
+    r.range = `Flat rate: $${r.price.toFixed(2)}/visit — same amount every visit`;
   }
   return r;
 }
@@ -2094,8 +2324,20 @@ function buildCRMText(){
   lines.push('');
   lines.push(`Add-ons / selections: ${getSelectedAddonsText()}`);
   lines.push('');
-  lines.push(`QUOTED PRICE RANGE: ${rangeLine}`);
-  lines.push(`SUGGESTED PRICE: $${suggested}`);
+  if(r.initial){
+    // Item 2: a recurring Standard quote's single "suggested/range" line
+    // would otherwise misrepresent it as one flat price — show both legs.
+    lines.push(`INITIAL CLEANING (estimate — not a fixed quote): $${r.initial.estimatedCost.toFixed(2)} — ${formatInitialCleanTimeText(r.initial.estimatedHours, r.initial.isOverride)} @ $${r.initial.teamRate}/hr team-of-2, billed for actual time on site ($${r.initial.minimumCost} minimum).`);
+    // Item 3 (correction round): rangeLine is now itself just "$${suggested}"
+    // (the Ongoing leg no longer computes a ±20% range — see
+    // computeStandard()), so the old "(range $X)" parenthetical here would
+    // read as a redundant "flat rate (range $X)" — dropped entirely for
+    // this line.
+    lines.push(`ONGOING CLEANING (${freqLabel}): $${suggested} flat rate`);
+  } else {
+    lines.push(`QUOTED PRICE RANGE: ${rangeLine}`);
+    lines.push(`SUGGESTED PRICE: $${suggested}`);
+  }
   const crmCd = getCityDrive();
   if(crmCd.day) lines.push(`Best route day: ${crmCd.day} (${crmCd.borrowed||crmCd.city})`);
   lines.push('');
@@ -2162,6 +2404,18 @@ async function loadQuoteForUpdate(){
     if(data.formState){
       state = Object.assign({}, state, data.formState);
     }
+    // Item 5: a legacy quote saved before these fields existed simply has no
+    // initialHoursOverride/initialHoursIsOverride in its formState — the
+    // Object.assign above leaves state's current defaults (null/false) in
+    // place rather than synthesizing a value, so computeStandard() falls
+    // back to the historical default for it, same as any brand-new quote.
+    // Item 3: mirror the server-computed hold status — informational in
+    // this tab only (see updateCalcHoldBanner()). Correction round (Item 2):
+    // use the FRESH `result.marginHold` this same `get` call's response
+    // just returned (src/app/api/sales/storage/route.ts's "get" case now
+    // recomputes it on every read), not the possibly-stale `data.marginHold`
+    // embedded in the saved JSON blob itself.
+    lastSavedQuoteMarginHold = (typeof result.marginHold === 'boolean') ? result.marginHold : null;
 
     // Falls back to the typed id only if the stored record itself is
     // missing its own `id` field (legacy/malformed data) — same fallback
@@ -2220,6 +2474,24 @@ async function saveQuoteForClient(){
   const hm = m => { const h=Math.floor(m/60), rem=Math.round(m%60); return h>0 ? `${h}h ${rem}m` : `${rem}m`; };
   const timeStr = `${hm(cleanMin)} – ${hm(bufferedMin)}`;
 
+  // Item 5: before saving a recurring Standard quote, show the rep a plain
+  // confirmation of the Initial Cleaning leg's hours/rate/total/client-visible
+  // wording — so a typo is visible before it goes out, not after. Cancelling
+  // aborts the save entirely (nothing is written).
+  if(r.initial){
+    const timeText = formatInitialCleanTimeText(r.initial.estimatedHours, r.initial.isOverride);
+    const confirmMsg = `Confirm Initial Cleaning estimate before saving:\n\n`
+      + `Hours: ${r.initial.estimatedHours}${r.initial.isOverride ? ' (entered by you)' : ' (historical default)'}\n`
+      + `Team rate: $${r.initial.teamRate}/hr\n`
+      + `Estimated total: $${r.initial.estimatedCost.toFixed(2)}\n`
+      + `Client-visible estimate: "${timeText}"\n\n`
+      + `Continue?`;
+    if(!window.confirm(confirmMsg)){
+      statusEl.textContent = 'Save cancelled — review the Initial Cleaning hours above.';
+      return;
+    }
+  }
+
   let freqLabel = 'One-Time';
   if(state.service==='standard'){
     freqLabel = {onetime:'One-Time',monthly:'Monthly',triweekly:'Tri-Weekly',biweekly:'Bi-Weekly',weekly:'Weekly'}[state.frequency];
@@ -2253,10 +2525,34 @@ async function saveQuoteForClient(){
     suggested: r.price.toFixed(2),
     time: timeStr, timeLowHrs: cleanMin/60, timeHighHrs: bufferedMin/60, validUntil: '',
     addons, mailbox: senderDefaults.mailbox, sender: senderDefaults.sender,
+    // Item 3: teamSize/lowHours are needed server-side so /api/sales/storage
+    // can recompute the margin-hold check without re-deriving business rules
+    // per service shape. lowHours is only non-null for specialty services
+    // (their low-end price uses genuinely fewer hours); every other service
+    // leaves it null and the server falls back to timeLowHrs for both ends.
+    teamSize: r.teamSize,
+    lowHours: (r.lowHours != null ? r.lowHours : null),
     homeDetails: {
       bedrooms: state.bedrooms||0, fullBaths: state.fullBaths||0, halfBaths: state.halfBaths||0,
       floorTypes: Object.assign({}, state.floorTypes), floorDetails: state.floorDetails||'', notes: state.notes||'',
     },
+    // Item 2 (only populated for a recurring Standard quote — every other
+    // service/one-time Standard leaves these fields entirely absent, not
+    // null, so a legacy reopen can tell "not applicable" apart from "not yet
+    // computed"): the Initial Cleaning leg survives save/reopen alongside
+    // the existing Ongoing (flat) price already carried by low/high/suggested
+    // above. ongoingPrice duplicates `suggested` under an unambiguous name
+    // for anything (e.g. the margin module) that reads this record without
+    // also knowing which services use `suggested` as a flat vs. ranged price.
+    ...(r.initial ? {
+      initialEstimatedHours: r.initial.estimatedHours,
+      initialEstimatedCost: Number(r.initial.estimatedCost.toFixed(2)),
+      initialMinimumHours: r.initial.minimumHours,
+      initialMinimumCost: r.initial.minimumCost,
+      initialTeamRate: r.initial.teamRate,
+      initialIsOverride: r.initial.isOverride,
+      ongoingPrice: Number(r.price.toFixed(2)),
+    } : {}),
     formState: JSON.parse(JSON.stringify(state)),
     savedAt: new Date().toISOString(),
     // Carried over from the existing record rather than reset on every re-save —
@@ -2273,6 +2569,14 @@ async function saveQuoteForClient(){
   try{
     const result = await window.storage.set('quote:'+id, JSON.stringify(quoteData), true);
     if(result){
+      // Item 3: the server (src/app/api/sales/storage/route.ts) computed
+      // marginHold fresh against the just-saved data and persisted it onto
+      // the row — mirror that boolean onto our in-memory copy so the
+      // Client Quote tab's renderQuote()/updateSalesControlsUI() and this
+      // tab's own banner immediately reflect it, without a second round trip.
+      quoteData.marginHold = !!result.marginHold;
+      lastSavedQuoteMarginHold = quoteData.marginHold;
+      updateCalcHoldBanner();
       statusEl.textContent = `Saved. Quote ID: ${id}. Opening Client Quote tab...`;
       if(typeof switchTab === 'function') switchTab('quote');
       const loadIdEl = document.getElementById('load-id');
@@ -2327,9 +2631,9 @@ function recalc(){
       : ` Drive (TCS Jul–Sep${cdn.borrowed?', using '+cdn.borrowed:''}): ${cdn.drive.toFixed(2)} hrs/tech + $${cdn.mile.toFixed(2)} mileage per visit.${cdn.day?' Best route day: '+cdn.day+'.':''}`;
     cityNote.textContent += driveTxt;
   }
-  if(state.service==='standard' && FREQUENCY_DISCOUNTS[state.frequency] > 0){
+  if(state.service==='standard' && getStandardFreqDiscount(state.frequency) > 0){
     const freqLabel = {onetime:'One-Time',monthly:'Monthly',triweekly:'Tri-Weekly',biweekly:'Bi-Weekly',weekly:'Weekly'}[state.frequency];
-    chips.push(`${freqLabel} -${(FREQUENCY_DISCOUNTS[state.frequency]*100).toFixed(0)}%`);
+    chips.push(`${freqLabel} -${(getStandardFreqDiscount(state.frequency)*100).toFixed(0)}%`);
   }
   if(state.service==='airbnb' && AIRBNB_VOLUME_DISCOUNTS[state.airbnbFreq] > 0){
     chips.push(`${state.airbnbFreq}x/week -${(AIRBNB_VOLUME_DISCOUNTS[state.airbnbFreq]*100).toFixed(0)}%`);
@@ -2339,6 +2643,32 @@ function recalc(){
   }
   if(document.getElementById('pet-fee') && document.getElementById('pet-fee').checked) chips.push('Pet +$25');
   document.getElementById('cv-chips').innerHTML = chips.map(c=>`<span class="cv-chip">${c}</span>`).join('');
+
+  // Item 2: Initial Cleaning section of the Client-Facing Estimate panel —
+  // only rendered for a recurring Standard quote (r.initial only exists in
+  // that case); every other service/one-time Standard keeps the single
+  // existing price block above completely unchanged, and this box stays
+  // hidden. Non-admin-safe: no cost/margin numbers here, just the
+  // client-visible estimate.
+  const initialBox = document.getElementById('cv-initial-box');
+  if(initialBox){
+    if(r.initial){
+      document.getElementById('cv-price-sub').textContent = `${SERVICES.find(s=>s.id===state.service).label} — Ongoing`;
+      document.getElementById('cv-initial-price').textContent = `$${r.initial.estimatedCost.toFixed(0)}`;
+      document.getElementById('cv-initial-sub').textContent =
+        `${formatInitialCleanTimeText(r.initial.estimatedHours, r.initial.isOverride)} @ $${r.initial.teamRate}/hr team-of-2 (${INITIAL_CLEAN_MIN_HOURS}-hr / $${INITIAL_CLEAN_MINIMUM} minimum, billed for actual time on site)`;
+      initialBox.style.display = 'block';
+    } else {
+      initialBox.style.display = 'none';
+    }
+  }
+
+  // Item 3 (informational, non-admin-safe): no dollar figures here — just
+  // whether the most recently SAVED version of this quote is on hold, per
+  // the server-computed `marginHold` boolean (see /api/sales/storage and
+  // updateCalcHoldBanner()). The real gate is always the fresh server-side
+  // recheck in /api/sales/send-quote, regardless of what this banner shows.
+  updateCalcHoldBanner();
 
   // Owner-only internal cost/margin ledger — this whole block (not just the
   // rendered panel) is ADMIN-ONLY and physically absent from a non-admin
@@ -2365,25 +2695,89 @@ function recalc(){
   const lowForWarn = (r.lowPrice!=null) ? r.lowPrice : r.price;
   const cdw = b.cityDrive;
   const dayTip = cdw.day ? ` Offer ${cdw.day} first — the team is already in ${cdw.borrowed||cdw.city} that day.` : '';
+  // Copy-only follow-up: every figure in this 21%-target box is derived
+  // from the same still-unverified cost inputs (TECH_WAGE, mileage,
+  // AUDIT_OVERHEAD_PER_TECH_HR) as the 10%-floor box above — a "loss" or a
+  // "quote at least $X" minimum here must never read as a confirmed loss or
+  // a verified minimum price. Every dollar figure and margin % is labeled
+  // provisional/based on unverified costs, not just the hard-floor box.
   if(b.margin < 0){
     warnBox.className = 'margin-warn-box show-bad';
-    warnBox.textContent = `Loses $${Math.abs(b.margin).toFixed(2)} at this price. To pay $${TECH_WAGE}/hr and keep 21%, quote at least $${floorForWarn.toFixed(0)} — or trim the scope.${dayTip}`;
+    warnBox.textContent = `Provisional loss (based on unverified costs): $${Math.abs(b.margin).toFixed(2)} at this price. To pay $${TECH_WAGE}/hr and keep 21%, the provisional minimum is $${floorForWarn.toFixed(0)} — or trim the scope.${dayTip}`;
   } else if(b.marginPct < 21){
     warnBox.className = 'margin-warn-box show-bad';
-    warnBox.textContent = `Below the 21% target (${b.marginPct.toFixed(1)}%). Quote at least $${floorForWarn.toFixed(0)} to keep 21% after paying the team $${TECH_WAGE}/hr for cleaning and drive time.${dayTip}`;
+    warnBox.textContent = `Below the 21% target (${b.marginPct.toFixed(1)}% — provisional, based on unverified costs). The provisional minimum to keep 21% after paying the team $${TECH_WAGE}/hr for cleaning and drive time is $${floorForWarn.toFixed(0)}.${dayTip}`;
   } else if(lowForWarn < floorForWarn){
     warnBox.className = 'margin-warn-box show-bad';
-    warnBox.textContent = `The suggested price clears 21% (${b.marginPct.toFixed(1)}%), but the low end of the range ($${lowForWarn.toFixed(0)}) is under the $${floorForWarn.toFixed(0)} floor. Don't close below $${floorForWarn.toFixed(0)}.${dayTip}`;
+    warnBox.textContent = `The suggested price clears 21% (${b.marginPct.toFixed(1)}% — provisional), but the low end of the range ($${lowForWarn.toFixed(0)}) is under the provisional $${floorForWarn.toFixed(0)} floor. Don't close below $${floorForWarn.toFixed(0)} (provisional).${dayTip}`;
   } else {
     warnBox.className = 'margin-warn-box show-good';
-    warnBox.textContent = `Clears the 21% target (${b.marginPct.toFixed(1)}%) with the team paid $${TECH_WAGE}/hr for cleaning and drive time.${dayTip}`;
+    warnBox.textContent = `Clears the 21% target (${b.marginPct.toFixed(1)}% — provisional) with the team paid $${TECH_WAGE}/hr for cleaning and drive time.${dayTip}`;
+  }
+
+  // Item 3: hard 10% margin floor — a SEPARATE, non-blocking-vs-blocking
+  // distinction from the 21% target above (a quote can clear 10% but still
+  // show the 21%-target warning above, unchanged). This is purely
+  // informational here (ADMIN already has the cost functions live); the
+  // real enforcement is the fresh server-side recheck in
+  // src/app/api/sales/send-quote/route.ts via src/lib/pricingMargin.ts —
+  // never trust this client-side computation for the actual send-block.
+  const holdBox = document.getElementById('margin-hold');
+  if(holdBox){
+    const floorForHold10 = minAcceptablePrice(r.hours, r.teamSize, 10);
+    const ongoingGenuineHeld = (b.marginPct < 10) || (floorForHold10!=null && lowForWarn < floorForHold10);
+    let initialMarginPct = null, initialFloor10 = null, initialGenuineHeld = false;
+    if(r.initial){
+      const initHoursForCost = Math.max(r.initial.estimatedHours, r.initial.minimumHours);
+      const ib = costBreakdown(r.initial.estimatedCost, initHoursForCost, 2);
+      initialFloor10 = minAcceptablePrice(initHoursForCost, 2, 10);
+      initialMarginPct = ib.marginPct;
+      initialGenuineHeld = ib.marginPct < 10;
+    }
+
+    // Item 1 (correction round): mirrors src/lib/pricingMargin.ts's own
+    // evaluateQuoteMarginHold() exactly — until COST_DATA_VERIFIED is true,
+    // EVERY recurring Standard quote is held unconditionally on BOTH legs,
+    // regardless of what these still-unverified costs compute the margin to
+    // be. This box is purely informational (the real gate is always the
+    // fresh server-side recheck); every other service's display below is
+    // completely unaffected by COST_DATA_VERIFIED.
+    const isRecurringStandardLive = !!r.initial;
+    const unverifiedHold = isRecurringStandardLive && !COST_DATA_VERIFIED;
+
+    const heldParts = [];
+    if(unverifiedHold){
+      heldParts.push(`Ongoing Cleaning: HELD — underlying costs (including the $${AUDIT_OVERHEAD_PER_TECH_HR.toFixed(2)}/hr overhead figure) have not yet been reconciled against real payroll/TCS/mileage records. Provisional margin (based on unverified costs): ${b.marginPct.toFixed(1)}% (provisional minimum $${floorForHold10!=null?floorForHold10.toFixed(0):'n/a'}).`);
+      heldParts.push(`Initial Cleaning: HELD — same unverified-cost reason. Provisional margin (based on unverified costs): ${initialMarginPct!=null?initialMarginPct.toFixed(1):'n/a'}% (provisional minimum $${initialFloor10!=null?initialFloor10.toFixed(0):'n/a'}).`);
+    } else {
+      if(ongoingGenuineHeld) heldParts.push(`Ongoing Cleaning: ${b.marginPct.toFixed(1)}% margin — below the 10% floor (minimum $${floorForHold10!=null?floorForHold10.toFixed(0):'n/a'}).`);
+      if(initialGenuineHeld) heldParts.push(`Initial Cleaning: ${initialMarginPct.toFixed(1)}% margin — below the 10% floor (minimum $${initialFloor10!=null?initialFloor10.toFixed(0):'n/a'}).`);
+    }
+    if(heldParts.length){
+      holdBox.className = 'margin-hold-box show';
+      const headline = unverifiedHold ? 'HOLD — underlying cost data is not yet verified/reconciled.' : 'HOLD — below the 10% hard floor.';
+      // Copy-only follow-up: an unverified-cost hold can't be cleared by
+      // re-pricing the quote — the cost DATA is what's unresolved, not this
+      // quote's own price/hours — so it must never say "re-save with
+      // different inputs." That instruction is only ever true for a
+      // genuine below-10%-floor hold (which can only happen once
+      // COST_DATA_VERIFIED is eventually true), where raising the price or
+      // re-measuring hours really would clear it.
+      const tailText = unverifiedHold
+        ? 'Sending stays blocked until the underlying costs are reconciled and verified — there is no override button.'
+        : 'Sending is blocked server-side until this is re-saved with different inputs (higher price, or re-measured hours) — there is no override button.';
+      holdBox.innerHTML = `<strong>${headline}</strong> ${heldParts.join(' ')} ${INITIAL_CLEAN_ESTIMATE_DISCLAIMER} ${tailText}`;
+    } else {
+      holdBox.className = 'margin-hold-box';
+      holdBox.innerHTML = '';
+    }
   }
 
   document.getElementById('hours-note').textContent = r.note;
 
   const floorPrice = minAcceptablePrice(r.hours, r.teamSize, state.targetMargin);
   document.getElementById('target-margin').value = state.targetMargin;
-  document.getElementById('floor-price').textContent = floorPrice!=null ? `$${floorPrice.toFixed(2)}` : 'Target too high to solve';
+  document.getElementById('floor-price').textContent = floorPrice!=null ? `$${floorPrice.toFixed(2)} (provisional)` : 'Target too high to solve';
 
   const cleanMin = r.hours*60;
   const bufferedMin = cleanMin + 60;
@@ -3072,6 +3466,13 @@ const ADDON_LABELS = {
 };
 
 let currentQuote = null;
+function updateCalcHoldBanner(){
+  const banner = document.getElementById('sales-hold-banner');
+  if(!banner) return;
+  const isAdmin = typeof costBreakdown === 'function';
+  if(isAdmin){ banner.style.display = 'none'; return; } // ADMIN sees the detailed ledger box instead
+  banner.style.display = (lastSavedQuoteMarginHold === true) ? 'block' : 'none';
+}
 
 // Dirty-tracking: true the moment the recipient, price, or any other
 // content field on EITHER quote-creation surface is edited without a
@@ -3081,6 +3482,20 @@ let currentQuote = null;
 // Cleared only immediately after a save whose written content matches
 // what's currently displayed (see saveManualQuote/saveQuoteForClient).
 let quoteDirty = false;
+// Dedicated double-click guard for sendQuoteToClient() — deliberately its
+// OWN flag, not a read of sendBtn.disabled: the button is ALSO disabled for
+// reasons that have nothing to do with a send being in flight (no id yet,
+// quoteDirty, no clientEmail, or data.marginHold from updateSalesControlsUI)
+// — most importantly, a margin-held quote's Send button starts out already
+// disabled the instant it's saved/loaded, before sendQuoteToClient() has
+// ever run once. Gating the guard on sendBtn.disabled itself would make
+// EVERY call for an already-held quote silently no-op before ever reaching
+// the server — including every e2e test (and any future real caller) that
+// deliberately calls this function directly to prove the server-side gate
+// holds even with a disabled button, which this codebase relies on
+// throughout. Set true only for the duration of this function's own
+// synchronous-then-async run; reset on every exit path below.
+let sendInFlight = false;
 // The `savedAt` value this tab last saw for whatever quote is currently
 // loaded — used to detect "someone else saved a newer version since I
 // loaded this" at save time, the KV-store equivalent of the
@@ -3498,6 +3913,14 @@ async function loadQuote(){
     const result = await window.storage.get('quote:'+id, true);
     if(result && result.value){
       const data = JSON.parse(result.value);
+      // Correction round (Item 2): overwrite with the FRESH marginHold (and,
+      // for an ADMIN reopening here, its reason) this same `get` call's
+      // response just returned, rather than trusting the possibly-stale
+      // value embedded in the saved JSON blob — updateSalesControlsUI(data),
+      // called from inside renderQuote() below, then naturally uses the
+      // correct, current value with no changes of its own.
+      if(typeof result.marginHold === 'boolean') data.marginHold = result.marginHold;
+      if(typeof result.marginHoldReason === 'string') data.marginHoldReason = result.marginHoldReason;
       statusEl.textContent = 'Quote loaded for ' + (data.clientName||'client') + '.';
       renderQuote(data);
     } else {
@@ -3577,6 +4000,11 @@ async function loadSavedQuoteFromList(id){
     const result = await window.storage.get('quote:'+id, true);
     if(result && result.value){
       const data = JSON.parse(result.value);
+      // Correction round (Item 2): same fresh-marginHold overwrite as
+      // loadQuote() above — this is the same reopen path, just reached from
+      // the Previous Quotes list instead of the ID field.
+      if(typeof result.marginHold === 'boolean') data.marginHold = result.marginHold;
+      if(typeof result.marginHoldReason === 'string') data.marginHoldReason = result.marginHoldReason;
       renderQuote(data);
       const loadIdEl = document.getElementById('load-id');
       if(loadIdEl) loadIdEl.value = id;
@@ -3639,7 +4067,47 @@ function renderQuote(data, opts){
   if(!isNaN(low) && !isNaN(high) && high>low){ priceText = `$${low.toFixed(0)}–$${high.toFixed(0)}`; }
   else if(!isNaN(low)){ priceText = `$${low.toFixed(0)}`; }
   else { priceText = 'Quote pending'; }
-  document.getElementById('q-price').textContent = priceText;
+
+  // Item 2: a recurring Standard quote shows two distinct price cards —
+  // Initial Cleaning (estimate) and Ongoing Cleaning (flat, frequency-
+  // labeled) — instead of the single #q-price card every other
+  // service/one-time Standard quote still uses unchanged. A recurring
+  // Standard quote SAVED BEFORE this PR lacks initialEstimatedCost — it
+  // falls back to the single-card behavior ("not yet computed, re-save to
+  // populate"), never a synthesized value.
+  const isRecurringStandardQuote = data.service === 'standard' && (data.frequency||'One-Time') !== 'One-Time'
+    && data.initialEstimatedCost != null && data.initialEstimatedHours != null;
+  const ongoingCard = document.getElementById('q-ongoing-card');
+  if(isRecurringStandardQuote){
+    document.getElementById('q-price-eyebrow').textContent = 'Initial Cleaning — Estimate';
+    document.getElementById('q-price').textContent = `$${Number(data.initialEstimatedCost).toFixed(0)}`;
+    // Copy-only follow-up: the client page's caption was missing the
+    // hourly team rate the email already states (`@ $120/hr team-of-2`,
+    // see sendQuoteToClient's own Initial Cleaning line) — added here so
+    // the two surfaces read consistently.
+    document.getElementById('q-price-caption').textContent =
+      `$${data.initialTeamRate || INITIAL_CLEAN_TEAM_RATE}/hour for a team of two — ${formatInitialCleanTimeText(data.initialEstimatedHours, !!data.initialIsOverride)}, billed for actual time on site ($${data.initialMinimumCost || INITIAL_CLEAN_MINIMUM} minimum) — not a fixed quote. ${INITIAL_CLEAN_ESTIMATE_DISCLAIMER}`;
+    if(ongoingCard){
+      ongoingCard.style.display = '';
+      // Bug fix: `priceText` above rounds to whole dollars (toFixed(0)) —
+      // correct for a REAL $X–$Y range elsewhere on this page, but this is a
+      // single flat number, and rounding it here was the one place that
+      // could show e.g. "$244" while the calculator, the saved record, and
+      // the emailed quote (all .toFixed(2)) show the same stored amount as
+      // "$243.55". Never re-derives or re-rounds the stored value itself —
+      // just displays it at the same precision everywhere else already
+      // uses. `ongoingPrice` is the unambiguous field for this (falls back
+      // to `low`, which is saved equal to it, for an older saved record).
+      const ongoingFlatAmount = data.ongoingPrice != null ? Number(data.ongoingPrice) : low;
+      document.getElementById('q-ongoing-price').textContent = !isNaN(ongoingFlatAmount) ? `$${ongoingFlatAmount.toFixed(2)}` : priceText;
+      document.getElementById('q-ongoing-caption').textContent = `${data.frequency} recurring rate, starting after the Initial Cleaning`;
+    }
+  } else {
+    document.getElementById('q-price-eyebrow').textContent = 'Your Quote';
+    document.getElementById('q-price').textContent = priceText;
+    document.getElementById('q-price-caption').textContent = 'Based on the complimentary walkthrough of your home';
+    if(ongoingCard) ongoingCard.style.display = 'none';
+  }
 
   const included = buildIncludedList(data.service, data.addons||{});
   document.getElementById('q-included').innerHTML = included.map(i=>`<li><span class="check-mark">✓</span><span>${i}</span></li>`).join('');
@@ -3698,7 +4166,17 @@ function updateSalesControlsUI(data){
     sendStatus.textContent = 'You have unsaved changes — save before sending.';
   } else if(!data.clientEmail){
     sendBtn.disabled = true;
-    sendStatus.textContent = 'Add a client email and save again to enable sending.';
+    sendStatus.textContent = 'Add a client email in the Pricing Calculator tab and save again to enable sending.';
+  } else if(data.marginHold){
+    // Item 3: client-side disable only — defense in depth. The stored row
+    // never carries WHY (no dollar figures persisted outside the live
+    // ledger), so this generic message is shown regardless of role here; an
+    // ADMIN wanting the specific reason/floor price returns to the Pricing
+    // Calculator tab's live margin-hold ledger box. The actual gate is the
+    // fresh server-side recheck in /api/sales/send-quote — this disabled
+    // attribute is never what actually stops a send.
+    sendBtn.disabled = true;
+    sendStatus.textContent = 'This quote needs owner review before it can be sent.';
   } else {
     sendBtn.disabled = false;
     sendStatus.textContent = data.sentAt
@@ -3769,7 +4247,12 @@ async function sendQuoteToClient(){
   // a rapid second click must never be able to slip through the async gap
   // while those checks are still pending, which is how a duplicate-click
   // could otherwise still double-send even with every check below in place.
-  if(sendBtn.disabled) return;
+  // Gated on the dedicated sendInFlight flag (see its own comment above),
+  // not sendBtn.disabled itself — the button is also disabled for reasons
+  // unrelated to a send being in flight (e.g. a margin hold), and this must
+  // never silently no-op for those.
+  if(sendInFlight) return;
+  sendInFlight = true;
   sendBtn.disabled = true;
 
   // Never saved at all — the more fundamental, more actionable problem,
@@ -3777,6 +4260,7 @@ async function sendQuoteToClient(){
   // trivially "dirty" too, but "save this first" is what's actually needed).
   if(!currentQuote || !currentQuote.id){
     sendStatus.textContent = 'Save this quote (with a client email) first to enable sending.';
+    sendInFlight = false;
     sendBtn.disabled = false;
     return;
   }
@@ -3788,11 +4272,13 @@ async function sendQuoteToClient(){
   // still look present/unchanged.
   if(quoteDirty){
     sendStatus.textContent = 'You have unsaved changes — save before sending.';
+    sendInFlight = false;
     sendBtn.disabled = false;
     return;
   }
   if(!currentQuote.clientEmail){
     sendStatus.textContent = 'No client email on this quote — add one and save again.';
+    sendInFlight = false;
     sendBtn.disabled = false;
     return;
   }
@@ -3807,11 +4293,13 @@ async function sendQuoteToClient(){
   } catch(e){ fresh = null; }
   if(!fresh){
     sendStatus.textContent = 'This quote no longer exists in storage — it may have been deleted elsewhere. Save it again before sending.';
+    sendInFlight = false;
     sendBtn.disabled = false;
     return;
   }
   if(fresh.clientEmail !== currentQuote.clientEmail){
     sendStatus.textContent = 'The recipient email shown doesn\'t match what\'s saved — save your changes before sending, so this doesn\'t go to the wrong address.';
+    sendInFlight = false;
     sendBtn.disabled = false;
     return;
   }
@@ -3841,6 +4329,32 @@ async function sendQuoteToClient(){
     ? `Here's what you can expect from a ${serviceLabel} scheduled service:`
     : `Here's what's included:`;
   const isRecurring = (q.frequency || 'One-Time') !== 'One-Time';
+  // Item 2: a recurring Standard quote carries the Initial/Ongoing split
+  // only when it was saved by this PR's code (legacy quotes saved before
+  // this feature existed simply lack these fields — treated as "not yet
+  // computed", not synthesized here).
+  const isRecurringStandardQuote = q.service === 'standard' && isRecurring
+    && q.initialEstimatedCost != null && q.initialEstimatedHours != null;
+
+  // Item 5: before SENDING a recurring-Standard quote, show the rep the
+  // same plain confirmation as before saving — hours, rate, total, and the
+  // exact client-visible wording — so a stale/typo'd estimate is caught one
+  // more time right before it reaches the client.
+  if(isRecurringStandardQuote){
+    const initRate = q.initialTeamRate || INITIAL_CLEAN_TEAM_RATE;
+    const initTimeText = formatInitialCleanTimeText(q.initialEstimatedHours, !!q.initialIsOverride);
+    const confirmMsg = `Confirm Initial Cleaning estimate before sending:\n\n`
+      + `Hours: ${q.initialEstimatedHours}${q.initialIsOverride ? ' (entered by you)' : ' (historical default)'}\n`
+      + `Team rate: $${initRate}/hr\n`
+      + `Estimated total: $${Number(q.initialEstimatedCost).toFixed(2)}\n`
+      + `Client-visible estimate: "${initTimeText}"\n\n`
+      + `Continue?`;
+    if(!window.confirm(confirmMsg)){
+      sendStatus.textContent = 'Send cancelled — review the Initial Cleaning hours before sending.';
+      sendInFlight = false;
+      return;
+    }
+  }
 
   const subject = `Your Mama's Cleaning Crew Quote | ${q.clientName || 'Valued Client'}`;
   const bodyParagraphs = [
@@ -3850,7 +4364,12 @@ async function sendQuoteToClient(){
       `Service Requested: ${q.frequency || 'One-Time'} ${serviceLabel}`,
       sqft ? `Property Size: ${sqft} sqft` : null,
       q.zip ? `Zip Code: ${q.zip}` : null,
-      `Estimated Service Cost: ${costText}`,
+      ...(isRecurringStandardQuote ? [
+        `Initial Cleaning (estimate — not a fixed quote): $${Number(q.initialEstimatedCost).toFixed(2)}, ${formatInitialCleanTimeText(q.initialEstimatedHours, !!q.initialIsOverride)} @ $${q.initialTeamRate || INITIAL_CLEAN_TEAM_RATE}/hr team-of-2 (billed for actual time on site, $${q.initialMinimumCost || INITIAL_CLEAN_MINIMUM} minimum). ${INITIAL_CLEAN_ESTIMATE_DISCLAIMER}`,
+        `Ongoing Cleaning (${q.frequency}): $${Number(q.ongoingPrice != null ? q.ongoingPrice : q.suggested).toFixed(2)} flat rate`,
+      ] : [
+        `Estimated Service Cost: ${costText}`,
+      ]),
       `Approximate time of completion: ${timeText}`,
       `Estimated start Date: TBD`,
     ].filter(Boolean).map(l => '- '+l).join('\n'),
@@ -3878,12 +4397,27 @@ async function sendQuoteToClient(){
       sendStatus.textContent = `Sent to ${currentQuote.clientEmail} just now.`;
       if(typeof refreshPreviousQuotesList === 'function') refreshPreviousQuotesList();
     } else {
+      // Item 3: this also covers the authoritative server-side margin-hold
+      // refusal (403, "needs owner review" / the specific reason for an
+      // ADMIN) — the disabled button is only ever a client-side convenience;
+      // this is the real gate, and it can refuse even if the button was
+      // somehow bypassed (see the e2e test that calls this function directly).
       sendStatus.textContent = 'Send failed: ' + (result.error || 'unknown error');
+      if(result.marginHold) currentQuote.marginHold = true; // learned fresh from the server's own refusal
     }
   } catch(e){
     sendStatus.textContent = 'Send failed — check your connection and try again.';
   }
-  sendBtn.disabled = !currentQuote.clientEmail;
+  // This attempt is no longer in flight either way (success or failure) —
+  // a subsequent call must be free to actually run again, not silently
+  // no-op forever because of this one already-finished attempt.
+  sendInFlight = false;
+  // Re-enable the button only when nothing we know of would block a retry —
+  // NOT a full updateSalesControlsUI() call here, which would overwrite the
+  // failure message above (including the margin-hold refusal) with its own
+  // status text. A margin-hold refusal keeps it disabled; any other
+  // failure (e.g. email transport) leaves it retryable.
+  sendBtn.disabled = !currentQuote.clientEmail || !!currentQuote.marginHold;
 }
 
 /* ADMIN-ONLY:START */

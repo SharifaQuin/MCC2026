@@ -422,6 +422,71 @@ export async function restoreLeadFromScamAction(
   return { ok: true };
 }
 
+// A deliberate "pause," not an outcome — staff tried and couldn't reach the
+// lead. Same access boundary as markLeadLostAction (owner plus a Sales Rep
+// with Sales Edit; Office Assistant explicitly blocked, since this is a
+// business judgment call about where a deal stands, not a factual contact
+// status this narrow role may record on its own) — but, unlike Lost, there's
+// no reason text to collect and the quote's status is never synced: this
+// lead isn't Won or Lost, so its linked quote (if any) must stay exactly as
+// it was. Same atomic race-guard as setLeadStageAction/markLeadLostAction
+// above (evaluated at write time via updateMany's where, never from the
+// `current` read): a stale form submitted after a concurrent Scam
+// classification can't clobber it back out of Scam.
+export async function markLeadUnableToContactAction(leadId: string) {
+  const { session, canEdit } = await requireDepartmentAccess("SALES");
+  if (!canEdit) return;
+  if (session.role === "OFFICE_ASSISTANT") throw new Error("Not authorized.");
+  const current = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  if (current.stage === "SCAM") {
+    throw new Error("This lead is classified as Scam — use Restore to change its stage.");
+  }
+  const updated = await prisma.lead.updateMany({
+    where: { id: leadId, stage: { not: "SCAM" } },
+    data: { stage: "UNABLE_TO_CONTACT" },
+  });
+  if (updated.count === 0) {
+    throw new Error("This lead is classified as Scam — use Restore to change its stage.");
+  }
+  await prisma.leadStageChange.create({
+    data: { leadId, fromStage: current.stage, toStage: "UNABLE_TO_CONTACT", changedById: getTrueActorId(session) },
+  });
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath("/sales/leads");
+  revalidatePath("/sales");
+}
+
+// The one-click reopen from Unable-to-Contact — always lands on CONTACTED
+// specifically (not whatever stage the lead was in before being paused),
+// mirroring the existing LOST -> CONTACTED one-click reopen pattern. Routed
+// through its own dedicated action rather than setLeadStageAction, which
+// doesn't know about this stage's special reopen semantics and has a
+// slightly different access boundary than wanted here. The early
+// `current.stage !== "UNABLE_TO_CONTACT"` check is only for a friendly
+// no-op return — the actual guard is the atomic updateMany's own `where`,
+// scoped to `stage: "UNABLE_TO_CONTACT"` and evaluated at write time, so a
+// stale form reopening a lead that a concurrent request already moved to
+// Scam (or anywhere else) in the meantime silently matches zero rows
+// instead of clobbering it.
+export async function reopenLeadFromUnableToContactAction(leadId: string) {
+  const { session, canEdit } = await requireDepartmentAccess("SALES");
+  if (!canEdit) return;
+  if (session.role === "OFFICE_ASSISTANT") throw new Error("Not authorized.");
+  const current = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  if (current.stage !== "UNABLE_TO_CONTACT") return;
+  const updated = await prisma.lead.updateMany({
+    where: { id: leadId, stage: "UNABLE_TO_CONTACT" },
+    data: { stage: "CONTACTED" },
+  });
+  if (updated.count === 0) return;
+  await prisma.leadStageChange.create({
+    data: { leadId, fromStage: "UNABLE_TO_CONTACT", toStage: "CONTACTED", changedById: getTrueActorId(session) },
+  });
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath("/sales/leads");
+  revalidatePath("/sales");
+}
+
 // For phone calls, walk-ins, or referrals — added directly by a manager,
 // skipping the public website form since it wasn't a website inquiry.
 export async function createManualLeadAction(formData: FormData) {
@@ -510,6 +575,31 @@ export async function setLeadDealDetailsAction(leadId: string, formData: FormDat
   }
   revalidatePath(`/sales/leads/${leadId}`);
   revalidatePath("/sales/leads");
+}
+
+// One-click "mark this lead's follow-up done" — clears only this lead's
+// followUpDueAt (nothing else is touched, no other lead is affected, and
+// this never runs automatically e.g. on Won/Lost) while leaving a LeadNote
+// behind recording what was cleared and when, so the Activity & Notes feed
+// still shows what happened even after the date itself is gone.
+export async function markLeadFollowUpDoneAction(
+  leadId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const session = await assertSalesLeadsEditAccess();
+  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId }, select: { followUpDueAt: true } });
+  if (!lead.followUpDueAt) return { ok: false, error: "No follow-up date is set on this lead." };
+  const dueDateLabel = lead.followUpDueAt.toLocaleDateString();
+  await prisma.$transaction([
+    prisma.lead.update({ where: { id: leadId }, data: { followUpDueAt: null } }),
+    prisma.leadNote.create({
+      data: { leadId, authorId: getTrueActorId(session), body: `Follow-up (was due ${dueDateLabel}) marked done.` },
+    }),
+  ]);
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath("/sales/leads");
+  revalidatePath("/");
+  revalidatePath("/sales");
+  return { ok: true };
 }
 
 export async function sendLeadEmailAction(leadId: string, formData: FormData) {
