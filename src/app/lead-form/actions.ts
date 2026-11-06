@@ -114,10 +114,15 @@ export async function submitLeadAction(formData: FormData) {
   //   gets special handling below (reopened rather than duplicated), not
   //   silently treated as "still active" here.
   // Only a genuinely still-active inquiry (not yet Won/Lost/Scam/Unable-to-
-  // Contact) is treated as "already being handled."
-  const existing = await prisma.lead.findFirst({
-    where: { email: { equals: email, mode: "insensitive" }, stage: { notIn: ["WON", ...ARCHIVED_LEAD_STAGES] } },
-  });
+  // Contact) is treated as "already being handled." Factored into its own
+  // function since the race-handling below needs to run this exact check
+  // again, fresh, after a failed reopen attempt.
+  const findActiveLeadForEmail = () =>
+    prisma.lead.findFirst({
+      where: { email: { equals: email, mode: "insensitive" }, stage: { notIn: ["WON", ...ARCHIVED_LEAD_STAGES] } },
+    });
+
+  const existing = await findActiveLeadForEmail();
   if (existing) {
     redirect("/lead-form/thank-you");
   }
@@ -137,30 +142,63 @@ export async function submitLeadAction(formData: FormData) {
     orderBy: { updatedAt: "desc" },
   });
   if (unableToContactMatch) {
-    await prisma.lead.update({ where: { id: unableToContactMatch.id }, data: { stage: "CONTACTED" } });
-    await prisma.leadStageChange.create({
-      data: {
-        leadId: unableToContactMatch.id,
-        fromStage: "UNABLE_TO_CONTACT",
-        toStage: "CONTACTED",
-        changedById: null,
-      },
-    });
-
     const resubmissionDetails: string[] = [];
     if (serviceKey) resubmissionDetails.push(`Service interest: ${LEAD_SERVICE_LABELS[serviceKey] ?? serviceKey}`);
     if (message) resubmissionDetails.push(`Message: ${message}`);
-    await prisma.leadNote.create({
-      data: {
-        leadId: unableToContactMatch.id,
-        authorId: null,
-        body:
-          "Automatically reopened: a new inquiry came in through the lead form for this same email address while this lead was marked Unable to Contact." +
-          (resubmissionDetails.length > 0 ? ` ${resubmissionDetails.join(" — ")}` : ""),
-      },
+
+    // Atomic: the stage condition is evaluated by the database at write
+    // time, not from the `unableToContactMatch` read above, so a concurrent
+    // reclassification (most importantly markLeadScamAction, between this
+    // read and this write) can't be silently clobbered back to Contacted.
+    // The history row and note are written in the SAME transaction, only
+    // when the conditional update actually matched — never a stage change
+    // with no corresponding history, and never a history row for a reopen
+    // that didn't really happen.
+    const reopened = await prisma.$transaction(async (tx) => {
+      const updated = await tx.lead.updateMany({
+        where: { id: unableToContactMatch.id, stage: "UNABLE_TO_CONTACT" },
+        data: { stage: "CONTACTED" },
+      });
+      if (updated.count === 0) return false;
+
+      await tx.leadStageChange.create({
+        data: {
+          leadId: unableToContactMatch.id,
+          fromStage: "UNABLE_TO_CONTACT",
+          toStage: "CONTACTED",
+          changedById: null,
+        },
+      });
+      await tx.leadNote.create({
+        data: {
+          leadId: unableToContactMatch.id,
+          authorId: null,
+          body:
+            "Automatically reopened: a new inquiry came in through the lead form for this same email address while this lead was marked Unable to Contact." +
+            (resubmissionDetails.length > 0 ? ` ${resubmissionDetails.join(" — ")}` : ""),
+        },
+      });
+      return true;
     });
 
-    redirect("/lead-form/thank-you");
+    if (reopened) {
+      redirect("/lead-form/thank-you");
+    }
+
+    // Lost the race: the lead was no longer Unable-to-Contact by the time
+    // the conditional update ran (classified Scam, reopened/won/lost by
+    // another request, etc.) — whatever changed it wins, and is never
+    // touched or second-guessed here. This inquiry still needs handling,
+    // though, so fall through to the SAME "already active?" check used at
+    // the top of this function, run fresh — the lead's current stage may
+    // now read differently than it did before this race (e.g. Scam, which
+    // isn't "active," falls through again to a brand-new lead below; a
+    // stage a concurrent change already moved onto the active pipeline
+    // means this inquiry is folded into that, not duplicated).
+    const stillActive = await findActiveLeadForEmail();
+    if (stillActive) {
+      redirect("/lead-form/thank-you");
+    }
   }
 
   const serviceInterest = serviceKey ? (LEAD_SERVICE_LABELS[serviceKey] ?? serviceKey) : null;
