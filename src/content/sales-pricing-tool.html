@@ -126,8 +126,6 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .cv-initial-tag{font-size:9px;letter-spacing:.04em;text-transform:none;background:rgba(232,114,42,.18);border:1px solid rgba(232,114,42,.4);color:var(--orange);padding:2px 8px;border-radius:10px;}
 .cv-initial-price{font-family:'Cormorant Garamond',serif;font-size:30px;color:#fff;margin-top:6px;}
 .cv-initial-sub{font-family:'DM Mono',monospace;font-size:10.5px;color:rgba(255,255,255,.55);margin-top:4px;}
-/* Item 3: generic, non-admin-safe hold notice — no dollar figures */
-.sales-hold-banner{margin:10px 0 0;padding:11px 13px;border-radius:7px;font-size:12.5px;line-height:1.5;background:var(--red-lt);border:1px solid var(--red);color:var(--red);}
 
 /* TEAR LINE */
 .tear{position:relative;height:0;border-top:2px dashed var(--paper-dark);background:var(--paper);}
@@ -148,13 +146,11 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .ledger tr.margin td{font-weight:700;font-size:14px;padding-top:10px;}
 .margin-good td{color:var(--green) !important;}
 .margin-bad td{color:var(--red) !important;}
+/* November plan: a single non-blocking warning box — shown only when a leg
+   is strictly below the 10% minimum margin, or its city's travel estimate
+   is incomplete. Never a sending gate. */
 .margin-warn-box{margin-top:14px;padding:11px 13px;border-radius:7px;font-size:12px;line-height:1.5;display:none;}
-.margin-warn-box.show-bad{display:block;background:var(--red-lt);border:1px solid var(--red);color:var(--red);}
-.margin-warn-box.show-good{display:block;background:var(--green-lt);border:1px solid var(--green);color:var(--green);}
-/* Item 3: hard 10% floor — a separate, distinctly-styled indicator from the
-   21%-target margin-warn-box above (never conflate the two numbers). */
-.margin-hold-box{margin-top:10px;padding:11px 13px;border-radius:7px;font-size:12px;line-height:1.5;display:none;}
-.margin-hold-box.show{display:block;background:#2a0a0a;border:2px solid var(--red);color:#fff;}
+.margin-warn-box.show{display:block;background:var(--red-lt);border:1px solid var(--red);color:var(--red);}
 .schedule-box{margin-top:14px;padding:12px 14px;border-radius:7px;background:var(--gold-lt);border:1px solid var(--gold-mid);}
 .floor-box{margin-top:14px;padding:12px 14px;border-radius:7px;background:var(--red-lt);border:1px solid var(--red);}
 .floor-row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
@@ -519,12 +515,13 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 <!-- ADMIN-ONLY:START -->
 <div class="assume-wrap">
   <div class="assume-hdr" onclick="toggleAssumptions()">
-    <div class="assume-hdr-txt"><strong>Pricing decisions below are real, decided, or owner-confirmed — the cost figures they're checked against remain provisional and unverified pending reconciliation</strong> — tap to see the full history of what changed and why</div>
+    <div class="assume-hdr-txt"><strong>Pricing decisions below are real, decided, or owner-confirmed — the cost figures they're checked against are the owner-approved November 2026 planning assumptions</strong> — tap to see the full history of what changed and why</div>
     <div class="assume-toggle" id="assume-toggle-icon">Show ▾</div>
   </div>
   <div class="assume-body" id="assume-body">
     <div class="assume-grid">
-      <div class="assume-item" style="border-left-color:var(--orange);background:rgba(200,110,40,.10);"><b>Cost engine updated (Sep 2026 client audit):</b> Built from real TCS job &amp; payroll logs, Jul 1–Sep 28, 2026 — not invented, but not yet independently reconciled or verified as a complete cost model (see the Cost &amp; Margin Check panel's own "Costs Unverified" notice, further down). Drive time is now paid at the full $25/hr tech wage (was $16.90), using each city's real drive time per tech and real mileage per visit from TCS drive logs (was a flat 1 hr/tech and a flat per-hour mileage rate). Overhead is now $20.52 per paid tech-hour, cleaning + drive (was $4,452.60/mo ÷ team-hours): rent, admin, insurance beyond workers' comp, fuel, vehicle, recruiting, software, supplies, card-paid supplies/marketing and training hours ÷ 438 client hours/mo. The walk-away floor and margin check below use these still-unverified costs — every figure they produce is provisional until reconciliation is complete. Client prices themselves are unchanged — that stays the owner's decision, and is not affected by whether the cost model is verified.</div>
+      <div class="assume-item" style="border-left-color:var(--orange);background:rgba(200,110,40,.10);"><b>Cost calculator replaced (Nov 2026 plan, approved):</b> Replaces the Sep 2026 cost engine below with the owner-approved November planning basis, fixed through Nov 30 — these are conservative planning assumptions, not anyone's actual pay, not a payroll change, and not a verified measure of actual monthly profit. $25/person-hour base wage (cleaning and travel alike) loaded for payroll tax (10.5%) and workers' comp (13.5321%) to $31.008025/person-hour; overhead of $16.0121042907 per ONSITE person-hour only (November shared budget $6,499.58 ÷ 405h55m onsite person-hours that month — never added to travel); a per-city one-car vehicle allowance added once per job (never per tech), from a 16-city table of approved travel estimates — an unlisted city shows "Travel estimate incomplete" rather than inventing or borrowing a number. Card processing (2.9% + $0.30) stays the same rate, now explicitly labeled a card-payment assumption, not a verified universal fee. The old hard 10%-floor SENDING BLOCK is removed entirely — margin below 10% is now a non-blocking warning ("Add $X to reach the minimum"), never a send refusal. See the Cost &amp; Margin Check panel's "Nov 2026 Planning Assumptions" badge.</div>
+      <div class="assume-item" style="border-left-color:var(--orange);background:rgba(200,110,40,.10);"><b>Cost engine updated (Sep 2026 client audit) — superseded by the Nov 2026 plan above:</b> Built from real TCS job &amp; payroll logs, Jul 1–Sep 28, 2026 — not invented, but never independently reconciled or verified as a complete cost model. Drive time was paid at the full $25/hr tech wage (was $16.90), using each city's real drive time per tech and real mileage per visit from TCS drive logs (was a flat 1 hr/tech and a flat per-hour mileage rate). Overhead was $20.52 per paid tech-hour, cleaning + drive (was $4,452.60/mo ÷ team-hours): rent, admin, insurance beyond workers' comp, fuel, vehicle, recruiting, software, supplies, card-paid supplies/marketing and training hours ÷ 438 client hours/mo. Client prices themselves are unchanged by any of this — that stays the owner's decision, and was never affected by the cost model.</div>
       <div class="assume-item" style="border-left-color:var(--gold-mid);background:rgba(58,107,69,.12);"><b>Sqft pace (Standard):</b> ✓ Real data (July 2026) — 29 logged recurring light-condition jobs, team of 2 (1 outlier excluded — very light scope). Formula: 1.14 hrs base + 0.63 hrs per 1,000 sqft.</div>
       <div class="assume-item" style="border-left-color:var(--gold-mid);background:rgba(58,107,69,.12);"><b>Client rate:</b> ✓ Decided (July 2026) — $150/hr team ($75/tech), chosen after comparing margin at $130.90/hr vs $150/hr against real overhead. Applies to Standard &amp; A la carte.</div>
       <div class="assume-item" style="border-left-color:var(--gold-mid);background:rgba(58,107,69,.12);"><b>Frequency discount (Standard):</b> ✓ Decided (July 2026) — Weekly -15%, Bi-Weekly -10%, Tri-Weekly -5%, Monthly &amp; One-Time at base rate. Business decision — real CRM job-time data was checked but too inconsistent to derive an exact number.</div>
@@ -678,7 +675,6 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
         <div class="cv-initial-sub" id="cv-initial-sub"></div>
       </div>
     </div>
-    <div class="sales-hold-banner" id="sales-hold-banner" style="display:none;">This quote needs owner review before it can be sent.</div>
     <div class="save-quote-box">
       <div class="save-quote-row">
         <input type="text" id="save-client-name" placeholder="Client name">
@@ -726,11 +722,10 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
     <div class="biz-view">
       <div class="biz-hdr">
         <div class="biz-hdr-txt">Cost &amp; Margin Check</div>
-        <div class="biz-hdr-badge">Costs Unverified</div>
+        <div class="biz-hdr-badge">Nov 2026 Planning Assumptions</div>
       </div>
       <table class="ledger" id="ledger-body"></table>
       <div class="margin-warn-box" id="margin-warn"></div>
-      <div class="margin-hold-box" id="margin-hold"></div>
       <div class="floor-box">
         <div class="floor-row">
           <label for="target-margin">Walk-away floor — target margin</label>
@@ -740,7 +735,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
           </div>
         </div>
         <div class="floor-price" id="floor-price"></div>
-        <div class="floor-note">Absolute minimum you can charge and still hit this margin — never show this number to the client. Provisional (based on unverified costs). Defaults to 21% (business target); lower it here only if you need to book the job.</div>
+        <div class="floor-note">Absolute minimum you can charge and still hit this margin — never show this number to the client. Based on the Nov 2026 planning assumptions (fixed through Nov 30 — not a verified measure of actual monthly profit, not a payroll change). Defaults to 21% (business target); lower it here only if you need to book the job.</div>
       </div>
       <div class="schedule-box" id="schedule-box"></div>
       <div class="hours-note" id="hours-note"></div>
@@ -752,7 +747,7 @@ textarea#home-notes{width:100%;border:1px solid var(--paper-dark);border-radius:
 
 <!-- ADMIN-ONLY:START -->
 <div style="max-width:1300px;margin:0 auto;padding:0 32px;">
-  <div class="disclaimer">This is a working internal tool. Core pricing decisions — sqft pacing, rates, frequency/volume discounts, add-ons, and hot-zone pricing — reflect real data or owner-confirmed business decisions (July 2026) and are unaffected by cost verification. The internal cost model behind the walk-away floor and margin check (drive time, mileage, and overhead, updated from the Sep 2026 client audit) remains provisional and unverified pending reconciliation with supporting payroll, TCS, and mileage records — see the Cost &amp; Margin Check panel's "Costs Unverified" notice. Competitor pricing research is the one open item not yet incorporated. Review the assumptions banner above for the full history of what changed.</div>
+  <div class="disclaimer">This is a working internal tool. Core pricing decisions — sqft pacing, rates, frequency/volume discounts, add-ons, and hot-zone pricing — reflect real data or owner-confirmed business decisions (July 2026) and are unaffected by the cost model below. The internal cost model behind the walk-away floor and margin check (loaded labor, overhead, and per-city travel estimates) reflects the owner-approved November 2026 planning basis, fixed through November 30 — these are conservative planning assumptions, not a verified measure of actual monthly profit and not a payroll change; see the Cost &amp; Margin Check panel's "Nov 2026 Planning Assumptions" badge. Competitor pricing research is the one open item not yet incorporated. Review the assumptions banner above for the full history of what changed.</div>
 </div>
 <!-- ADMIN-ONLY:END -->
 
@@ -1432,24 +1427,18 @@ function switchTab(name){
 // Internal cost-model constants — ADMIN-ONLY. The customer-facing sell
 // price (computeCurrent(), below) is driven entirely by RATE_PER_TECH/
 // TEAM_RATE/FREQUENCY_DISCOUNTS/etc. and never reads any of these; they
-// exist only to feed the owner's cost ledger / margin check / Profitability
-// tab (fixedCostFor/costBreakdown/minAcceptablePrice, further down, and the
-// Profitability tab's own script later in this file). Stripped from a
+// exist only to feed the Profitability & Performance tab's real-payroll
+// "actuals" tracking (job/route profitability, variance, discount
+// analysis — see that tab's own script later in this file) and the Route
+// Day Planner / CRM text (CITY_DRIVE, further down). Stripped from a
 // non-ADMIN response along with every function that reads them, so none of
 // these numbers ever reach a Sales Rep's browser in any form.
+//
+// The November 2026 cost CALCULATOR (quote cost/margin check) is a
+// deliberately SEPARATE set of constants, further below — it never reads
+// or writes any of these, so changing one never moves the other. See that
+// section's own comment, and src/lib/pricingMargin.ts, for the calculator.
 /* ADMIN-ONLY:START */
-// Item 3 cross-reference: src/lib/pricingMargin.ts copies TECH_WAGE,
-// WC_RATE, TAX_RATE, MILEAGE_RATE, AUDIT_OVERHEAD_PER_TECH_HR, CITY_DRIVE
-// (and its friends), HK_ROUNDTRIP_MILES, DRIVE_HOURS_PER_TECH, and
-// CA_MIN_WAGE VERBATIM, for the server-side 10% margin-hold check (a
-// non-ADMIN browser never receives this block, so that check can't run
-// client-side) — if any of these change here, update that file to match.
-// This cross-reference comment itself must stay INSIDE the ADMIN-ONLY
-// marker below (not just the constants it names) — it names every one of
-// these constants in plain text, which would otherwise ship to a non-ADMIN
-// browser as readable comment text even though the constants' own VALUES
-// are stripped, the same privacy leak the values themselves are guarded
-// against.
 const TECH_WAGE = 25;
 const WC_RATE = 0.15;
 const TAX_RATE = 0.105;
@@ -1479,15 +1468,116 @@ const AUDIT_OVERHEAD_PER_TECH_HR = 20.52;
 function currentOverheadPerHr(){
   return {rate:AUDIT_OVERHEAD_PER_TECH_HR, label:'Sep 2026 audit', real:true};
 }
-// Correction round (Item 4 follow-up) cross-reference: mirrors
-// src/lib/pricingMargin.ts's own `COST_DATA_VERIFIED` export exactly — see
-// that file's header comment for what flipping it to `true` actually
-// requires (a real TCS job-time export, a Gusto payroll export, and the
-// mileage reimbursement log). This copy drives ONLY the informational-only
-// live ledger below (recalc()'s margin-hold box/badge/floor-price wording)
-// — the real, authoritative hold is always computed independently,
-// server-side, in that module; this constant is never read by it.
-const COST_DATA_VERIFIED = false;
+// ── NOVEMBER 2026 COST CALCULATOR ── ADMIN-ONLY. Owner-approved planning
+// assumptions, fixed through Nov 30, 2026 — not anyone's actual pay, not a
+// payroll change, and not a measure of actual monthly profit. Deliberately
+// a SEPARATE set of numbers from the real-payroll "actuals" constants just
+// above (used only by the Profitability & Performance tab) — this plan
+// never changes pay, break handling, historical payroll/TCS records, or
+// the books. This comment itself must stay INSIDE the ADMIN-ONLY marker
+// below, same reasoning as the constants just above: naming them in plain
+// text would leak their existence/names to a non-ADMIN browser even
+// though the values are stripped. Mirrors src/lib/pricingMargin.ts's
+// NOV2026_* exports verbatim — if either file's numbers change, update the
+// other to match.
+const NOV_BASE_WAGE_PER_PERSON_HR = 25;
+const NOV_PAYROLL_TAX_RATE = 0.105;
+const NOV_WORKERS_COMP_RATE = 0.135321;
+// $25 * (1 + 0.105 + 0.135321) = $31.008025 per person-hour (onsite or travel).
+const NOV_LOADED_LABOR_PER_PERSON_HR = NOV_BASE_WAGE_PER_PERSON_HR * (1 + NOV_PAYROLL_TAX_RATE + NOV_WORKERS_COMP_RATE);
+// November shared budget ÷ that month's onsite person-hours (405h55m) —
+// computed, not hardcoded, so the derivation stays visible at full
+// precision. Display rounded to the cent ($16.01); calculate at full
+// precision. Never added to travel person-hours.
+const NOV_SHARED_BUDGET = 6499.58;
+const NOV_ONSITE_PERSON_HOURS = 405 + 55/60; // 405h55m
+const NOV_OVERHEAD_PER_ONSITE_PERSON_HR = NOV_SHARED_BUDGET / NOV_ONSITE_PERSON_HOURS; // $16.0121042907
+
+// Approved November travel estimates (48-job cohort): minutes per
+// traveling tech, and a one-car mileage allowance per job (once per job,
+// never per tech). A SEPARATE dataset from CITY_DRIVE further below (that
+// table still drives the Route Day Planner and CRM text — unrelated,
+// untouched by this plan). Never borrow or invent a number for an unlisted
+// city — see getCityTravelEstimate.
+const CITY_TRAVEL_ESTIMATES = {
+  "Aliso Viejo": {minutes:54.45, allowance:17.10},
+  "Corona Del Mar": {minutes:30.90, allowance:9.20},
+  "Costa Mesa": {minutes:40.35, allowance:12.38},
+  "Huntington Beach": {minutes:34.35, allowance:10.56},
+  "Irvine": {minutes:35.79, allowance:10.31},
+  "Ladera Ranch": {minutes:23.10, allowance:5.51},
+  "Laguna Beach": {minutes:30.00, allowance:7.73},
+  "Laguna Hills": {minutes:35.70, allowance:18.43},
+  "Laguna Niguel": {minutes:45.21, allowance:16.56},
+  "Laguna Woods": {minutes:22.43, allowance:8.55},
+  "Lake Forest": {minutes:30.83, allowance:8.48},
+  "Mission Viejo": {minutes:46.90, allowance:16.95},
+  "Rancho Santa Margarita": {minutes:54.60, allowance:21.98},
+  "San Clemente": {minutes:49.10, allowance:26.67},
+  "San Juan Capistrano": {minutes:43.35, allowance:20.93},
+  "Tustin": {minutes:34.10, allowance:10.68},
+};
+function getCityTravelEstimate(city){
+  return CITY_TRAVEL_ESTIMATES[city] || null;
+}
+
+// B = (onsite person-hours + travel person-hours) × 31.008025
+//     + onsite person-hours × 16.0121042907 + vehicle allowance (once/job).
+// Combined PERSON-hours: onsite = teamSize × hours; travel minutes are
+// converted to hours and multiplied by the number of techs traveling
+// (the whole team travels together). An unlisted city gets zero travel
+// person-hours and zero vehicle allowance (never invented/borrowed) —
+// travelComplete:false tells the caller to label the result provisional/
+// excluding travel, never final/all-in.
+function novemberBaseCost(hours, teamSize, city){
+  const travel = getCityTravelEstimate(city);
+  const onsitePersonHours = teamSize*hours;
+  const travelPersonHours = travel ? (travel.minutes/60)*teamSize : 0;
+  const vehicleAllowance = travel ? travel.allowance : 0;
+  const laborCost = (onsitePersonHours+travelPersonHours)*NOV_LOADED_LABOR_PER_PERSON_HR;
+  const overheadCost = onsitePersonHours*NOV_OVERHEAD_PER_ONSITE_PERSON_HR;
+  const baseCost = laborCost+overheadCost+vehicleAllowance;
+  return {onsitePersonHours, travelPersonHours, vehicleAllowance, travelComplete:!!travel, laborCost, overheadCost, baseCost};
+}
+// Cost = B + card-processing assumption at the quoted price (2.9% + $0.30 —
+// a card-payment assumption, not a verified universal fee).
+// Margin = (price - Cost) / price.
+function novemberQuoteCost(price, hours, teamSize, city){
+  const base = novemberBaseCost(hours, teamSize, city);
+  const cardProcessing = price*STRIPE_PCT + STRIPE_FLAT;
+  const cost = base.baseCost+cardProcessing;
+  const margin = price-cost;
+  const marginPct = price>0 ? (margin/price*100) : 0;
+  return {...base, cardProcessing, cost, margin, marginPct};
+}
+// Minimum price to clear a 10% margin, accounting for the price-dependent
+// card fee: 0.90*price >= B + 0.30 + 0.029*price  =>  price >= (B+0.30)/0.871.
+// Rounded UP to the cent.
+function novemberMinimumPrice(hours, teamSize, city){
+  const base = novemberBaseCost(hours, teamSize, city);
+  return Math.ceil(((base.baseCost+STRIPE_FLAT)/0.871)*100)/100;
+}
+// Generalized version for the walk-away-floor box's arbitrary target %.
+function novemberMinimumPriceForTarget(hours, teamSize, city, targetMarginPct){
+  const base = novemberBaseCost(hours, teamSize, city);
+  const targetFrac = targetMarginPct/100;
+  const denom = 1 - STRIPE_PCT - targetFrac;
+  if(denom <= 0) return null;
+  return Math.ceil(((base.baseCost+STRIPE_FLAT)/denom)*100)/100;
+}
+// Non-blocking warning only — never refuses/gates sending. Strictly below
+// 10% only (exactly 10% is not a warning). A non-positive/non-finite price
+// is "not evaluable", not a genuine $0 below-minimum price.
+function evaluateLegWarning(leg, price, hours, teamSize, city){
+  const minimumPrice = novemberMinimumPrice(hours, teamSize, city);
+  const travelComplete = !!getCityTravelEstimate(city);
+  if(!Number.isFinite(price) || price<=0){
+    return {leg, marginPct:Infinity, minimumPrice, addToReachMinimum:0, belowMinimum:false, travelComplete};
+  }
+  const qc = novemberQuoteCost(price, hours, teamSize, city);
+  const addToReachMinimum = Math.max(0, Math.round((minimumPrice-price)*100)/100);
+  return {leg, marginPct:qc.marginPct, minimumPrice, addToReachMinimum, belowMinimum: qc.marginPct < 10, travelComplete: qc.travelComplete};
+}
 /* ADMIN-ONLY:END */
 const RATE_PER_TECH = 75.00; // Updated July 2026: confirmed client rate (was $65.45 aspirational-vs-current test; now decided at $150/hr team)
 const TEAM_RATE = RATE_PER_TECH * 2;
@@ -1528,8 +1618,8 @@ const INITIAL_CLEAN_MINIMUM = INITIAL_CLEAN_MIN_HOURS * INITIAL_CLEAN_TEAM_RATE;
 // two-person Initial Standard-Clean jobs logged in TCS ranged 3h18–5h01.
 // This is a planning estimate for the rep/client, never a fixed quote, and
 // never a guarantee that the job's actual time on site will be profitable —
-// see INITIAL_CLEAN_ESTIMATE_DISCLAIMER below (same sentence used for the
-// Item 3 margin-hold copy on this leg).
+// see INITIAL_CLEAN_ESTIMATE_DISCLAIMER below (same sentence shown in the
+// client quote page and the composed email for this leg).
 const INITIAL_CLEAN_HISTORICAL_HOURS = 4;
 // A hands-free heuristic for a likely hours/rate transposition in the Item 5
 // hourly-entry override (e.g. typing "120" into the hours box, meaning
@@ -1720,17 +1810,6 @@ let state = { service:'standard', sqft:1800, condition:'moderate', frequency:'on
   // Standard only) — null/false means "use the historical default", never
   // silently synthesized for a legacy quote that predates these fields.
   initialHoursOverride:null, initialHoursIsOverride:false };
-
-// Item 3: the server-computed marginHold boolean as of the quote's last
-// save/load in THIS tab (Pricing Calculator) — null until a save/load has
-// happened. Purely informational here; see updateCalcHoldBanner() (further
-// down) and the ADMIN-ONLY margin-hold ledger box in recalc() for the two
-// places that read it. The authoritative check always runs fresh,
-// server-side, at send time regardless of this value. Declared up here
-// (not nearer updateCalcHoldBanner's own definition) because recalc() —
-// which calls updateCalcHoldBanner() — runs once at script init time,
-// below, before a later `let` would exist.
-let lastSavedQuoteMarginHold = null;
 
 const FLOOR_TYPES = ['Hardwood','Tile','Carpet','Laminate','Vinyl / LVP','Concrete','Other'];
 const COLLECTED_VIA_LABELS = { calledin:'Called-In', walkthrough:'Complimentary Walkthrough', leadform:'Lead Form', other:'Other' };
@@ -2223,58 +2302,13 @@ function computeCurrent(){
   return r;
 }
 
-// ── COST / MARGIN LEDGER ── ADMIN-ONLY: this whole internal cost model
-// (fixedCostFor/costBreakdown/minAcceptablePrice and the constants they use)
-// is never needed by the customer-facing calculator above — computeCurrent()
-// and its service-specific compute* functions never call any of it — so it's
-// safe to strip entirely from a non-ADMIN response. recalc() below only
-// calls costBreakdown when it exists.
-/* ADMIN-ONLY:START */
-// REAL DATA (July 2026) — Housekeeping mileage, from payroll mileage log + CA minimum wage
-// UPDATED (Aug 2026, owner-confirmed) — drive time wage is $16.90/hr (CA min wage) PER TECHNICIAN,
-// 1 hour each, for every team size (was previously only applied to solo/Housekeeping jobs).
-// Mileage reimbursement stays exactly as before — one vehicle's mileage per job, not per tech.
-const HK_ROUNDTRIP_MILES = 20.31*2; // office (1504 Brookhollow Dr, Santa Ana) <-> client, real logged one-way distance x2
-const DRIVE_HOURS_PER_TECH = 1.0;   // confirmed Aug 2026: 1 hr drive time per technician, all team sizes
-const CA_MIN_WAGE = 16.90;          // confirmed July 2026, CA statewide minimum wage
-
-function fixedCostFor(hours, teamSize){
-  // UPDATED (Sep 2026 client audit): drive paid at full tech wage using the city's real drive time per tech;
-  // mileage = real per-visit average for the city (Housekeeping keeps its logged office round trip);
-  // overhead charged per paid tech-hour (cleaning + drive).
-  const isSolo = teamSize===1;
-  const cd = getCityDrive();
-  const cleaningWage = teamSize*TECH_WAGE*hours;
-  const driveHrsTotal = teamSize*cd.drive;
-  const driveWage = driveHrsTotal*TECH_WAGE;
-  const wage = cleaningWage + driveWage;
-  const wc = wage*WC_RATE;
-  const tax = wage*TAX_RATE;
-  const mileage = (isSolo && state.service==='housekeeping') ? (HK_ROUNDTRIP_MILES*MILEAGE_RATE) : cd.mile;
-  const hardCost = wage+wc+tax+mileage;
-  const oh = currentOverheadPerHr();
-  const paidTechHours = teamSize*hours + driveHrsTotal;
-  const overhead = oh.rate*paidTechHours;
-  return {cleaningWage,driveWage,wage,wc,tax,mileage,hardCost,overhead,overheadMonth:oh,cityDrive:cd,driveHrsTotal,paidTechHours};
-}
-function costBreakdown(price, hours, teamSize){
-  const f = fixedCostFor(hours, teamSize);
-  const admin = price*STRIPE_PCT + STRIPE_FLAT;
-  const totalCost = f.hardCost+f.overhead+admin;
-  const margin = price-totalCost;
-  const marginPct = price>0 ? (margin/price*100) : 0;
-  return {...f, admin, totalCost, margin, marginPct};
-}
-function minAcceptablePrice(hours, teamSize, targetMarginPct){
-  const f = fixedCostFor(hours, teamSize);
-  const fixed = f.hardCost + f.overhead + STRIPE_FLAT;
-  const targetFrac = targetMarginPct/100;
-  // price - fixed - price*STRIPE_PCT = targetFrac*price  =>  price*(1-STRIPE_PCT-targetFrac) = fixed
-  const denom = 1 - STRIPE_PCT - targetFrac;
-  if(denom <= 0) return null; // target margin too high to solve for
-  return fixed/denom;
-}
-/* ADMIN-ONLY:END */
+// ── COST / MARGIN LEDGER ── ADMIN-ONLY: the November cost calculator
+// (novemberBaseCost/novemberQuoteCost/novemberMinimumPrice* and
+// evaluateLegWarning, defined above) is never needed by the
+// customer-facing calculator above — computeCurrent() and its
+// service-specific compute* functions never call any of it — so it's safe
+// to strip entirely from a non-ADMIN response. recalc() below only calls
+// novemberQuoteCost when it exists.
 
 // ── RENDER ──
 function formatTimeRange(lowMin, highMin){
@@ -2409,13 +2443,6 @@ async function loadQuoteForUpdate(){
     // Object.assign above leaves state's current defaults (null/false) in
     // place rather than synthesizing a value, so computeStandard() falls
     // back to the historical default for it, same as any brand-new quote.
-    // Item 3: mirror the server-computed hold status — informational in
-    // this tab only (see updateCalcHoldBanner()). Correction round (Item 2):
-    // use the FRESH `result.marginHold` this same `get` call's response
-    // just returned (src/app/api/sales/storage/route.ts's "get" case now
-    // recomputes it on every read), not the possibly-stale `data.marginHold`
-    // embedded in the saved JSON blob itself.
-    lastSavedQuoteMarginHold = (typeof result.marginHold === 'boolean') ? result.marginHold : null;
 
     // Falls back to the typed id only if the stored record itself is
     // missing its own `id` field (legacy/malformed data) — same fallback
@@ -2525,11 +2552,10 @@ async function saveQuoteForClient(){
     suggested: r.price.toFixed(2),
     time: timeStr, timeLowHrs: cleanMin/60, timeHighHrs: bufferedMin/60, validUntil: '',
     addons, mailbox: senderDefaults.mailbox, sender: senderDefaults.sender,
-    // Item 3: teamSize/lowHours are needed server-side so /api/sales/storage
-    // can recompute the margin-hold check without re-deriving business rules
-    // per service shape. lowHours is only non-null for specialty services
-    // (their low-end price uses genuinely fewer hours); every other service
-    // leaves it null and the server falls back to timeLowHrs for both ends.
+    // teamSize/lowHours: persisted alongside every other saved field so a
+    // reopened quote renders identically to how it looked when saved.
+    // lowHours is only non-null for specialty services (their low-end price
+    // uses genuinely fewer hours); every other service leaves it null.
     teamSize: r.teamSize,
     lowHours: (r.lowHours != null ? r.lowHours : null),
     homeDetails: {
@@ -2569,14 +2595,6 @@ async function saveQuoteForClient(){
   try{
     const result = await window.storage.set('quote:'+id, JSON.stringify(quoteData), true);
     if(result){
-      // Item 3: the server (src/app/api/sales/storage/route.ts) computed
-      // marginHold fresh against the just-saved data and persisted it onto
-      // the row — mirror that boolean onto our in-memory copy so the
-      // Client Quote tab's renderQuote()/updateSalesControlsUI() and this
-      // tab's own banner immediately reflect it, without a second round trip.
-      quoteData.marginHold = !!result.marginHold;
-      lastSavedQuoteMarginHold = quoteData.marginHold;
-      updateCalcHoldBanner();
       statusEl.textContent = `Saved. Quote ID: ${id}. Opening Client Quote tab...`;
       if(typeof switchTab === 'function') switchTab('quote');
       const loadIdEl = document.getElementById('load-id');
@@ -2593,11 +2611,12 @@ async function saveQuoteForClient(){
 
 function recalc(){
   const r = computeCurrent();
-  // costBreakdown doesn't exist in a non-ADMIN response (see its ADMIN-ONLY
-  // wrap above) — b is only ever read below inside the ledger-body-guarded
-  // block, which likewise only runs for ADMIN, so null here is never
-  // dereferenced for a Sales Rep.
-  const b = typeof costBreakdown === 'function' ? costBreakdown(r.price, r.hours, r.teamSize) : null;
+  const city = document.getElementById('city-select').value;
+  // novemberQuoteCost doesn't exist in a non-ADMIN response (see its
+  // ADMIN-ONLY wrap above) — b is only ever read below inside the
+  // ledger-body-guarded block, which likewise only runs for ADMIN, so null
+  // here is never dereferenced for a Sales Rep.
+  const b = typeof novemberQuoteCost === 'function' ? novemberQuoteCost(r.price, r.hours, r.teamSize, city) : null;
 
   document.getElementById('cv-price').innerHTML = (r.lowPrice!=null) ? `$${r.lowPrice.toFixed(0)}–$${r.highPrice.toFixed(0)}` : `$${r.price.toFixed(2)}`;
   document.getElementById('cv-price-sub').textContent = SERVICES.find(s=>s.id===state.service).label;
@@ -2612,7 +2631,6 @@ function recalc(){
     suggestedEl.textContent = '';
   }
 
-  const city = document.getElementById('city-select').value;
   const cityInfo = CITY_DATA[city];
   const chips = [cityInfo && cityInfo.premium > 0 ? `${city} +${(cityInfo.premium*100).toFixed(0)}%` : city];
   const cityNote = document.getElementById('city-note');
@@ -2663,121 +2681,62 @@ function recalc(){
     }
   }
 
-  // Item 3 (informational, non-admin-safe): no dollar figures here — just
-  // whether the most recently SAVED version of this quote is on hold, per
-  // the server-computed `marginHold` boolean (see /api/sales/storage and
-  // updateCalcHoldBanner()). The real gate is always the fresh server-side
-  // recheck in /api/sales/send-quote, regardless of what this banner shows.
-  updateCalcHoldBanner();
-
   // Owner-only internal cost/margin ledger — this whole block (not just the
   // rendered panel) is ADMIN-ONLY and physically absent from a non-admin
   // response, not merely dead code behind a DOM check: it references cost
   // constants and functions that don't exist in that response either.
   /* ADMIN-ONLY:START */
   if (document.getElementById('ledger-body')) {
-  const marginCls = b.margin < 0 ? 'margin-bad' : (b.marginPct < 20 ? '' : 'margin-good');
+  const marginCls = b.marginPct < 10 ? 'margin-bad' : 'margin-good';
+  const travelRowNote = b.travelComplete ? '' : ' — Travel estimate incomplete for this city';
   document.getElementById('ledger-body').innerHTML = `
-    <tr><td>Cleaning wage (${r.teamSize} tech${r.teamSize>1?'s':''} × ${r.hours.toFixed(2)} hrs)</td><td>$${b.cleaningWage.toFixed(2)}</td></tr>
-    <tr><td>Drive time wage (${r.teamSize} tech${r.teamSize>1?'s':''} × ${b.cityDrive.drive.toFixed(2)} hrs @ $${TECH_WAGE}/hr — ${b.cityDrive.borrowed?b.cityDrive.borrowed+' drive data':(b.cityDrive.fallback?'conservative estimate':'TCS avg, '+b.cityDrive.city)})</td><td>$${b.driveWage.toFixed(2)}</td></tr>
-    <tr><td>Workers comp (15%)</td><td>$${b.wc.toFixed(2)}</td></tr>
-    <tr><td>Payroll tax (10.5%)</td><td>$${b.tax.toFixed(2)}</td></tr>
-    <tr><td>Mileage${(r.teamSize===1 && state.service==='housekeeping')?' (round trip, office ↔ client)':' (one vehicle — TCS avg per visit for this city)'}</td><td>$${b.mileage.toFixed(2)}</td></tr>
-    <tr class="total"><td>Hard cost subtotal</td><td>$${b.hardCost.toFixed(2)}</td></tr>
-    <tr><td>Overhead (${b.paidTechHours.toFixed(2)} paid tech-hrs × $${b.overheadMonth.rate.toFixed(2)} — ${b.overheadMonth.label})</td><td>$${b.overhead.toFixed(2)}</td></tr>
-    <tr><td>Card processing (Stripe, 2.9% + $0.30)</td><td>$${b.admin.toFixed(2)}</td></tr>
-    <tr class="total"><td>Total cost</td><td>$${b.totalCost.toFixed(2)}</td></tr>
-    <tr class="margin ${marginCls}"><td>Margin</td><td>$${b.margin.toFixed(2)} (${b.marginPct.toFixed(1)}%)</td></tr>
+    <tr><td>Onsite person-hours (${r.teamSize} tech${r.teamSize>1?'s':''} × ${r.hours.toFixed(2)} hrs)</td><td>${b.onsitePersonHours.toFixed(2)}</td></tr>
+    <tr><td>Travel person-hours${travelRowNote}</td><td>${b.travelPersonHours.toFixed(2)}</td></tr>
+    <tr><td>Loaded labor (onsite + travel person-hrs × $${NOV_LOADED_LABOR_PER_PERSON_HR.toFixed(6)}/person-hr)</td><td>$${b.laborCost.toFixed(2)}</td></tr>
+    <tr><td>Overhead (onsite person-hrs × $${NOV_OVERHEAD_PER_ONSITE_PERSON_HR.toFixed(2)}/onsite-hr — Nov 2026 shared budget ÷ onsite hrs)</td><td>$${b.overheadCost.toFixed(2)}</td></tr>
+    <tr><td>Vehicle allowance (one car, once per job)${b.travelComplete?'':' — not charged, travel incomplete'}</td><td>$${b.vehicleAllowance.toFixed(2)}</td></tr>
+    <tr class="total"><td>Base cost (B)</td><td>$${b.baseCost.toFixed(2)}</td></tr>
+    <tr><td>Card processing (2.9% + $0.30 — card-payment assumption)</td><td>$${b.cardProcessing.toFixed(2)}</td></tr>
+    <tr class="total"><td>Total cost</td><td>$${b.cost.toFixed(2)}</td></tr>
+    <tr class="margin ${marginCls}"><td>Margin${b.travelComplete?'':' (provisional — excluding travel)'}</td><td>$${b.margin.toFixed(2)} (${b.marginPct.toFixed(1)}%)</td></tr>
   `;
 
+  // November plan: a single, NON-BLOCKING warning — never a sending gate.
+  // Warn only strictly below 10% margin (exactly 10% or above shows
+  // nothing). Initial and Ongoing/single legs are evaluated separately,
+  // each with its own hours/price, and each always reports its own travel
+  // completeness, independent of whether its margin triggers a warning.
   const warnBox = document.getElementById('margin-warn');
-  const floorForWarn = minAcceptablePrice(r.hours, r.teamSize, 21);
-  const lowForWarn = (r.lowPrice!=null) ? r.lowPrice : r.price;
-  const cdw = b.cityDrive;
-  const dayTip = cdw.day ? ` Offer ${cdw.day} first — the team is already in ${cdw.borrowed||cdw.city} that day.` : '';
-  // Copy-only follow-up: every figure in this 21%-target box is derived
-  // from the same still-unverified cost inputs (TECH_WAGE, mileage,
-  // AUDIT_OVERHEAD_PER_TECH_HR) as the 10%-floor box above — a "loss" or a
-  // "quote at least $X" minimum here must never read as a confirmed loss or
-  // a verified minimum price. Every dollar figure and margin % is labeled
-  // provisional/based on unverified costs, not just the hard-floor box.
-  if(b.margin < 0){
-    warnBox.className = 'margin-warn-box show-bad';
-    warnBox.textContent = `Provisional loss (based on unverified costs): $${Math.abs(b.margin).toFixed(2)} at this price. To pay $${TECH_WAGE}/hr and keep 21%, the provisional minimum is $${floorForWarn.toFixed(0)} — or trim the scope.${dayTip}`;
-  } else if(b.marginPct < 21){
-    warnBox.className = 'margin-warn-box show-bad';
-    warnBox.textContent = `Below the 21% target (${b.marginPct.toFixed(1)}% — provisional, based on unverified costs). The provisional minimum to keep 21% after paying the team $${TECH_WAGE}/hr for cleaning and drive time is $${floorForWarn.toFixed(0)}.${dayTip}`;
-  } else if(lowForWarn < floorForWarn){
-    warnBox.className = 'margin-warn-box show-bad';
-    warnBox.textContent = `The suggested price clears 21% (${b.marginPct.toFixed(1)}% — provisional), but the low end of the range ($${lowForWarn.toFixed(0)}) is under the provisional $${floorForWarn.toFixed(0)} floor. Don't close below $${floorForWarn.toFixed(0)} (provisional).${dayTip}`;
-  } else {
-    warnBox.className = 'margin-warn-box show-good';
-    warnBox.textContent = `Clears the 21% target (${b.marginPct.toFixed(1)}% — provisional) with the team paid $${TECH_WAGE}/hr for cleaning and drive time.${dayTip}`;
-  }
-
-  // Item 3: hard 10% margin floor — a SEPARATE, non-blocking-vs-blocking
-  // distinction from the 21% target above (a quote can clear 10% but still
-  // show the 21%-target warning above, unchanged). This is purely
-  // informational here (ADMIN already has the cost functions live); the
-  // real enforcement is the fresh server-side recheck in
-  // src/app/api/sales/send-quote/route.ts via src/lib/pricingMargin.ts —
-  // never trust this client-side computation for the actual send-block.
-  const holdBox = document.getElementById('margin-hold');
-  if(holdBox){
-    const floorForHold10 = minAcceptablePrice(r.hours, r.teamSize, 10);
-    const ongoingGenuineHeld = (b.marginPct < 10) || (floorForHold10!=null && lowForWarn < floorForHold10);
-    let initialMarginPct = null, initialFloor10 = null, initialGenuineHeld = false;
+  if(warnBox){
+    const legLabel = {single:'This quote', initial:'Initial Cleaning', ongoing:'Ongoing Cleaning'};
+    const ongoingLeg = r.initial ? 'ongoing' : 'single';
+    const ongoingWarning = evaluateLegWarning(ongoingLeg, r.price, r.hours, r.teamSize, city);
+    let initialWarning = null;
     if(r.initial){
       const initHoursForCost = Math.max(r.initial.estimatedHours, r.initial.minimumHours);
-      const ib = costBreakdown(r.initial.estimatedCost, initHoursForCost, 2);
-      initialFloor10 = minAcceptablePrice(initHoursForCost, 2, 10);
-      initialMarginPct = ib.marginPct;
-      initialGenuineHeld = ib.marginPct < 10;
+      initialWarning = evaluateLegWarning('initial', r.initial.estimatedCost, initHoursForCost, 2, city);
     }
-
-    // Item 1 (correction round): mirrors src/lib/pricingMargin.ts's own
-    // evaluateQuoteMarginHold() exactly — until COST_DATA_VERIFIED is true,
-    // EVERY recurring Standard quote is held unconditionally on BOTH legs,
-    // regardless of what these still-unverified costs compute the margin to
-    // be. This box is purely informational (the real gate is always the
-    // fresh server-side recheck); every other service's display below is
-    // completely unaffected by COST_DATA_VERIFIED.
-    const isRecurringStandardLive = !!r.initial;
-    const unverifiedHold = isRecurringStandardLive && !COST_DATA_VERIFIED;
-
-    const heldParts = [];
-    if(unverifiedHold){
-      heldParts.push(`Ongoing Cleaning: HELD — underlying costs (including the $${AUDIT_OVERHEAD_PER_TECH_HR.toFixed(2)}/hr overhead figure) have not yet been reconciled against real payroll/TCS/mileage records. Provisional margin (based on unverified costs): ${b.marginPct.toFixed(1)}% (provisional minimum $${floorForHold10!=null?floorForHold10.toFixed(0):'n/a'}).`);
-      heldParts.push(`Initial Cleaning: HELD — same unverified-cost reason. Provisional margin (based on unverified costs): ${initialMarginPct!=null?initialMarginPct.toFixed(1):'n/a'}% (provisional minimum $${initialFloor10!=null?initialFloor10.toFixed(0):'n/a'}).`);
-    } else {
-      if(ongoingGenuineHeld) heldParts.push(`Ongoing Cleaning: ${b.marginPct.toFixed(1)}% margin — below the 10% floor (minimum $${floorForHold10!=null?floorForHold10.toFixed(0):'n/a'}).`);
-      if(initialGenuineHeld) heldParts.push(`Initial Cleaning: ${initialMarginPct.toFixed(1)}% margin — below the 10% floor (minimum $${initialFloor10!=null?initialFloor10.toFixed(0):'n/a'}).`);
+    const parts = [];
+    for(const w of [initialWarning, ongoingWarning].filter(Boolean)){
+      const msgs = [];
+      if(!w.travelComplete) msgs.push(`travel estimate incomplete for ${city} — margin is provisional and excludes travel, not final/all-in`);
+      if(w.belowMinimum) msgs.push(`${w.marginPct.toFixed(1)}% margin — below the 10% minimum. Add $${w.addToReachMinimum.toFixed(2)} to reach the minimum (minimum price $${w.minimumPrice.toFixed(2)})${w.travelComplete?'':' — provisional, excluding travel'}`);
+      if(msgs.length) parts.push(`${legLabel[w.leg]}: ${msgs.join('; ')}.`);
     }
-    if(heldParts.length){
-      holdBox.className = 'margin-hold-box show';
-      const headline = unverifiedHold ? 'HOLD — underlying cost data is not yet verified/reconciled.' : 'HOLD — below the 10% hard floor.';
-      // Copy-only follow-up: an unverified-cost hold can't be cleared by
-      // re-pricing the quote — the cost DATA is what's unresolved, not this
-      // quote's own price/hours — so it must never say "re-save with
-      // different inputs." That instruction is only ever true for a
-      // genuine below-10%-floor hold (which can only happen once
-      // COST_DATA_VERIFIED is eventually true), where raising the price or
-      // re-measuring hours really would clear it.
-      const tailText = unverifiedHold
-        ? 'Sending stays blocked until the underlying costs are reconciled and verified — there is no override button.'
-        : 'Sending is blocked server-side until this is re-saved with different inputs (higher price, or re-measured hours) — there is no override button.';
-      holdBox.innerHTML = `<strong>${headline}</strong> ${heldParts.join(' ')} ${INITIAL_CLEAN_ESTIMATE_DISCLAIMER} ${tailText}`;
+    if(parts.length){
+      warnBox.className = 'margin-warn-box show';
+      warnBox.innerHTML = `${parts.join(' ')} This is a warning only — sending is never blocked on margin.`;
     } else {
-      holdBox.className = 'margin-hold-box';
-      holdBox.innerHTML = '';
+      warnBox.className = 'margin-warn-box';
+      warnBox.innerHTML = '';
     }
   }
 
   document.getElementById('hours-note').textContent = r.note;
 
-  const floorPrice = minAcceptablePrice(r.hours, r.teamSize, state.targetMargin);
+  const floorPrice = novemberMinimumPriceForTarget(r.hours, r.teamSize, city, state.targetMargin);
   document.getElementById('target-margin').value = state.targetMargin;
-  document.getElementById('floor-price').textContent = floorPrice!=null ? `$${floorPrice.toFixed(2)} (provisional)` : 'Target too high to solve';
+  document.getElementById('floor-price').textContent = floorPrice!=null ? `$${floorPrice.toFixed(2)} (Nov 2026 planning assumption)` : 'Target too high to solve';
 
   const cleanMin = r.hours*60;
   const bufferedMin = cleanMin + 60;
@@ -3466,13 +3425,6 @@ const ADDON_LABELS = {
 };
 
 let currentQuote = null;
-function updateCalcHoldBanner(){
-  const banner = document.getElementById('sales-hold-banner');
-  if(!banner) return;
-  const isAdmin = typeof costBreakdown === 'function';
-  if(isAdmin){ banner.style.display = 'none'; return; } // ADMIN sees the detailed ledger box instead
-  banner.style.display = (lastSavedQuoteMarginHold === true) ? 'block' : 'none';
-}
 
 // Dirty-tracking: true the moment the recipient, price, or any other
 // content field on EITHER quote-creation surface is edited without a
@@ -3485,15 +3437,13 @@ let quoteDirty = false;
 // Dedicated double-click guard for sendQuoteToClient() — deliberately its
 // OWN flag, not a read of sendBtn.disabled: the button is ALSO disabled for
 // reasons that have nothing to do with a send being in flight (no id yet,
-// quoteDirty, no clientEmail, or data.marginHold from updateSalesControlsUI)
-// — most importantly, a margin-held quote's Send button starts out already
-// disabled the instant it's saved/loaded, before sendQuoteToClient() has
-// ever run once. Gating the guard on sendBtn.disabled itself would make
-// EVERY call for an already-held quote silently no-op before ever reaching
-// the server — including every e2e test (and any future real caller) that
-// deliberately calls this function directly to prove the server-side gate
-// holds even with a disabled button, which this codebase relies on
-// throughout. Set true only for the duration of this function's own
+// quoteDirty, or no clientEmail — see updateSalesControlsUI). Gating the
+// guard on sendBtn.disabled itself would make every call for a currently-
+// disabled quote silently no-op before ever reaching the server — including
+// e2e tests (and any future real caller) that deliberately call this
+// function directly to prove the OTHER sending safeguards (recipient
+// validation, duplicate-send protection, Scam protection) hold even with a
+// disabled button. Set true only for the duration of this function's own
 // synchronous-then-async run; reset on every exit path below.
 let sendInFlight = false;
 // The `savedAt` value this tab last saw for whatever quote is currently
@@ -3913,14 +3863,6 @@ async function loadQuote(){
     const result = await window.storage.get('quote:'+id, true);
     if(result && result.value){
       const data = JSON.parse(result.value);
-      // Correction round (Item 2): overwrite with the FRESH marginHold (and,
-      // for an ADMIN reopening here, its reason) this same `get` call's
-      // response just returned, rather than trusting the possibly-stale
-      // value embedded in the saved JSON blob — updateSalesControlsUI(data),
-      // called from inside renderQuote() below, then naturally uses the
-      // correct, current value with no changes of its own.
-      if(typeof result.marginHold === 'boolean') data.marginHold = result.marginHold;
-      if(typeof result.marginHoldReason === 'string') data.marginHoldReason = result.marginHoldReason;
       statusEl.textContent = 'Quote loaded for ' + (data.clientName||'client') + '.';
       renderQuote(data);
     } else {
@@ -4000,11 +3942,6 @@ async function loadSavedQuoteFromList(id){
     const result = await window.storage.get('quote:'+id, true);
     if(result && result.value){
       const data = JSON.parse(result.value);
-      // Correction round (Item 2): same fresh-marginHold overwrite as
-      // loadQuote() above — this is the same reopen path, just reached from
-      // the Previous Quotes list instead of the ID field.
-      if(typeof result.marginHold === 'boolean') data.marginHold = result.marginHold;
-      if(typeof result.marginHoldReason === 'string') data.marginHoldReason = result.marginHoldReason;
       renderQuote(data);
       const loadIdEl = document.getElementById('load-id');
       if(loadIdEl) loadIdEl.value = id;
@@ -4167,16 +4104,6 @@ function updateSalesControlsUI(data){
   } else if(!data.clientEmail){
     sendBtn.disabled = true;
     sendStatus.textContent = 'Add a client email in the Pricing Calculator tab and save again to enable sending.';
-  } else if(data.marginHold){
-    // Item 3: client-side disable only — defense in depth. The stored row
-    // never carries WHY (no dollar figures persisted outside the live
-    // ledger), so this generic message is shown regardless of role here; an
-    // ADMIN wanting the specific reason/floor price returns to the Pricing
-    // Calculator tab's live margin-hold ledger box. The actual gate is the
-    // fresh server-side recheck in /api/sales/send-quote — this disabled
-    // attribute is never what actually stops a send.
-    sendBtn.disabled = true;
-    sendStatus.textContent = 'This quote needs owner review before it can be sent.';
   } else {
     sendBtn.disabled = false;
     sendStatus.textContent = data.sentAt
@@ -4397,13 +4324,11 @@ async function sendQuoteToClient(){
       sendStatus.textContent = `Sent to ${currentQuote.clientEmail} just now.`;
       if(typeof refreshPreviousQuotesList === 'function') refreshPreviousQuotesList();
     } else {
-      // Item 3: this also covers the authoritative server-side margin-hold
-      // refusal (403, "needs owner review" / the specific reason for an
-      // ADMIN) — the disabled button is only ever a client-side convenience;
-      // this is the real gate, and it can refuse even if the button was
-      // somehow bypassed (see the e2e test that calls this function directly).
+      // Every OTHER sending safeguard (recipient validation, Scam-lead
+      // block, atomic duplicate-send claim) still refuses server-side here
+      // even if the disabled button was somehow bypassed (see the e2e test
+      // that calls this function directly) — margin is never one of them.
       sendStatus.textContent = 'Send failed: ' + (result.error || 'unknown error');
-      if(result.marginHold) currentQuote.marginHold = true; // learned fresh from the server's own refusal
     }
   } catch(e){
     sendStatus.textContent = 'Send failed — check your connection and try again.';
@@ -4414,10 +4339,8 @@ async function sendQuoteToClient(){
   sendInFlight = false;
   // Re-enable the button only when nothing we know of would block a retry —
   // NOT a full updateSalesControlsUI() call here, which would overwrite the
-  // failure message above (including the margin-hold refusal) with its own
-  // status text. A margin-hold refusal keeps it disabled; any other
-  // failure (e.g. email transport) leaves it retryable.
-  sendBtn.disabled = !currentQuote.clientEmail || !!currentQuote.marginHold;
+  // failure message above with its own status text.
+  sendBtn.disabled = !currentQuote.clientEmail;
 }
 
 /* ADMIN-ONLY:START */

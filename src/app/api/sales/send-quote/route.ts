@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { requireSalesApiAccess } from "@/lib/requireSalesApiAccess";
 import { sendEmail } from "@/lib/email";
-import { evaluateQuoteMarginHold, describeMarginHold } from "@/lib/pricingMargin";
 
 // Sends a saved quote to its client by email (Microsoft Graph), reusing the
 // same branded HTML-with-signature wrapping used for Recruiting emails. The
@@ -68,43 +67,10 @@ export async function POST(request: Request) {
     return Response.json({ error: "This quote has no valid client email saved" }, { status: 400 });
   }
 
-  // Item 3: recompute the margin hold FRESH, server-side, right here —
-  // never trust whatever `quote.marginHold` says was stored at the last
-  // save (same "never cached" principle as the Lead-Scam send-block above:
-  // a stale/already-open tab, or a quote re-saved with different inputs
-  // elsewhere, can't be trusted — this is the actual enforcement point).
-  // "Held quotes may be saved for review but cannot be sent" is enforced
-  // here, not by the client's disabled Send button, which can be bypassed
-  // (see the e2e tests that call sendQuoteToClient() directly). Checked
-  // before the atomic send-claim below, same as the Scam check above it —
-  // neither ever needs a row written or reverted for a request this refuses
-  // outright.
-  const marginEvaluation = evaluateQuoteMarginHold(quote);
-  if (marginEvaluation.held) {
-    // marginHold: true rides along on the error response (still no dollar
-    // figures for a non-ADMIN caller) so the client can tell "held, don't
-    // bother retrying until this is re-saved differently" apart from a
-    // transient failure (e.g. email transport) worth letting the rep retry.
-    if (session.role === "ADMIN") {
-      // Correction round (Item 1): a recurring-Standard quote is now held
-      // for an "unverified-cost" reason, not necessarily a genuine
-      // below-the-floor margin — a hardcoded "below the 10% margin floor"
-      // prefix would misstate why every time that's the actual cause, so
-      // the prefix itself is picked from what's actually held. The specific
-      // per-leg reason (margin-floor OR unverified-cost, each worded
-      // honestly) always comes from describeMarginHold itself.
-      const anyUnverified = marginEvaluation.legs.some((l) => l.held && l.heldReason === "unverified-cost");
-      const prefix = anyUnverified ? "Held." : "Held — below the 10% margin floor.";
-      return Response.json(
-        { error: `${prefix} ${describeMarginHold(marginEvaluation)}`, marginHold: true },
-        { status: 403 },
-      );
-    }
-    return Response.json(
-      { error: "This quote needs owner review before it can be sent.", marginHold: true },
-      { status: 403 },
-    );
-  }
+  // November plan: cost/margin is a non-blocking warning only (see
+  // src/lib/pricingMargin.ts) — sending is never gated on margin. This is
+  // not permission to bypass the OTHER sending safeguards below (Scam
+  // check above, atomic duplicate-send claim, recipient validation).
 
   // Atomic claim before dispatching — a compare-and-swap on the exact prior
   // stored value (mirrors this codebase's Prisma-backed stale-write guards

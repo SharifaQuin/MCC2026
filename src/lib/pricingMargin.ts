@@ -1,428 +1,229 @@
-// Item 3 (margin protection — 10% hard floor): the pricing/quote tool's
-// cost model is ADMIN-ONLY and physically stripped from a non-ADMIN
-// browser's response (see src/lib/salesPricingToolAccess.ts and
-// src/content/sales-pricing-tool.html's own `/* ADMIN-ONLY:START */` cost
-// block, ~line 1397 and ~line 1986) — a Sales Rep's browser never receives
-// TECH_WAGE, the CITY_DRIVE dataset, fixedCostFor/costBreakdown/
-// minAcceptablePrice, or any other cost constant/function, by design. So a
-// Sales Rep's own save/send can never compute a margin client-side, and the
-// hold decision has to be computed here instead, server-side, where this
-// data already safely lives only in server code and is never shipped to
-// any browser.
+// November 2026 cost calculator (owner-approved planning basis, fixed
+// through Nov 30, 2026). These are conservative PLANNING ASSUMPTIONS, not
+// anyone's actual pay, not a payroll change, and not a measure of actual
+// monthly profit — see the PR body / the embedded HTML's own assumptions
+// banner for the full history of what this replaces.
 //
-// Every constant below is copied VERBATIM from
-// src/content/sales-pricing-tool.html (its own `/* ADMIN-ONLY:START */`
-// cost-constant block, ~lines 1397-1436, 1534-1536, 1993-1999) — not
-// retyped or re-derived, to rule out a transcription error silently
-// diverging the two cost models. If either file's cost constants change,
-// the other must be updated to match — each file carries a comment
-// cross-referencing this one.
+// Deliberately SEPARATE from the Profitability & Performance tab's
+// real-payroll "actuals" constants (TECH_WAGE, WC_RATE, TAX_RATE,
+// AUDIT_OVERHEAD_PER_TECH_HR, CITY_DRIVE, etc., all still defined in
+// src/content/sales-pricing-tool.html) — this module never reads or writes
+// any of those, and this plan never changes pay, break handling, historical
+// payroll/TCS records, or the books. Only STRIPE_PCT/STRIPE_FLAT-equivalent
+// values are shared in spirit (same numbers), re-declared here as
+// CARD_PROCESSING_PCT/CARD_PROCESSING_FLAT so this module has zero import
+// dependency on the other cost model.
 //
-// Item 4 (cost verification): these are EXISTING, already-in-production
-// constants — this module does not attempt to re-derive, verify, or
-// reconcile them against real payroll/TCS/mileage source records (no such
-// records are committed to this repository, and this coding session has no
-// access to the owner's actual Gusto/TCS accounts — see the PR body's
-// "Item 4 — cost verification" section for what was checked and what a
-// real close-out would need). Nothing in this module ever labels a margin
-// result "verified" or "reconciled" — it only ever computes against these
-// still-unverified inputs, exactly as they already drive the existing
-// ADMIN-ONLY ledger/floor-price UI that shipped before this PR.
+// This module is no longer imported by any server route — sending is never
+// blocked on margin (see send-quote/route.ts and storage/route.ts, which
+// used to call evaluateQuoteMarginHold here before this PR). It exists
+// purely as a single, pinned, unit-testable source for the exact math,
+// mirrored verbatim in src/content/sales-pricing-tool.html's own
+// ADMIN-ONLY cost block (the live, client-side ledger an ADMIN actually
+// sees) — if either file's constants change, update the other to match.
 
-// Correction round (Item 4 follow-up): the cost constants below are STILL
-// exactly as unverified as the header comment above already says — nothing
-// about them has changed here. What's new is enforcing that honestly:
-// until a real reconciliation is actually done — a TCS job-time export, a
-// Gusto payroll export, and the mileage reimbursement log (see PR #24's own
-// "Item 4 — cost verification" section for why none of these three could be
-// obtained in this coding session) — every recurring-Standard quote is held
-// UNCONDITIONALLY below, regardless of what margin these still-unverified
-// costs compute to (see evaluateQuoteMarginHold's isRecurringStandard
-// branch). Flip this to `true` only once that reconciliation has actually
-// happened — never as part of this PR, and never by guessing.
-export const COST_DATA_VERIFIED = false;
+export const NOV2026_BASE_WAGE_PER_PERSON_HR = 25;
+export const NOV2026_PAYROLL_TAX_RATE = 0.105;
+export const NOV2026_WORKERS_COMP_RATE = 0.135321;
 
-export const TECH_WAGE = 25;
-export const WC_RATE = 0.15;
-export const TAX_RATE = 0.105;
-export const MILEAGE_RATE = 0.725;
-export const TEAM_MILES_PER_DAY = 52;
-export const TEAM_BILLABLE_HRS_PER_DAY = 8.1;
-export const STRIPE_PCT = 0.029; // Confirmed July 2026: Stripe processing fee, replaces old 10% admin fee placeholder
-export const STRIPE_FLAT = 0.3;
+// $25 * (1 + 0.105 + 0.135321) = $31.008025 per person-hour (onsite or travel).
+export const NOV2026_LOADED_LABOR_PER_PERSON_HR =
+  NOV2026_BASE_WAGE_PER_PERSON_HR * (1 + NOV2026_PAYROLL_TAX_RATE + NOV2026_WORKERS_COMP_RATE);
 
-// UPDATED (Sep 2026 client audit) — replaces the monthly overhead table for
-// all cost math. $7,758.38/mo overhead (Jun–Aug avg) + ~40 hrs/mo paid
-// training/meeting time, ÷ 438 client-attributable paid tech-hours/mo
-// (cleaning + drive, TCS payroll Jul–Sep 2026). Applied per PAID TECH-HOUR
-// (each tech's cleaning hours + drive hours). Workers' comp is NOT in here
-// (it's WC_RATE). STILL UNVERIFIED against a real payroll/TCS export in
-// this coding session — see the module header and PR body Item 4 section.
-export const AUDIT_OVERHEAD_PER_TECH_HR = 20.52;
+// November shared budget ÷ that month's onsite person-hours (405h55m) =
+// $16.0121042907 overhead per ONSITE person-hour only — never added to
+// travel person-hours. Computed from the two inputs below (not hardcoded)
+// so the derivation is visible and matches at full floating-point precision;
+// display this rounded to the cent ($16.01), never the full-precision value.
+export const NOV2026_SHARED_BUDGET = 6499.58;
+export const NOV2026_ONSITE_PERSON_HOURS = 405 + 55 / 60; // 405h55m
+export const NOV2026_OVERHEAD_PER_ONSITE_PERSON_HR = NOV2026_SHARED_BUDGET / NOV2026_ONSITE_PERSON_HOURS;
 
-// REAL DATA (Sep 2026 client audit) — TCS drive logs, Jul 1–Sep 28, 2026.
-// drive = avg drive hours PER TECH per visit (includes share of the drive
-// back to the office); mile = avg mileage reimbursement $ per visit (one
-// vehicle, $0.72/mi); day = weekday the team is most often already in that
-// city (unused here — the day/route-planner fields aren't needed by this
-// pure cost/margin calculator).
-export const CITY_DRIVE: Record<string, { drive: number; mile: number; visits: number; day: string }> = {
-  "Aliso Viejo": { drive: 0.44, mile: 10.91, visits: 7, day: "Thursday" },
-  Anaheim: { drive: 0.57, mile: 15.02, visits: 1, day: "Thursday" },
-  "Corona Del Mar": { drive: 0.39, mile: 7.02, visits: 26, day: "Friday" },
-  "Costa Mesa": { drive: 0.36, mile: 6.09, visits: 17, day: "Wednesday" },
-  "Dana Point": { drive: 0.33, mile: 9.09, visits: 7, day: "Tuesday" },
-  "Huntington Beach": { drive: 0.46, mile: 8.36, visits: 18, day: "Monday" },
-  Irvine: { drive: 0.42, mile: 7.08, visits: 53, day: "Wednesday" },
-  "Ladera Ranch": { drive: 0.3, mile: 6.14, visits: 5, day: "Monday" },
-  "Laguna Beach": { drive: 0.75, mile: 10.02, visits: 22, day: "Friday" },
-  "Laguna Hills": { drive: 0.53, mile: 12.21, visits: 3, day: "Thursday" },
-  "Laguna Niguel": { drive: 0.61, mile: 14.07, visits: 22, day: "Tuesday" },
-  "Laguna Woods": { drive: 0.5, mile: 7.69, visits: 8, day: "Friday" },
-  "Lake Forest": { drive: 0.6, mile: 10.82, visits: 12, day: "Wednesday" },
-  "Long Beach": { drive: 0.57, mile: 9.26, visits: 2, day: "Monday" },
-  "Mission Viejo": { drive: 0.44, mile: 9.66, visits: 30, day: "Thursday" },
-  "Newport Beach": { drive: 0.79, mile: 10.64, visits: 1, day: "Thursday" },
-  "Rancho Santa Margarita": { drive: 0.46, mile: 8.97, visits: 14, day: "Thursday" },
-  "San Clemente": { drive: 0.7, mile: 22.35, visits: 10, day: "Monday" },
-  "San Juan Capistrano": { drive: 0.51, mile: 7.97, visits: 4, day: "Monday" },
-  Tustin: { drive: 0.2, mile: 3.37, visits: 13, day: "Thursday" },
+// Card-payment assumption, not a verified universal fee — same rate as
+// before (Stripe, confirmed July 2026), just explicitly re-labeled here as
+// an assumption per the November plan.
+export const CARD_PROCESSING_PCT = 0.029;
+export const CARD_PROCESSING_FLAT = 0.3;
+
+export interface CityTravelEstimate {
+  minutesPerTravelingTech: number;
+  vehicleAllowancePerJob: number;
+}
+
+// Approved November travel estimates, from the approved 48-job cohort —
+// minutes per traveling tech, and a one-car mileage allowance per job
+// (not per tech — the vehicle allowance is added once per job regardless
+// of team size). Deliberately a SEPARATE dataset from CITY_DRIVE in
+// sales-pricing-tool.html (that table still drives the Route Day Planner
+// and CRM text — unrelated, untouched by this plan). Never borrow or
+// invent a number for a city not listed here — see getCityTravelEstimate.
+export const CITY_TRAVEL_ESTIMATES: Record<string, CityTravelEstimate> = {
+  "Aliso Viejo": { minutesPerTravelingTech: 54.45, vehicleAllowancePerJob: 17.1 },
+  "Corona Del Mar": { minutesPerTravelingTech: 30.9, vehicleAllowancePerJob: 9.2 },
+  "Costa Mesa": { minutesPerTravelingTech: 40.35, vehicleAllowancePerJob: 12.38 },
+  "Huntington Beach": { minutesPerTravelingTech: 34.35, vehicleAllowancePerJob: 10.56 },
+  Irvine: { minutesPerTravelingTech: 35.79, vehicleAllowancePerJob: 10.31 },
+  "Ladera Ranch": { minutesPerTravelingTech: 23.1, vehicleAllowancePerJob: 5.51 },
+  "Laguna Beach": { minutesPerTravelingTech: 30.0, vehicleAllowancePerJob: 7.73 },
+  "Laguna Hills": { minutesPerTravelingTech: 35.7, vehicleAllowancePerJob: 18.43 },
+  "Laguna Niguel": { minutesPerTravelingTech: 45.21, vehicleAllowancePerJob: 16.56 },
+  "Laguna Woods": { minutesPerTravelingTech: 22.43, vehicleAllowancePerJob: 8.55 },
+  "Lake Forest": { minutesPerTravelingTech: 30.83, vehicleAllowancePerJob: 8.48 },
+  "Mission Viejo": { minutesPerTravelingTech: 46.9, vehicleAllowancePerJob: 16.95 },
+  "Rancho Santa Margarita": { minutesPerTravelingTech: 54.6, vehicleAllowancePerJob: 21.98 },
+  "San Clemente": { minutesPerTravelingTech: 49.1, vehicleAllowancePerJob: 26.67 },
+  "San Juan Capistrano": { minutesPerTravelingTech: 43.35, vehicleAllowancePerJob: 20.93 },
+  Tustin: { minutesPerTravelingTech: 34.1, vehicleAllowancePerJob: 10.68 },
 };
-export const CITY_DRIVE_BORROW: Record<string, string> = {
-  "Newport Coast": "Corona Del Mar",
-  "Santa Ana": "Tustin",
-  "Rancho Mission Viejo": "San Juan Capistrano",
-};
-export const CITY_DRIVE_FALLBACK = { drive: 0.6, mile: 14.0, visits: 0, day: "" }; // 'Other' — deliberately above the 0.47 hr / $9.09 company average
 
-// REAL DATA (July 2026) — Housekeeping mileage, from payroll mileage log +
-// CA minimum wage. UPDATED (Aug 2026, owner-confirmed): drive time wage is
-// $16.90/hr (CA min wage) PER TECHNICIAN, 1 hour each, for every team size.
-export const HK_ROUNDTRIP_MILES = 20.31 * 2; // office (1504 Brookhollow Dr, Santa Ana) <-> client, real logged one-way distance x2
-export const DRIVE_HOURS_PER_TECH = 1.0; // confirmed Aug 2026: 1 hr drive time per technician, all team sizes
-export const CA_MIN_WAGE = 16.9; // confirmed July 2026, CA statewide minimum wage
+// null for any city not in the approved cohort — never fall back to a
+// borrowed/invented number. Callers must show "Travel estimate incomplete"
+// and compute cost/margin excluding travel, clearly labeled provisional.
+export function getCityTravelEstimate(city: string): CityTravelEstimate | null {
+  return CITY_TRAVEL_ESTIMATES[city] ?? null;
+}
 
-interface CityDriveInfo {
-  drive: number;
-  mile: number;
-  visits: number;
-  day: string;
+export interface NovemberCostInputs {
+  hours: number; // onsite cleaning hours for this leg (not person-hours)
+  teamSize: number;
   city: string;
-  borrowed: string | null;
-  fallback?: boolean;
 }
 
-function getCityDrive(city: string): CityDriveInfo {
-  if (CITY_DRIVE[city]) return { ...CITY_DRIVE[city], city, borrowed: null };
-  if (CITY_DRIVE_BORROW[city]) {
-    const source = CITY_DRIVE_BORROW[city];
-    return { ...CITY_DRIVE[source], city, borrowed: source };
-  }
-  return { ...CITY_DRIVE_FALLBACK, city, borrowed: null, fallback: true };
+export interface NovemberCostBreakdown {
+  onsitePersonHours: number;
+  travelPersonHours: number;
+  vehicleAllowance: number;
+  travelComplete: boolean;
+  laborCost: number; // loaded labor across onsite + travel person-hours
+  overheadCost: number; // overhead across onsite person-hours only
+  baseCost: number; // B = laborCost + overheadCost + vehicleAllowance
 }
 
-interface FixedCostBreakdown {
-  cleaningWage: number;
-  driveWage: number;
-  wage: number;
-  wc: number;
-  tax: number;
-  mileage: number;
-  hardCost: number;
-  overhead: number;
-  cityDrive: CityDriveInfo;
-  driveHrsTotal: number;
-  paidTechHours: number;
+// B = (onsite person-hours + travel person-hours) × 31.008025
+//     + onsite person-hours × 16.0121042907
+//     + vehicle allowance (once per job)
+//
+// Combined PERSON-hours: onsite = teamSize × hours (e.g. 2 techs × 3 hrs =
+// 6 onsite person-hours). Travel minutes are converted to hours and
+// multiplied by the number of techs traveling (assumed equal to the team
+// actually sent to the job — the whole team travels together). For an
+// unlisted city, travel person-hours and the vehicle allowance are both
+// zero (never invented/borrowed) — travelComplete:false tells the caller
+// to label the result provisional/excluding travel, not final/all-in.
+export function computeNovemberBaseCost(input: NovemberCostInputs): NovemberCostBreakdown {
+  const { hours, teamSize } = input;
+  const travel = getCityTravelEstimate(input.city);
+  const onsitePersonHours = teamSize * hours;
+  const travelPersonHours = travel ? (travel.minutesPerTravelingTech / 60) * teamSize : 0;
+  const vehicleAllowance = travel ? travel.vehicleAllowancePerJob : 0;
+  const laborCost = (onsitePersonHours + travelPersonHours) * NOV2026_LOADED_LABOR_PER_PERSON_HR;
+  const overheadCost = onsitePersonHours * NOV2026_OVERHEAD_PER_ONSITE_PERSON_HR;
+  const baseCost = laborCost + overheadCost + vehicleAllowance;
+  return {
+    onsitePersonHours,
+    travelPersonHours,
+    vehicleAllowance,
+    travelComplete: !!travel,
+    laborCost,
+    overheadCost,
+    baseCost,
+  };
 }
 
-// Mirrors fixedCostFor() in sales-pricing-tool.html exactly, with `city` and
-// `service` taken as explicit parameters instead of read from the DOM
-// (document.getElementById('city-select')) / live client `state` — this
-// module runs server-side with no DOM and no shared `state` object.
-function fixedCostFor(hours: number, teamSize: number, city: string, service: string): FixedCostBreakdown {
-  const isSolo = teamSize === 1;
-  const cd = getCityDrive(city);
-  const cleaningWage = teamSize * TECH_WAGE * hours;
-  const driveHrsTotal = teamSize * cd.drive;
-  const driveWage = driveHrsTotal * TECH_WAGE;
-  const wage = cleaningWage + driveWage;
-  const wc = wage * WC_RATE;
-  const tax = wage * TAX_RATE;
-  const mileage = isSolo && service === "housekeeping" ? HK_ROUNDTRIP_MILES * MILEAGE_RATE : cd.mile;
-  const hardCost = wage + wc + tax + mileage;
-  const paidTechHours = teamSize * hours + driveHrsTotal;
-  const overhead = AUDIT_OVERHEAD_PER_TECH_HR * paidTechHours;
-  return { cleaningWage, driveWage, wage, wc, tax, mileage, hardCost, overhead, cityDrive: cd, driveHrsTotal, paidTechHours };
-}
-
-export interface CostBreakdown extends FixedCostBreakdown {
-  admin: number;
-  totalCost: number;
+export interface NovemberQuoteCost extends NovemberCostBreakdown {
+  cardProcessing: number;
+  cost: number;
   margin: number;
   marginPct: number;
 }
 
-// Mirrors costBreakdown() in sales-pricing-tool.html exactly.
-export function costBreakdown(price: number, hours: number, teamSize: number, city: string, service: string): CostBreakdown {
-  const f = fixedCostFor(hours, teamSize, city, service);
-  const admin = price * STRIPE_PCT + STRIPE_FLAT;
-  const totalCost = f.hardCost + f.overhead + admin;
-  const margin = price - totalCost;
+// Cost = B + card-processing assumption at the quoted price.
+// Margin = (price - Cost) / price.
+export function computeNovemberQuoteCost(price: number, input: NovemberCostInputs): NovemberQuoteCost {
+  const base = computeNovemberBaseCost(input);
+  const cardProcessing = price * CARD_PROCESSING_PCT + CARD_PROCESSING_FLAT;
+  const cost = base.baseCost + cardProcessing;
+  const margin = price - cost;
   const marginPct = price > 0 ? (margin / price) * 100 : 0;
-  return { ...f, admin, totalCost, margin, marginPct };
+  return { ...base, cardProcessing, cost, margin, marginPct };
 }
 
-// Mirrors minAcceptablePrice() in sales-pricing-tool.html exactly.
-export function minAcceptablePrice(
-  hours: number,
-  teamSize: number,
-  targetMarginPct: number,
-  city: string,
-  service: string,
-): number | null {
-  const f = fixedCostFor(hours, teamSize, city, service);
-  const fixed = f.hardCost + f.overhead + STRIPE_FLAT;
+// Minimum price to clear a 10% margin, accounting for the price-dependent
+// card-processing fee:
+//   margin >= 10%  <=>  price - Cost >= 0.10*price  <=>  0.90*price >= Cost
+//   Cost = B + 0.30 + 0.029*price
+//   0.90*price >= B + 0.30 + 0.029*price  <=>  0.871*price >= B + 0.30
+//   price >= (B + 0.30) / 0.871
+// Rounded UP to the cent — a minimum must never understate itself via
+// floating-point/rounding-down noise.
+export function novemberMinimumPrice(input: NovemberCostInputs): number {
+  const base = computeNovemberBaseCost(input);
+  const raw = (base.baseCost + CARD_PROCESSING_FLAT) / 0.871;
+  return Math.ceil(raw * 100) / 100;
+}
+
+// Generalized minimum-price-for-target-margin, used by the "walk-away
+// floor" box for an arbitrary target % (not just the fixed 10% warning
+// threshold below). Same derivation as novemberMinimumPrice, generalized:
+// price >= (B + 0.30) / (1 - CARD_PROCESSING_PCT - targetFrac). Returns
+// null when the target is too high to solve for (denominator <= 0).
+export function novemberMinimumPriceForTarget(input: NovemberCostInputs, targetMarginPct: number): number | null {
+  const base = computeNovemberBaseCost(input);
   const targetFrac = targetMarginPct / 100;
-  const denom = 1 - STRIPE_PCT - targetFrac;
-  if (denom <= 0) return null; // target margin too high to solve for
-  return fixed / denom;
-}
-
-export interface SingleCheckResult {
-  held: boolean;
-  marginPct: number;
-  floorPrice10: number;
-}
-
-// The hard 10% floor check for one price/hours/teamSize/city/service point.
-// Strictly below 10% is held; exactly 10% passes (strict less-than, not
-// less-than-or-equal) — see evaluateQuoteMarginHold's own tests for the
-// pinned boundary.
-export function evaluateMarginHold(input: {
-  price: number;
-  hours: number;
-  teamSize: number;
-  city: string;
-  service: string;
-}): SingleCheckResult {
-  const floor = minAcceptablePrice(input.hours, input.teamSize, 10, input.city, input.service);
-  // A genuine calculator-computed price is always a positive, finite dollar
-  // amount — every service has a real minimum charge, so a real quote is
-  // never actually priced at $0 or less. A non-positive/non-finite price
-  // here means there's no real price to evaluate yet (e.g. a manually-built
-  // quote with its price fields left blank — Number("") is 0, not NaN),
-  // not a genuine $0 charge. costBreakdown's own marginPct is defined as
-  // exactly 0 whenever price<=0 (price>0 ? ... : 0), which would otherwise
-  // make held:true (0 < 10) the default for ANY quote missing a real price,
-  // regardless of its actual costs — treat it as "not evaluable" instead.
-  if (!Number.isFinite(input.price) || input.price <= 0) {
-    return { held: false, marginPct: Infinity, floorPrice10: floor ?? Infinity };
-  }
-  const b = costBreakdown(input.price, input.hours, input.teamSize, input.city, input.service);
-  return {
-    held: b.marginPct < 10,
-    marginPct: b.marginPct,
-    floorPrice10: floor ?? Infinity,
-  };
+  const denom = 1 - CARD_PROCESSING_PCT - targetFrac;
+  if (denom <= 0) return null;
+  const raw = (base.baseCost + CARD_PROCESSING_FLAT) / denom;
+  return Math.ceil(raw * 100) / 100;
 }
 
 export type QuoteLeg = "single" | "initial" | "ongoing";
 
-export interface LegMarginResult {
+export interface LegMarginWarning {
   leg: QuoteLeg;
-  held: boolean;
   marginPct: number;
-  floorPrice10: number;
-  checkedLowEnd: boolean;
-  // Correction round (Item 1): which of the two, materially different,
-  // reasons this leg is held for — 'below-floor' is the original, existing
-  // genuine-margin check (this leg's own computed margin, or its low end,
-  // is actually below the 10% floor). 'unverified-cost' is new: the
-  // isRecurringStandard branch forces this below, regardless of the real
-  // computed marginPct/floorPrice10 (which are kept, unmodified, for
-  // provisional reporting) — see evaluateQuoteMarginHold.
-  heldReason: "unverified-cost" | "below-floor";
+  minimumPrice: number;
+  // Floored at $0 and rounded to the cent. Only meaningful (and only ever
+  // shown by a caller) when belowMinimum is true — a leg already at or
+  // above 10% has nothing to add.
+  addToReachMinimum: number;
+  // Strictly below 10% — exactly 10% (or above) is never a warning.
+  belowMinimum: boolean;
+  travelComplete: boolean;
 }
 
-export interface QuoteMarginEvaluation {
-  held: boolean;
-  heldLegs: QuoteLeg[];
-  legs: LegMarginResult[];
-}
-
-// Shape of the fields this module reads off a saved `quote:<id>` record
-// (src/app/api/sales/storage/route.ts's "set" case, and
-// src/app/api/sales/send-quote/route.ts) — a loose/partial type since the
-// stored JSON is user-saved data, not a typed column; every field is
-// defensively coerced with Number()/??, never trusted as already-valid.
-export interface QuoteMarginInput {
-  service?: string;
-  frequency?: string;
-  city?: string;
-  teamSize?: number;
-  suggested?: string | number;
-  low?: string | number;
-  lowHours?: number | null;
-  timeLowHrs?: number;
-  initialEstimatedHours?: number;
-  initialEstimatedCost?: number;
-  initialMinimumHours?: number;
-}
-
-function evaluateLeg(
+// Non-blocking warning only — this NEVER refuses or gates anything (the
+// old 10%-floor sending block / approval gate is removed entirely; see the
+// PR body). A non-positive/non-finite price (e.g. a manually-built quote
+// with its price left blank) is "not evaluable", not a genuine $0 below-
+// minimum price — belowMinimum is false in that case, same treatment as
+// the removed evaluateMarginHold had for the old model.
+export function evaluateLegWarning(
   leg: QuoteLeg,
   price: number,
-  lowPrice: number | null,
   hours: number,
-  lowHours: number | null,
   teamSize: number,
   city: string,
-  service: string,
-): LegMarginResult {
-  const main = evaluateMarginHold({ price, hours, teamSize, city, service });
-  // Item 3: check the low end of any range against the floor too, not just
-  // the suggested/expected price. For a service whose low end has genuinely
-  // different hours (specialty's coreLowHours), use those lower hours — a
-  // lighter job costs less to run, so its floor is lower too. For every
-  // other service, the low end is price-only (±20%) at the SAME point-
-  // estimate hours, so lowHours is left null and the same `hours` is reused.
-  const lowHoursBasis = lowHours != null ? lowHours : hours;
-  // A non-positive/non-finite lowPrice (e.g. a manually-built quote with no
-  // low/high filled in) is handled by evaluateMarginHold itself (it treats
-  // "no real price" as not evaluable, not a genuine $0 below-floor price) —
-  // this still skips the call entirely on a genuine `null` (no low end at
-  // all for this service), same as before.
-  const low =
-    lowPrice != null ? evaluateMarginHold({ price: lowPrice, hours: lowHoursBasis, teamSize, city, service }) : null;
-  const held = main.held || (low ? low.held : false);
-  const worse = low && low.marginPct < main.marginPct ? low : main;
+): LegMarginWarning {
+  const input: NovemberCostInputs = { hours, teamSize, city };
+  const minimumPrice = novemberMinimumPrice(input);
+  if (!Number.isFinite(price) || price <= 0) {
+    return {
+      leg,
+      marginPct: Infinity,
+      minimumPrice,
+      addToReachMinimum: 0,
+      belowMinimum: false,
+      travelComplete: getCityTravelEstimate(city) !== null,
+    };
+  }
+  const quoteCost = computeNovemberQuoteCost(price, input);
+  const addToReachMinimum = Math.max(0, Math.round((minimumPrice - price) * 100) / 100);
   return {
     leg,
-    held,
-    marginPct: worse.marginPct,
-    floorPrice10: worse.floorPrice10,
-    checkedLowEnd: !!low,
-    heldReason: "below-floor",
+    marginPct: quoteCost.marginPct,
+    minimumPrice,
+    addToReachMinimum,
+    belowMinimum: quoteCost.marginPct < 10,
+    travelComplete: quoteCost.travelComplete,
   };
-}
-
-// The single entry point used by both src/app/api/sales/storage/route.ts
-// (to compute and persist the `marginHold` boolean on every quote save) and
-// src/app/api/sales/send-quote/route.ts (to recompute it fresh, server-side,
-// right before actually sending — never trusting whatever was last stored).
-//
-// A recurring Standard quote (service==='standard' && a recurring
-// frequency, identified here by the presence of initialEstimatedHours/Cost
-// — a legacy quote saved before this PR simply lacks them and is treated as
-// a single-leg quote using its ordinary suggested/low fields) gets TWO
-// independent hold checks — Initial and Ongoing — and the whole quote is
-// held if EITHER leg is below the 10% floor. Every other quote (every other
-// service, and one-time Standard) gets exactly one check.
-// Correction round (Item 1): `opts.costDataVerified` lets a caller (tests
-// only — see e2e/pricing-margin-unit.spec.ts) exercise "what if the cost
-// inputs HAD been reconciled" without mutating the real exported
-// COST_DATA_VERIFIED constant. Both server routes that actually enforce
-// this (storage's "set"/"get" cases and send-quote) call this with NO
-// second argument, so they always get the real, current COST_DATA_VERIFIED
-// value — there is no way for a route, or a quote's own saved data, to
-// supply a different value.
-export function evaluateQuoteMarginHold(
-  q: QuoteMarginInput,
-  opts?: { costDataVerified?: boolean },
-): QuoteMarginEvaluation {
-  const costDataVerified = opts?.costDataVerified ?? COST_DATA_VERIFIED;
-  const city = q.city || "Other";
-  const service = q.service || "";
-  const teamSize = Number(q.teamSize) || 2;
-  const isRecurringStandard =
-    service === "standard" &&
-    !!q.frequency &&
-    q.frequency !== "One-Time" &&
-    q.initialEstimatedHours != null &&
-    q.initialEstimatedCost != null;
-
-  const legs: LegMarginResult[] = [];
-
-  if (isRecurringStandard) {
-    // Initial leg: team of 2 always (Item 2), never less than the 3-hr
-    // minimum for COST purposes (the $360 minimum always applies — the
-    // floor check must use the hours that are actually being paid for, not
-    // a possibly-lower entered estimate). No recurring discount ever
-    // applies to this leg — guaranteed by Item 2's design (it never reads
-    // RECURRING_STANDARD_DISCOUNTS), not re-implemented/re-checked here.
-    const minHours = q.initialMinimumHours ?? 3;
-    const initialHours = Math.max(Number(q.initialEstimatedHours), minHours);
-    const initialPrice = Number(q.initialEstimatedCost);
-    legs.push(evaluateLeg("initial", initialPrice, null, initialHours, null, 2, city, service));
-
-    // Ongoing leg: the existing recurring flat price/hours (timeLowHrs is
-    // the saved r.hours — actual cleaning+addon hours, never the +1hr
-    // scheduling buffer in timeHighHrs), its own low end checked too.
-    const ongoingHours = Number(q.timeLowHrs);
-    const ongoingPrice = Number(q.suggested);
-    const ongoingLow = q.low != null ? Number(q.low) : null;
-    legs.push(evaluateLeg("ongoing", ongoingPrice, ongoingLow, ongoingHours, null, teamSize, city, service));
-
-    // Correction round (Item 1): until the underlying cost inputs are
-    // actually reconciled against real payroll/TCS/mileage records, EVERY
-    // recurring Standard quote is held, unconditionally, on BOTH legs —
-    // even when the provisional margin computed from these unverified costs
-    // comes out comfortably above both the 10% floor and the 21% target.
-    // The legs' real, genuine marginPct/floorPrice10 computed just above are
-    // left completely untouched — describeMarginHold (below) reports them,
-    // explicitly labeled "provisional", never hidden or zeroed. This branch
-    // never runs for the "single"-leg path below (every other service, and
-    // one-time Standard) — that path's behavior is byte-for-byte unchanged.
-    if (!costDataVerified) {
-      for (const leg of legs) {
-        leg.held = true;
-        leg.heldReason = "unverified-cost";
-      }
-    }
-  } else {
-    const hours = Number(q.timeLowHrs);
-    const price = Number(q.suggested);
-    const lowPrice = q.low != null ? Number(q.low) : null;
-    const lowHours = q.lowHours != null ? Number(q.lowHours) : null;
-    legs.push(evaluateLeg("single", price, lowPrice, hours, lowHours, teamSize, city, service));
-  }
-
-  const heldLegs = legs.filter((l) => l.held).map((l) => l.leg);
-  return { held: heldLegs.length > 0, heldLegs, legs };
-}
-
-const LEG_LABELS: Record<QuoteLeg, string> = {
-  single: "This quote",
-  initial: "Initial Cleaning",
-  ongoing: "Ongoing Cleaning",
-};
-
-// Builds the specific reason + minimum-price text shown ONLY to an ADMIN
-// caller (never persisted in the quote row, never shown to a non-ADMIN —
-// see the two routes that call this). Never labels anything "verified" —
-// see this module's header / Item 4.
-//
-// Correction round (Item 1): a leg held for 'unverified-cost' gets its own,
-// honest wording — it explicitly names the hold as a cost-data problem (not
-// a margin problem), names the $20.52/hr overhead figure specifically, and
-// reports the leg's real computed margin % and minimum price EXPLICITLY
-// LABELED "provisional" (never claiming they're verified). A leg held for
-// 'below-floor' (every other service, completely unaffected by this
-// correction) keeps the exact wording it had before.
-export function describeMarginHold(evaluation: QuoteMarginEvaluation): string {
-  return evaluation.legs
-    .filter((l) => l.held)
-    .map((l) => {
-      const floorText = Number.isFinite(l.floorPrice10) ? `$${l.floorPrice10.toFixed(0)}` : "unavailable";
-      if (l.heldReason === "unverified-cost") {
-        return (
-          `${LEG_LABELS[l.leg]} is held because its underlying costs — including the ` +
-          `$${AUDIT_OVERHEAD_PER_TECH_HR.toFixed(2)}/hr overhead figure — have not yet been reconciled against ` +
-          `real payroll/TCS/mileage records. Provisional margin (based on unverified costs): ${l.marginPct.toFixed(1)}% ` +
-          `(provisional minimum price ${floorText}).`
-        );
-      }
-      return `${LEG_LABELS[l.leg]} is at ${l.marginPct.toFixed(1)}% margin — below the 10% floor (minimum price ${floorText}).`;
-    })
-    .join(" ");
 }
