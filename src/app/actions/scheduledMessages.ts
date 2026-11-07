@@ -29,8 +29,21 @@ async function authorizeRecipient(
   if (recipientType === "LEAD") {
     const { session, canEdit } = await requireDepartmentAccess("SALES");
     if (!canEdit) return { ok: false, error: "Not authorized." };
-    const lead = await prisma.lead.findUnique({ where: { id: recipientId }, select: { id: true } });
+    const lead = await prisma.lead.findUnique({ where: { id: recipientId }, select: { id: true, stage: true } });
     if (!lead) return { ok: false, error: "Lead not found." };
+    // Covers both creating a new scheduled send (scheduleMessageAction
+    // calls this directly) and editing an existing one
+    // (updateScheduledMessageAction -> authorizeScheduledMessage -> this),
+    // checked fresh every time rather than relying solely on the bulk-
+    // cancel markLeadScamAction does at classification time — that only
+    // covers sends that already existed then, not ones created afterward
+    // against an already-classified lead. Cancelling an existing send is
+    // NOT blocked here (cancelScheduledMessageAction doesn't call this) —
+    // there's no reason to stop someone from cancelling a send to a scam
+    // lead.
+    if (lead.stage === "SCAM") {
+      return { ok: false, error: "This lead is classified as Scam — scheduling a send is blocked." };
+    }
     return { ok: true, createdById: getTrueActorId(session) };
   }
   if (recipientType === "APPLICANT") {

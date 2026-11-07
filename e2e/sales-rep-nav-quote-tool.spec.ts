@@ -2,12 +2,17 @@ import { test, expect, type Page } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/lib/password";
 
-// A Sales Rep's sidebar ("sales-work" group in src/lib/navigation.ts) gets a
-// new "Quote Tool" link to /sales/pricing-tool, inserted between "Leads &
-// Callbacks" and the existing "Quotes" link (which stays pointed at the
-// separate /sales/quotes saved-quotes list — these are two distinct
-// destinations). Office Assistant's own nav (built from a completely
-// separate table, OFFICE_ASSISTANT_NAV_LINKS) must gain nothing from this.
+// A Sales Rep's sidebar ("sales-work" group in src/lib/navigation.ts) has a
+// link to /sales/pricing-tool, inserted between "Leads & Callbacks" and the
+// existing "Quotes" link (which stays pointed at the separate /sales/quotes
+// saved-quotes list — these are two distinct destinations). That link's
+// label was renamed from "Quote Tool" to "Pricing Calculator" (same href,
+// same position) as part of the Pricing Calculator / Scam classification
+// brief, which also added a standalone "Pricing Calculator" shortcut to
+// ADMIN's own Business Tools group (same /sales/pricing-tool destination,
+// not a new permission — ADMIN already has unrestricted Sales access).
+// Office Assistant's own nav (built from a completely separate table,
+// OFFICE_ASSISTANT_NAV_LINKS) must gain nothing from either change.
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "shar@mamascleaningcrew.com";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "change-this-immediately";
 const RUN_ID = Date.now().toString();
@@ -23,7 +28,7 @@ async function loginAs(page: Page, email: string, password: string) {
   await page.waitForURL((url) => !url.pathname.startsWith("/login"));
 }
 
-test.describe.serial("Sales Rep nav: new Quote Tool link", () => {
+test.describe.serial("Nav: 'Pricing Calculator' link (Sales Rep rename + ADMIN shortcut)", () => {
   let salesRepId: string;
   let pedroId: string;
   const salesRepEmail = `nav-quote-tool-rep-${RUN_ID}@example.com`;
@@ -66,48 +71,87 @@ test.describe.serial("Sales Rep nav: new Quote Tool link", () => {
     await prisma.$disconnect();
   });
 
-  test("Sales Rep: 'Quote Tool' appears between 'Leads & Callbacks' and 'Quotes', links to /sales/pricing-tool", async ({
+  test("Sales Rep: 'Pricing Calculator' appears between 'Leads & Callbacks' and 'Quotes', same href as before", async ({
     page,
   }) => {
     await loginAs(page, salesRepEmail, PASSWORD);
     await page.goto("/sales");
     const sidebar = page.locator('[data-testid="desktop-sidebar"]');
 
-    const quoteToolLink = sidebar.getByRole("link", { name: "Quote Tool" });
-    await expect(quoteToolLink).toBeVisible();
-    await expect(quoteToolLink).toHaveAttribute("href", "/sales/pricing-tool");
+    const pricingLink = sidebar.getByRole("link", { name: "Pricing Calculator" });
+    await expect(pricingLink).toBeVisible();
+    await expect(pricingLink).toHaveAttribute("href", "/sales/pricing-tool");
+    await expect(sidebar.getByRole("link", { name: "Quote Tool" })).toHaveCount(0);
 
     const quotesLink = sidebar.getByRole("link", { name: "Quotes", exact: true });
     await expect(quotesLink).toHaveAttribute("href", "/sales/quotes");
 
     const linkTexts = await sidebar.getByRole("link").allTextContents();
     const leadsIdx = linkTexts.indexOf("Leads & Callbacks");
-    const quoteToolIdx = linkTexts.indexOf("Quote Tool");
+    const pricingIdx = linkTexts.indexOf("Pricing Calculator");
     const quotesIdx = linkTexts.indexOf("Quotes");
     expect(leadsIdx).toBeGreaterThanOrEqual(0);
-    expect(quoteToolIdx).toBe(leadsIdx + 1);
-    expect(quotesIdx).toBe(quoteToolIdx + 1);
+    expect(pricingIdx).toBe(leadsIdx + 1);
+    expect(quotesIdx).toBe(pricingIdx + 1);
   });
 
-  test("Quote Tool link actually opens the pricing tool", async ({ page }) => {
+  test("Sales Rep mobile: 'Pricing Calculator' visible in mobile nav drawer", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
     await loginAs(page, salesRepEmail, PASSWORD);
     await page.goto("/sales");
-    await page.locator('[data-testid="desktop-sidebar"]').getByRole("link", { name: "Quote Tool" }).click();
+    await page.waitForLoadState("networkidle");
+    const menuButton = page.locator('[data-testid="mobile-nav"] button[aria-label="Open menu"]');
+    await menuButton.click();
+    const dialog = page.locator('div[role="dialog"]');
+    await expect(dialog).toBeVisible();
+    const pricingLink = dialog.getByRole("link", { name: "Pricing Calculator" });
+    await expect(pricingLink).toBeVisible();
+    await expect(pricingLink).toHaveAttribute("href", "/sales/pricing-tool");
+  });
+
+  test("'Pricing Calculator' link actually opens the pricing tool", async ({ page }) => {
+    await loginAs(page, salesRepEmail, PASSWORD);
+    await page.goto("/sales");
+    await page.locator('[data-testid="desktop-sidebar"]').getByRole("link", { name: "Pricing Calculator" }).click();
     await page.waitForURL("**/sales/pricing-tool");
   });
 
-  test("Office Assistant (Pedro): gains no new Sales links from this change", async ({ page }) => {
+  test("Office Assistant (Pedro): gains no new Sales links from either change", async ({ page }) => {
     await loginAs(page, pedroEmail, PASSWORD);
     await page.goto("/");
     const sidebar = page.locator('[data-testid="desktop-sidebar"]');
-    await expect(sidebar.getByRole("link", { name: "Quote Tool" })).toHaveCount(0);
+    await expect(sidebar.getByRole("link", { name: "Pricing Calculator" })).toHaveCount(0);
     await expect(sidebar.getByRole("link", { name: "Leads & Callbacks" })).toHaveCount(0);
   });
 
-  test("ADMIN's own nav is unaffected (no 'sales-work' group applies to Admin)", async ({ page }) => {
+  test("ADMIN desktop: Business Tools gets its own 'Pricing Calculator' shortcut (same destination, no new permission)", async ({
+    page,
+  }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
     await page.goto("/");
     const sidebar = page.locator('[data-testid="desktop-sidebar"]');
-    await expect(sidebar.getByRole("link", { name: "Quote Tool" })).toHaveCount(0);
+    const pricingLinks = sidebar.getByRole("link", { name: "Pricing Calculator" });
+    await expect(pricingLinks).toHaveCount(1);
+    await expect(pricingLinks).toHaveAttribute("href", "/sales/pricing-tool");
+
+    // Existing Business Tools entries are undisturbed by the addition.
+    const financials = sidebar.getByRole("link", { name: "Financials" });
+    const rookieJourney = sidebar.getByRole("link", { name: "Rookie Journey" });
+    await expect(financials).toBeVisible();
+    await expect(rookieJourney).toBeVisible();
+  });
+
+  test("ADMIN mobile: 'Pricing Calculator' shortcut visible in mobile nav drawer", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    const menuButton = page.locator('[data-testid="mobile-nav"] button[aria-label="Open menu"]');
+    await menuButton.click();
+    const dialog = page.locator('div[role="dialog"]');
+    await expect(dialog).toBeVisible();
+    const pricingLink = dialog.getByRole("link", { name: "Pricing Calculator" });
+    await expect(pricingLink).toBeVisible();
+    await expect(pricingLink).toHaveAttribute("href", "/sales/pricing-tool");
   });
 });

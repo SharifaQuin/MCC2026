@@ -130,14 +130,14 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
         ← Back to Pipeline
       </Link>
 
-      <div className="mb-6 mt-2 flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">
+      <div className="mb-6 mt-2 flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold break-words">
             {lead.firstName} {lead.lastName}
           </h1>
           <p className="text-neutral-500">{LEAD_SOURCE_LABELS[lead.source] ?? lead.source}</p>
         </div>
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex min-w-0 flex-col items-end gap-2">
           <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700">
             {LEAD_STAGE_LABELS[lead.stage]}
           </span>
@@ -154,6 +154,12 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
       {lead.stage === "LOST" && lead.lostReason && (
         <div className="mb-6 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           Lost: {lead.lostReason}
+        </div>
+      )}
+
+      {lead.stage === "SCAM" && (
+        <div className="mb-6 rounded-md border border-neutral-700 bg-neutral-900 p-3 text-sm text-white">
+          Classified as Scam{lead.scamReason ? `: ${lead.scamReason}` : "."}
         </div>
       )}
 
@@ -231,7 +237,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
       {canEdit && (
         <div className="mb-6 rounded-lg border border-neutral-200 bg-white p-4">
           <h2 className="mb-3 font-medium text-neutral-900">Move Lead</h2>
-          <LeadStageControls leadId={lead.id} stage={lead.stage} />
+          <LeadStageControls leadId={lead.id} stage={lead.stage} expectedUpdatedAt={lead.updatedAt.toISOString()} />
         </div>
       )}
 

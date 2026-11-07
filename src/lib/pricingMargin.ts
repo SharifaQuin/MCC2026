@@ -205,8 +205,20 @@ export function evaluateMarginHold(input: {
   city: string;
   service: string;
 }): SingleCheckResult {
-  const b = costBreakdown(input.price, input.hours, input.teamSize, input.city, input.service);
   const floor = minAcceptablePrice(input.hours, input.teamSize, 10, input.city, input.service);
+  // A genuine calculator-computed price is always a positive, finite dollar
+  // amount — every service has a real minimum charge, so a real quote is
+  // never actually priced at $0 or less. A non-positive/non-finite price
+  // here means there's no real price to evaluate yet (e.g. a manually-built
+  // quote with its price fields left blank — Number("") is 0, not NaN),
+  // not a genuine $0 charge. costBreakdown's own marginPct is defined as
+  // exactly 0 whenever price<=0 (price>0 ? ... : 0), which would otherwise
+  // make held:true (0 < 10) the default for ANY quote missing a real price,
+  // regardless of its actual costs — treat it as "not evaluable" instead.
+  if (!Number.isFinite(input.price) || input.price <= 0) {
+    return { held: false, marginPct: Infinity, floorPrice10: floor ?? Infinity };
+  }
+  const b = costBreakdown(input.price, input.hours, input.teamSize, input.city, input.service);
   return {
     held: b.marginPct < 10,
     marginPct: b.marginPct,
@@ -275,6 +287,11 @@ function evaluateLeg(
   // other service, the low end is price-only (±20%) at the SAME point-
   // estimate hours, so lowHours is left null and the same `hours` is reused.
   const lowHoursBasis = lowHours != null ? lowHours : hours;
+  // A non-positive/non-finite lowPrice (e.g. a manually-built quote with no
+  // low/high filled in) is handled by evaluateMarginHold itself (it treats
+  // "no real price" as not evaluable, not a genuine $0 below-floor price) —
+  // this still skips the call entirely on a genuine `null` (no low end at
+  // all for this service), same as before.
   const low =
     lowPrice != null ? evaluateMarginHold({ price: lowPrice, hours: lowHoursBasis, teamSize, city, service }) : null;
   const held = main.held || (low ? low.held : false);

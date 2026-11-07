@@ -83,7 +83,7 @@ export async function processScheduledMessage(id: string, now: Date, senders: Me
     const msg = await prisma.scheduledMessage.findUniqueOrThrow({
       where: { id },
       include: {
-        lead: { select: { email: true, phone: true } },
+        lead: { select: { email: true, phone: true, stage: true } },
         applicant: { select: { email: true, phone: true } },
       },
     });
@@ -93,6 +93,26 @@ export async function processScheduledMessage(id: string, now: Date, senders: Me
       await prisma.scheduledMessage.update({
         where: { id },
         data: { status: "FAILED", errorMessage: "Recipient no longer exists." },
+      });
+      return;
+    }
+
+    // Pre-transport check, immediately before the sender call — this is
+    // what actually closes the vast majority of the "claimed SENDING isn't
+    // necessarily already handed to the provider" race: a lead classified
+    // Scam any time between the claim above and this point (including
+    // after the row was created, long before this tick) is caught here,
+    // not just at classification time (markLeadScamAction's own bulk-
+    // cancel only cancels PENDING rows that already existed then). The one
+    // genuinely remaining gap — classification happening WHILE the
+    // sendEmail/sendSms call below is already in flight — is a real
+    // network-level race with no in-process check that can close it; this
+    // narrows that window to the duration of one transport call, it
+    // doesn't claim to eliminate it.
+    if (msg.leadId && msg.lead?.stage === "SCAM") {
+      await prisma.scheduledMessage.update({
+        where: { id },
+        data: { status: "CANCELLED", cancelReason: "Lead was classified Scam after this send was queued" },
       });
       return;
     }

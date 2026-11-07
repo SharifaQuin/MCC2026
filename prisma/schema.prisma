@@ -1802,6 +1802,7 @@ enum LeadStage {
   QUOTED
   WON
   LOST
+  SCAM
   // A deliberate "pause", not an outcome: staff tried and couldn't reach the
   // lead (dead phone number, no answer after repeated attempts, etc.) — the
   // lead comes off the active pipeline board and its callback reminders
@@ -1833,6 +1834,7 @@ model Lead {
   estimatedValue   Float?
   quoteKey         String?
   lostReason       String?
+  scamReason       String?
   followUpDueAt    DateTime?
   firstContactedAt DateTime?
   // Set the moment the after-hours auto-reply is attempted for this lead
@@ -1972,6 +1974,12 @@ model ScheduledMessage {
   sendAt       DateTime
   status       ScheduledMessageStatus @default(PENDING)
   errorMessage String?                @db.Text
+  // Set only when status is CANCELLED and the cancellation wasn't a rep's
+  // own manual action — currently just the Scam-classification bulk cancel
+  // (markLeadScamAction), so the UI can tell "cancelled because this lead
+  // was marked Scam" apart from "a rep cancelled this send" without a
+  // broader cancellation-audit model.
+  cancelReason String?
   sentAt       DateTime?
   createdById  String
   createdBy    User                   @relation(fields: [createdById], references: [id])

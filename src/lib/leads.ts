@@ -125,6 +125,7 @@ export const LEAD_STAGE_LABELS: Record<string, string> = {
   QUOTED: "Quoted",
   WON: "Won",
   LOST: "Lost",
+  SCAM: "Scam",
   UNABLE_TO_CONTACT: "Unable to Contact",
 };
 
@@ -134,6 +135,7 @@ export const LEAD_STAGE_TONE: Record<string, string> = {
   QUOTED: "bg-brand-100 text-brand-700",
   WON: "bg-green-100 text-green-700",
   LOST: "bg-red-100 text-red-700",
+  SCAM: "bg-neutral-800 text-white",
   // Muted/neutral, deliberately not red or green — this is a paused state,
   // not a decided outcome, so it shouldn't read as either a win or a loss.
   UNABLE_TO_CONTACT: "bg-neutral-200 text-neutral-700",
@@ -146,13 +148,18 @@ export const LEAD_PIPELINE_COLUMNS: { stage: LeadStage; label: string }[] = [
   { stage: "WON", label: "Won" },
 ];
 
-// Stages pulled off the active pipeline board/callback reminders but kept
-// fully on file — LOST (a decided outcome) and UNABLE_TO_CONTACT (a paused
-// non-outcome: staff couldn't reach the lead, not a won/lost decision).
-// This one constant drives the Lead Pipeline board's query, loadLeadKpis'
-// openLeads/overdueFollowUps queries, getTodayCardData's followUps query,
-// and getLeadFunnelBySource's "open" bucket — see each call site.
-export const ARCHIVED_LEAD_STAGES: LeadStage[] = ["LOST", "UNABLE_TO_CONTACT"];
+// Stages pulled off the active pipeline board/list/callback reminders but
+// kept fully on file — LOST (a decided outcome), SCAM (never actionable
+// work for a rep), and UNABLE_TO_CONTACT (a paused non-outcome: staff
+// couldn't reach the lead, not a won/lost decision). Scam and Unable to
+// Contact each still get their own separate archive page/count (see
+// getScamLeads/getUnableToContactLeads/getLostLeads) rather than being
+// merged into one "archived" bucket, since they're different concepts the
+// owner wants to tell apart. This one constant drives the Lead Pipeline
+// board's query, loadLeadKpis' openLeads/overdueFollowUps queries,
+// getTodayCardData's followUps query, and getLeadFunnelBySource's "open"
+// bucket — see each call site.
+export const ARCHIVED_LEAD_STAGES: LeadStage[] = ["LOST", "SCAM", "UNABLE_TO_CONTACT"];
 
 // The one obvious "move it forward" action for each pipeline-board column —
 // anything else (mark lost, jump stages) lives on the lead's own detail page.
@@ -299,7 +306,7 @@ export async function loadLeadKpis(): Promise<LeadKpis> {
   const [respondedLeads, openLeads, newUncontacted, overdueFollowUps, monthSpend, leadsThisMonth] =
     await Promise.all([
       prisma.lead.findMany({
-        where: { firstContactedAt: { not: null }, createdAt: { gte: thirtyDaysAgo } },
+        where: { firstContactedAt: { not: null }, createdAt: { gte: thirtyDaysAgo }, stage: { not: "SCAM" } },
         select: { createdAt: true, firstContactedAt: true },
       }),
       prisma.lead.findMany({
@@ -324,6 +331,13 @@ export async function loadLeadKpis(): Promise<LeadKpis> {
         orderBy: { followUpDueAt: "asc" },
       }),
       prisma.leadSourceSpend.findMany({ where: { monthKey: currentMonthKey() } }),
+      // Deliberately left unfiltered by stage (SCAM included) — this already
+      // counted LOST in its lead-count denominator before SCAM existed, so
+      // leaving SCAM unexcluded is consistent with that existing precedent,
+      // not a new redefinition. Excluding it would change costPerLead/
+      // costPerWon's current numbers, which isn't this fix's call to make
+      // unilaterally — flagged explicitly in this PR rather than decided
+      // silently either way.
       prisma.lead.groupBy({
         by: ["source", "stage"],
         _count: true,
@@ -359,7 +373,15 @@ export async function loadLeadKpis(): Promise<LeadKpis> {
       leadCount: stats.leadCount,
       wonCount: stats.wonCount,
       amountSpent,
+      // costPerLead = monthly actual spend ÷ all-received lead count for
+      // this source (Scam included, unchanged from before Scam existed —
+      // still awaiting the owner's explicit decision on whether to exclude
+      // it, per the comment on the groupBy query above; neither this
+      // formula nor its Scam-inclusion has been changed here).
       costPerLead: amountSpent > 0 && stats.leadCount > 0 ? amountSpent / stats.leadCount : null,
+      // costPerWon = spend ÷ WON lead count — Scam was never part of this
+      // denominator (a Scam lead is never WON), so no change was possible
+      // here either way.
       costPerWon: amountSpent > 0 && stats.wonCount > 0 ? amountSpent / stats.wonCount : null,
     };
   });
@@ -574,7 +596,16 @@ interface CallInQuoteData {
 export async function syncLeadFromQuote(quoteId: string, quoteData: CallInQuoteData, authorId: string | null) {
   if (!quoteData.clientName) return null;
 
-  // Already linked to this exact quote — nothing to do.
+  // Already linked to this exact quote — nothing to do. Lead.quoteKey
+  // isn't a unique column, so in principle more than one Lead could share
+  // it — but unlike send-quote/route.ts's Scam check (an authorization
+  // decision, where picking the wrong one of several matches could let a
+  // blocked send through), this is purely an idempotency check: whichever
+  // match findFirst returns, the answer to "is a Lead already linked here"
+  // is still correctly "yes," so returning early is safe either way. Left
+  // as findFirst rather than widened to findMany/an array, which would be
+  // a larger, out-of-scope change to this function's single-Lead-or-null
+  // return contract for a case judged genuinely lower-risk.
   const linked = await prisma.lead.findFirst({ where: { quoteKey: quoteId } });
   if (linked) return linked;
 
@@ -735,14 +766,20 @@ export async function getLeadFunnelBySource() {
 
   const bySource = new Map<
     string,
-    { total: number; won: number; lost: number; unableToContact: number; open: number }
+    { total: number; won: number; lost: number; scam: number; unableToContact: number; open: number }
   >();
   for (const row of rows) {
     const entry =
-      bySource.get(row.source) ?? { total: 0, won: 0, lost: 0, unableToContact: 0, open: 0 };
+      bySource.get(row.source) ?? { total: 0, won: 0, lost: 0, scam: 0, unableToContact: 0, open: 0 };
+    // total stays fully inclusive (the correct "all-received" figure, never
+    // hidden), but a scam-classified or unable-to-contact lead must not
+    // count as open/working pipeline — each gets its own bucket instead of
+    // falling into the else branch the way it would have before these
+    // stages existed.
     entry.total += row._count;
     if (row.stage === "WON") entry.won += row._count;
     else if (row.stage === "LOST") entry.lost += row._count;
+    else if (row.stage === "SCAM") entry.scam += row._count;
     // Unable to Contact is a paused non-outcome, not active/open work — give
     // it its own bucket rather than lumping it into "open" (which would
     // overstate how much of the pipeline is actually being worked) or into
@@ -760,9 +797,16 @@ export async function getLeadFunnelBySource() {
       open: stats.open,
       won: stats.won,
       lost: stats.lost,
+      scam: stats.scam,
       unableToContact: stats.unableToContact,
+      // Win rate already only ever divided won/(won+lost) — scam and
+      // unable-to-contact were never part of that denominator either, so no
+      // change needed to that. null (not 0) when there's no decided
+      // business yet, matching salesDashboard.ts's own winRate — 0% would
+      // otherwise misread as "no wins" rather than "nothing decided either
+      // way."
       winRatePct:
-        stats.won + stats.lost > 0 ? Math.round((stats.won / (stats.won + stats.lost)) * 100) : 0,
+        stats.won + stats.lost > 0 ? Math.round((stats.won / (stats.won + stats.lost)) * 100) : null,
     }))
     .sort((a, b) => b.total - a.total);
 }
@@ -799,10 +843,46 @@ export async function getLostLeads() {
   });
 }
 
+// Mirrors getLostLeads()'s shape exactly — Scam-classified leads get their
+// own archive/browse page, kept separate from Lost rather than merged into
+// one generic "archived" listing, since the owner wants to tell them apart.
+export async function getScamLeads() {
+  const leads = await prisma.lead.findMany({
+    where: { stage: "SCAM" },
+    include: {
+      stageChanges: {
+        where: { toStage: "SCAM" },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        include: { changedBy: { select: { name: true } } },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  return leads.map((l) => {
+    const scamChange = l.stageChanges[0];
+    return {
+      id: l.id,
+      firstName: l.firstName,
+      lastName: l.lastName,
+      source: l.source,
+      estimatedValue: l.estimatedValue,
+      scamReason: l.scamReason,
+      scamAt: scamChange?.createdAt ?? l.updatedAt,
+      scamByName: scamChange?.changedBy?.name ?? null,
+      updatedAt: l.updatedAt,
+    };
+  });
+}
+
 // Unable-to-Contact leads are paused off the active pipeline board exactly
 // like Lost ones (same ARCHIVED_LEAD_STAGES treatment), but this is never a
 // decided outcome — there's no lostReason-equivalent text field, just who
-// paused it and when. Mirrors getLostLeads' own shape closely.
+// paused it and when. Mirrors getLostLeads' own shape closely. Kept as its
+// own separate archive/count from getScamLeads — Scam and Unable to Contact
+// are different concepts the owner wants to tell apart, not merged into one
+// generic "archived" listing.
 export async function getUnableToContactLeads() {
   const leads = await prisma.lead.findMany({
     where: { stage: "UNABLE_TO_CONTACT" },
@@ -831,8 +911,17 @@ export async function getUnableToContactLeads() {
   });
 }
 
-export async function buildLeadExportCsv(): Promise<string> {
-  const leads = await prisma.lead.findMany({ orderBy: { createdAt: "desc" } });
+// excludeScam=false (default) is the "all-received" export — every lead
+// that ever came in, scam-classified or not, clearly labeled by its Stage
+// column. excludeScam=true is the "filtered" export, matching the app's
+// normal working view (scams already excluded from the pipeline/KPIs) —
+// the two are deliberately kept as the same function with a flag rather
+// than two near-duplicate query builders.
+export async function buildLeadExportCsv({ excludeScam = false }: { excludeScam?: boolean } = {}): Promise<string> {
+  const leads = await prisma.lead.findMany({
+    where: excludeScam ? { stage: { not: "SCAM" } } : undefined,
+    orderBy: { createdAt: "desc" },
+  });
 
   const headers = [
     "First Name",
@@ -847,6 +936,7 @@ export async function buildLeadExportCsv(): Promise<string> {
     "Estimated Value",
     "Quote Reference",
     "Lost Reason",
+    "Scam Reason",
     "Created At",
     "First Contacted At",
     "Follow-up Due",
@@ -868,6 +958,7 @@ export async function buildLeadExportCsv(): Promise<string> {
         csvEscape(l.estimatedValue),
         csvEscape(l.quoteKey),
         csvEscape(l.lostReason),
+        csvEscape(l.scamReason),
         csvEscape(l.createdAt.toISOString()),
         csvEscape(l.firstContactedAt ? l.firstContactedAt.toISOString() : null),
         csvEscape(l.followUpDueAt ? l.followUpDueAt.toISOString() : null),
