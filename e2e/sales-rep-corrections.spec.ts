@@ -390,9 +390,9 @@ test.describe.serial("Sales-rep corrections (browser)", () => {
     expect(repHtml).not.toContain("AUDIT_OVERHEAD_PER_TECH_HR");
     expect(repHtml).not.toContain("20.52");
     expect(repHtml).not.toContain("MONTHLY_OVERHEAD_PER_HR");
-    expect(repHtml).not.toMatch(/function\s+costBreakdown/);
-    expect(repHtml).not.toMatch(/function\s+fixedCostFor/);
-    expect(repHtml).not.toMatch(/function\s+minAcceptablePrice/);
+    expect(repHtml).not.toMatch(/function\s+novemberQuoteCost/);
+    expect(repHtml).not.toMatch(/function\s+novemberBaseCost/);
+    expect(repHtml).not.toMatch(/function\s+novemberMinimumPrice/);
     // Second follow-up: the Route Day Planner's Top-3 day/window ranking
     // used the same real margin figures to both rank AND narrate ("runs 81%
     // margin") — visible to every viewer regardless of role. The real
@@ -443,7 +443,7 @@ test.describe.serial("Sales-rep corrections (browser)", () => {
     expect(adminHtml).toContain("174904");
     expect(adminHtml).toContain("TECH_WAGE");
     expect(adminHtml).toContain("AUDIT_OVERHEAD_PER_TECH_HR");
-    expect(adminHtml).toMatch(/function\s+costBreakdown/);
+    expect(adminHtml).toMatch(/function\s+novemberQuoteCost/);
     expect(adminHtml).toContain("% margin");
     expect(adminHtml).toContain("marginPct");
     expect(adminHtml).toContain("revPerHr");

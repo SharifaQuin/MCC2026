@@ -7,7 +7,6 @@ import {
   isSalesFinancialWriteKey,
   isSalesActualsStorageKey,
 } from "@/lib/salesPricingToolAccess";
-import { evaluateQuoteMarginHold, describeMarginHold, type QuoteMarginEvaluation } from "@/lib/pricingMargin";
 
 // Backs the pricing/quotes tool's window.storage abstraction (get/set/
 // delete/list by key) with the shared Postgres database instead of browser
@@ -48,28 +47,7 @@ export async function POST(request: Request) {
       const row = await prisma.salesToolData.findUnique({ where: { key: body.key } });
       if (!row) return Response.json({ error: "Not found" }, { status: 404 });
 
-      // Correction round (Item 2): recompute the margin-hold check FRESH on
-      // every read too — not just at save ("set", below) and send
-      // (send-quote/route.ts) — so reopening a quote (loadQuoteForUpdate(),
-      // loadQuote()) never shows a stale stored `marginHold` (e.g. saved
-      // before this correction, or before some other code path that skipped
-      // a full "set"). This never rewrites the row itself — a GET stays
-      // side-effect-free, exactly like before — it only adds the freshly
-      // computed fields to THIS response, the same pattern "set" already
-      // uses below.
       const getResponseBody: Record<string, unknown> = { key: row.key, value: row.value, shared: true };
-      if (body.key.startsWith("quote:")) {
-        try {
-          const parsedForMargin = JSON.parse(row.value);
-          const marginEvaluation = evaluateQuoteMarginHold(parsedForMargin);
-          getResponseBody.marginHold = marginEvaluation.held;
-          if (marginEvaluation.held && isAdmin) {
-            getResponseBody.marginHoldReason = describeMarginHold(marginEvaluation);
-          }
-        } catch (error) {
-          console.error(`Margin evaluation failed for ${body.key}:`, error);
-        }
-      }
       return Response.json(getResponseBody);
     }
 
@@ -87,31 +65,11 @@ export async function POST(request: Request) {
         return Response.json({ error: "Not authorized" }, { status: 403 });
       }
 
-      // Item 3: for a `quote:`-prefixed key, compute the 10% margin-hold
-      // check BEFORE persisting, and store its boolean result (`marginHold`)
-      // onto the saved record itself — this makes it the one place a
-      // Sales Rep's own save gets a correct, authoritative hold flag
-      // without ever seeing the cost numbers behind it (those never leave
-      // this function — see the response handling below). This is
-      // authoritative at save time but NOT trusted again at send time:
-      // src/app/api/sales/send-quote/route.ts recomputes it fresh, every
-      // time, rather than reading this stored boolean back.
-      let valueToStore = body.value;
-      let marginEvaluation: QuoteMarginEvaluation | null = null;
-      if (body.key.startsWith("quote:")) {
-        try {
-          const parsedForMargin = JSON.parse(body.value);
-          marginEvaluation = evaluateQuoteMarginHold(parsedForMargin);
-          parsedForMargin.marginHold = marginEvaluation.held;
-          valueToStore = JSON.stringify(parsedForMargin);
-        } catch (error) {
-          // Never block a save because the margin check itself errored
-          // (e.g. malformed quote JSON) — Item 3's actual enforcement point
-          // is send-quote, not save; a save always succeeds regardless of
-          // hold status.
-          console.error(`Margin evaluation failed for ${body.key}:`, error);
-        }
-      }
+      // November plan: cost/margin is never computed or persisted here —
+      // it's a non-blocking, client-side-only (ADMIN-only) warning in the
+      // pricing tool itself (see src/lib/pricingMargin.ts). A save always
+      // just stores exactly what was sent.
+      const valueToStore = body.value;
 
       await prisma.salesToolData.upsert({
         where: { key: body.key },
@@ -182,20 +140,7 @@ export async function POST(request: Request) {
         }
       }
 
-      // Item 3: marginHold (boolean only — never a dollar figure) goes in
-      // the response for every caller, since it's already been persisted on
-      // the row and is safe for any authorized Sales viewer to read back
-      // (there is no ADMIN-only restriction on reading a `quote:` key at
-      // all). The specific reason/minimum-price text is ADMIN-only and
-      // never persisted anywhere — composed here, transiently, from the
-      // margin module's return value.
       const responseBody: Record<string, unknown> = { key: body.key, value: valueToStore, shared: true };
-      if (marginEvaluation) {
-        responseBody.marginHold = marginEvaluation.held;
-        if (marginEvaluation.held && isAdmin) {
-          responseBody.marginHoldReason = describeMarginHold(marginEvaluation);
-        }
-      }
       return Response.json(responseBody);
     }
 
