@@ -168,15 +168,24 @@ test.describe.serial("November 2026 cost calculator", () => {
       recalc();
     });
 
-    const warnText = await frame.locator("#margin-warn").textContent();
-    expect(warnText?.trim()).toBe("");
+    const warnBox = frame.locator("#margin-warn");
+    expect((await warnBox.textContent())?.trim()).toBe("");
+    // Hidden/neutral — no leg below the minimum and no travel-incomplete
+    // notice to show, so neither colored class is applied.
+    await expect(warnBox).not.toHaveClass(/show-info/);
+    await expect(warnBox).not.toHaveClass(/\bshow\b/);
     const ledgerText = await frame.locator("#ledger-body").textContent();
     expect(ledgerText).toContain("Onsite person-hours");
     expect(ledgerText).toContain("Vehicle allowance");
     expect(ledgerText).not.toContain("Travel estimate incomplete");
+    // Walk-away floor: a listed city's floor price never carries the
+    // excluding-travel caveat.
+    const floorText = await frame.locator("#floor-price").textContent();
+    expect(floorText).toContain("Nov 2026 planning assumption");
+    expect(floorText).not.toContain("excluding travel");
   });
 
-  test("live ledger: an unlisted city ('Other') always shows Travel estimate incomplete, labeled provisional/excluding travel, even when margin is fine", async ({ page }) => {
+  test("live ledger: an unlisted city ('Other') with a fine margin shows the travel-incomplete notice in NEUTRAL styling (never red), and the walk-away floor price is labeled provisional/excluding travel", async ({ page }) => {
     await loginAsAdmin(page);
     const frame = await openPricingFrame(page);
 
@@ -186,7 +195,7 @@ test.describe.serial("November 2026 cost calculator", () => {
       // @ts-expect-error
       document.getElementById("city-select").value = "Other";
       // @ts-expect-error
-      state.areaQty = { bathroom: 4, kitchen: 2 };
+      state.areaQty = { bathroom: 4, kitchen: 2 }; // large, comfortably-priced job => margin >= 10%
       // @ts-expect-error
       recalc();
     });
@@ -194,9 +203,24 @@ test.describe.serial("November 2026 cost calculator", () => {
     const ledgerText = await frame.locator("#ledger-body").textContent();
     expect(ledgerText).toContain("Travel estimate incomplete");
     expect(ledgerText).toContain("not charged, travel incomplete");
+
+    const warnBox = frame.locator("#margin-warn");
+    const warnText = await warnBox.textContent();
+    expect(warnText).toContain("travel estimate incomplete");
+    expect(warnText).not.toContain("below the 10% minimum");
+    // Neutral informational styling — margin is fine, so this must never be
+    // the red below-10% warning class.
+    await expect(warnBox).toHaveClass(/show-info/);
+    await expect(warnBox).not.toHaveClass(/margin-warn-box show(?!-info)/);
+
+    // The walk-away floor price must not look like a final/all-in minimum
+    // when travel is excluded from it.
+    const floorText = await frame.locator("#floor-price").textContent();
+    expect(floorText).toContain("Nov 2026 planning assumption");
+    expect(floorText).toContain("provisional, excluding travel");
   });
 
-  test("live ledger: a tiny, cheap A la Carte job triggers the below-10% warning with an 'Add $X to reach the minimum' message, never the removed 21% wording, never a sending block", async ({ page }) => {
+  test("live ledger: a tiny, cheap A la Carte job in a LISTED city triggers the below-10% warning (red), with no travel-incomplete text", async ({ page }) => {
     await loginAsAdmin(page);
     const frame = await openPricingFrame(page);
 
@@ -211,12 +235,60 @@ test.describe.serial("November 2026 cost calculator", () => {
       recalc();
     });
 
-    const warnText = await frame.locator("#margin-warn").textContent();
+    const warnBox = frame.locator("#margin-warn");
+    const warnText = await warnBox.textContent();
     expect(warnText).toContain("below the 10% minimum");
     expect(warnText).toMatch(/Add \$\d+\.\d{2} to reach the minimum/);
     expect(warnText).toContain("warning only — sending is never blocked on margin");
     expect(warnText).not.toContain("21%");
     expect(warnText).not.toContain("HOLD");
+    expect(warnText).not.toContain("travel estimate incomplete");
+    // The actual below-10% case stays red, never the neutral info class.
+    await expect(warnBox).toHaveClass(/margin-warn-box show$/);
+    await expect(warnBox).not.toHaveClass(/show-info/);
+  });
+
+  test("live ledger: a tiny, cheap A la Carte job in an UNLISTED city shows the red below-10% warning together with the travel-incomplete note, never the neutral class", async ({ page }) => {
+    await loginAsAdmin(page);
+    const frame = await openPricingFrame(page);
+
+    await frame.evaluate(() => {
+      // @ts-expect-error
+      selectService("alacarte");
+      // @ts-expect-error
+      document.getElementById("city-select").value = "Other";
+      // An unlisted city still has no travel/vehicle cost at all (never
+      // invented), so a merely-small job can still clear 10% there — force
+      // a genuinely below-cost price directly, rather than hunting for an
+      // areaQty combination that happens to be cheap enough.
+      // @ts-expect-error
+      window.computeCurrent = () => ({
+        price: 10,
+        lowPrice: null,
+        highPrice: null,
+        hours: 5,
+        teamSize: 2,
+        range: null,
+        firstTimeDiscount: 0,
+        initial: null,
+        note: "",
+      });
+      // @ts-expect-error
+      recalc();
+    });
+
+    const warnBox = frame.locator("#margin-warn");
+    const warnText = await warnBox.textContent();
+    expect(warnText).toContain("below the 10% minimum");
+    expect(warnText).toContain("travel estimate incomplete");
+    expect(warnText).toContain("provisional, excluding travel");
+    // A genuine below-10% leg always wins the red styling, even when the
+    // same leg's travel estimate is also incomplete.
+    await expect(warnBox).toHaveClass(/margin-warn-box show$/);
+    await expect(warnBox).not.toHaveClass(/show-info/);
+
+    const floorText = await frame.locator("#floor-price").textContent();
+    expect(floorText).toContain("provisional, excluding travel");
   });
 
   test("the walk-away floor box and 'Costs Unverified'/COST_DATA_VERIFIED wording are gone — replaced by the Nov 2026 planning-assumption badge", async ({ page }) => {

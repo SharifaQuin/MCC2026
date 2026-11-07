@@ -151,6 +151,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
    is incomplete. Never a sending gate. */
 .margin-warn-box{margin-top:14px;padding:11px 13px;border-radius:7px;font-size:12px;line-height:1.5;display:none;}
 .margin-warn-box.show{display:block;background:var(--red-lt);border:1px solid var(--red);color:var(--red);}
+/* Neutral/informational variant — travel-incomplete notice ONLY, no leg
+   actually below the 10% minimum. Never red: red stays reserved for a
+   genuine below-10% margin warning (.show above). */
+.margin-warn-box.show-info{display:block;background:var(--gold-lt);border:1px solid var(--gold-mid);color:var(--ink-mid);}
 .schedule-box{margin-top:14px;padding:12px 14px;border-radius:7px;background:var(--gold-lt);border:1px solid var(--gold-mid);}
 .floor-box{margin-top:14px;padding:12px 14px;border-radius:7px;background:var(--red-lt);border:1px solid var(--red);}
 .floor-row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
@@ -2716,16 +2720,26 @@ function recalc(){
       const initHoursForCost = Math.max(r.initial.estimatedHours, r.initial.minimumHours);
       initialWarning = evaluateLegWarning('initial', r.initial.estimatedCost, initHoursForCost, 2, city);
     }
+    const legs = [initialWarning, ongoingWarning].filter(Boolean);
+    const anyBelowMinimum = legs.some(w => w.belowMinimum);
+    const anyIncompleteTravel = legs.some(w => !w.travelComplete);
     const parts = [];
-    for(const w of [initialWarning, ongoingWarning].filter(Boolean)){
+    for(const w of legs){
       const msgs = [];
       if(!w.travelComplete) msgs.push(`travel estimate incomplete for ${city} — margin is provisional and excludes travel, not final/all-in`);
       if(w.belowMinimum) msgs.push(`${w.marginPct.toFixed(1)}% margin — below the 10% minimum. Add $${w.addToReachMinimum.toFixed(2)} to reach the minimum (minimum price $${w.minimumPrice.toFixed(2)})${w.travelComplete?'':' — provisional, excluding travel'}`);
       if(msgs.length) parts.push(`${legLabel[w.leg]}: ${msgs.join('; ')}.`);
     }
-    if(parts.length){
+    // Red is reserved for a genuine below-10% margin warning. A city with an
+    // incomplete travel estimate but a margin that's otherwise at or above
+    // 10% gets the same informational text in neutral styling instead —
+    // never red, since nothing here is actually below the minimum.
+    if(anyBelowMinimum){
       warnBox.className = 'margin-warn-box show';
       warnBox.innerHTML = `${parts.join(' ')} This is a warning only — sending is never blocked on margin.`;
+    } else if(anyIncompleteTravel){
+      warnBox.className = 'margin-warn-box show-info';
+      warnBox.innerHTML = parts.join(' ');
     } else {
       warnBox.className = 'margin-warn-box';
       warnBox.innerHTML = '';
@@ -2736,7 +2750,12 @@ function recalc(){
 
   const floorPrice = novemberMinimumPriceForTarget(r.hours, r.teamSize, city, state.targetMargin);
   document.getElementById('target-margin').value = state.targetMargin;
-  document.getElementById('floor-price').textContent = floorPrice!=null ? `$${floorPrice.toFixed(2)} (Nov 2026 planning assumption)` : 'Target too high to solve';
+  // b.travelComplete reflects this same city (both legs share one city) —
+  // when travel is incomplete, this floor price excludes travel cost
+  // entirely and must never read as a final/all-in minimum.
+  document.getElementById('floor-price').textContent = floorPrice!=null
+    ? `$${floorPrice.toFixed(2)} (Nov 2026 planning assumption${b.travelComplete ? '' : ' — provisional, excluding travel'})`
+    : 'Target too high to solve';
 
   const cleanMin = r.hours*60;
   const bufferedMin = cleanMin + 60;
