@@ -20,9 +20,13 @@ import { getNewLeadAlertBccEmails } from "../src/lib/leads";
 //     same final-hiring-stage/approval restrictions an Office Assistant
 //     has also bind here);
 //   - a Sales Rep granted Melissa's full intended set (HR_SUMMARY view,
-//     RECRUITING/ONBOARDING/TRAINING edit, an approval manager) — proves
-//     her complete Sales access survives untouched alongside every
-//     granted HR area actually working, including after a fresh sign-in.
+//     RECRUITING/ONBOARDING edit, TRAINING view-only, an approval manager)
+//     — proves her complete Sales access survives untouched alongside
+//     every granted HR area actually working, including after a fresh
+//     sign-in, and that Training being view-only (not edit) still lets
+//     her see modules but blocks assigning/ending a training assignment
+//     server-side — that stays with the owner/admin, with no Sales Rep
+//     assignment screen needed.
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "shar@mamascleaningcrew.com";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "change-this-immediately";
 const RUN_ID = Date.now().toString();
@@ -100,6 +104,13 @@ test.describe.serial("Sales Rep individual HR permissions", () => {
   let partialHiredUserId: string;
   let fullHiredUserId: string;
 
+  // Fixtures for proving a Training view-only grant still blocks the
+  // assign/end-assignment server actions (src/app/actions/trainingAssignments.ts)
+  // — a throwaway trainee/trainer pair and one active TrainingAssignment row,
+  // used only by the forged-call test below.
+  let trainingTraineeId: string;
+  let trainingTrainerId: string;
+
   test.beforeAll(async () => {
     const admin = await prisma.user.findFirstOrThrow({ where: { role: "ADMIN" }, select: { id: true } });
     adminId = admin.id;
@@ -149,7 +160,7 @@ test.describe.serial("Sales Rep individual HR permissions", () => {
             { area: "HR_SUMMARY", canEdit: false },
             { area: "RECRUITING", canEdit: true },
             { area: "ONBOARDING", canEdit: true },
-            { area: "TRAINING", canEdit: true },
+            { area: "TRAINING", canEdit: false },
           ],
         },
       },
@@ -181,6 +192,15 @@ test.describe.serial("Sales Rep individual HR permissions", () => {
       },
     });
     fullApplicantId = fullApplicant.id;
+
+    const trainingTrainer = await prisma.user.create({
+      data: { email: `sr-training-trainer-${RUN_ID}@example.com`, name: `Training Trainer ${RUN_ID}`, role: "TRAINER", active: true },
+    });
+    trainingTrainerId = trainingTrainer.id;
+    const trainingTrainee = await prisma.user.create({
+      data: { email: `sr-training-trainee-${RUN_ID}@example.com`, name: `Training Trainee ${RUN_ID}`, role: "TRAINEE", active: true },
+    });
+    trainingTraineeId = trainingTrainee.id;
   });
 
   test.afterAll(async () => {
@@ -192,6 +212,8 @@ test.describe.serial("Sales Rep individual HR permissions", () => {
     await prisma.applicant.deleteMany({ where: { id: { in: applicantIds } } });
     const hiredUserIds = [partialHiredUserId, fullHiredUserId].filter((id): id is string => !!id);
     if (hiredUserIds.length > 0) await prisma.user.deleteMany({ where: { id: { in: hiredUserIds } } });
+    await prisma.trainingAssignment.deleteMany({ where: { traineeId: trainingTraineeId } });
+    await prisma.user.deleteMany({ where: { id: { in: [trainingTraineeId, trainingTrainerId] } } });
     await prisma.auditLogEntry.deleteMany({ where: { actorId: { in: repIds } } });
     await prisma.areaAccess.deleteMany({ where: { userId: { in: repIds } } });
     await prisma.departmentAccess.deleteMany({ where: { userId: { in: repIds } } });
@@ -535,6 +557,74 @@ test.describe.serial("Sales Rep individual HR permissions", () => {
     expect(recruitingAfterRelogin?.status()).toBe(200);
     const modulesAfterRelogin = await page.goto("/modules");
     expect(modulesAfterRelogin?.status()).toBe(200);
+  });
+
+  // ────────────────────────────────────────────────────────────────────
+  // Training is view-only for Melissa's grant set — assigning/ending who
+  // trains whom stays with the owner/admin. requireHrAccess() (src/app/
+  // actions/trainingAssignments.ts) checks canEdit, so this is already
+  // enforced for any grant-based role whose Training grant isn't canEdit —
+  // proved here with a forged direct call using her real session cookies,
+  // the same technique as every other server-side-enforcement test above.
+  // No Sales Rep assignment screen exists or is needed: she never sees an
+  // "Assign Trainer"/"End Assignment" control in the first place (that UI
+  // only renders inside the Staff Directory employee page, which stays
+  // closed to this role), so this proves the server-side gate holds even
+  // if that boundary were ever bypassed.
+  // ────────────────────────────────────────────────────────────────────
+
+  test("Sales Rep with Training view-only (not edit) can see modules, but a forged end-assignment call is refused — assigning/ending training stays owner/admin-only", async ({
+    page,
+  }) => {
+    // AreaAccess has no stored canView column — a row's mere existence IS
+    // "can view" (see getAreaAccessForUser); canEdit is the only flag.
+    const access = await prisma.areaAccess.findUniqueOrThrow({
+      where: { userId_area: { userId: fullRepId, area: "TRAINING" } },
+    });
+    expect(access.canEdit).toBe(false);
+
+    // Seed one active assignment and capture a real "End Assignment"
+    // click's Server Action id as ADMIN (who does have this control on
+    // the Staff Directory employee page) — the id itself isn't tied to
+    // who calls it; requireHrAccess() decides that at call time.
+    const assignmentForCapture = await prisma.trainingAssignment.create({
+      data: { trainerId: trainingTrainerId, traineeId: trainingTraineeId, startDate: new Date(), createdById: adminId },
+    });
+
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto(`/staff/${trainingTraineeId}`);
+    await page.waitForLoadState("networkidle");
+    page.once("dialog", (d) => d.accept());
+    const endActionId = await captureActionId(page, async () => {
+      await page.click('button:has-text("End Assignment")');
+    });
+    await page.waitForTimeout(500);
+    const afterAdminEnd = await prisma.trainingAssignment.findUniqueOrThrow({ where: { id: assignmentForCapture.id } });
+    expect(afterAdminEnd.active).toBe(false); // the real admin action worked
+
+    // Re-seed an active assignment, then attempt the SAME action id as the
+    // Training-view-only Sales Rep — this is the forged/bypass attempt.
+    const assignmentToProtect = await prisma.trainingAssignment.create({
+      data: { trainerId: trainingTrainerId, traineeId: trainingTraineeId, startDate: new Date(), createdById: adminId },
+    });
+    await logout(page);
+    await loginAs(page, FULL_EMAIL, REP_PASSWORD);
+
+    // She still has module access via the same grant (canView:true).
+    const modulesRes = await page.goto("/modules");
+    expect(modulesRes?.status()).toBe(200);
+    await expect(page.locator("body")).not.toContainText("Not authorized");
+
+    await forgeAction(page, `/staff/${trainingTraineeId}`, endActionId, [
+      assignmentToProtect.id,
+      trainingTraineeId,
+      trainingTrainerId,
+    ]);
+    await page.waitForTimeout(500);
+    const afterForgedAttempt = await prisma.trainingAssignment.findUniqueOrThrow({ where: { id: assignmentToProtect.id } });
+    expect(afterForgedAttempt.active).toBe(true); // refused — still active
+
+    await prisma.trainingAssignment.deleteMany({ where: { traineeId: trainingTraineeId } });
   });
 
   test("View-only HR Summary grant cannot edit anything there, same restriction whether reached by nav or a direct URL", async ({
