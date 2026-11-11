@@ -5,7 +5,7 @@ import { loadAdminDashboard } from "@/lib/dashboard";
 import { loadRecruitingDashboard } from "@/lib/recruiting";
 import { getStaffDashboardStats } from "@/lib/staff";
 import { getHrTodayAttentionItems } from "@/lib/hrToday";
-import { getAreaAccessForUser } from "@/lib/officeAssistant";
+import { getAreaAccessForUser, isAreaGrantRole } from "@/lib/officeAssistant";
 import SendHrDigestButton from "@/components/SendHrDigestButton";
 
 function Stat({ label, value }: { label: string; value: number | string }) {
@@ -17,11 +17,12 @@ function Stat({ label, value }: { label: string; value: number | string }) {
   );
 }
 
-// A narrow, view-only summary for Office Assistant: only safe recruiting/
+// A narrow, view-only summary for a grant-based editor (Office Assistant or
+// a Sales Rep individually granted HR_SUMMARY): only safe recruiting/
 // onboarding/training counts, gated on the HR_SUMMARY area grant. No
 // payroll, pay rates, complaints, payroll disputes, or document-template
 // management ever reach this branch.
-async function OfficeAssistantHrSummary({ userId }: { userId: string }) {
+async function GrantBasedHrSummary({ userId }: { userId: string }) {
   const [training, recruiting, staff, staffDirectoryAccess] = await Promise.all([
     loadAdminDashboard(),
     loadRecruitingDashboard(),
@@ -83,10 +84,10 @@ export default async function HROverviewPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  if (session.role === "OFFICE_ASSISTANT") {
+  if (isAreaGrantRole(session.role)) {
     const access = await getAreaAccessForUser(session.sub, "HR_SUMMARY");
     if (!access.canView) redirect("/");
-    return <OfficeAssistantHrSummary userId={session.sub} />;
+    return <GrantBasedHrSummary userId={session.sub} />;
   }
 
   if (session.role !== "ADMIN" && session.role !== "SERVICE_MANAGER") redirect("/");

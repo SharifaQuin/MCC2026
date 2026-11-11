@@ -86,12 +86,29 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/", req.url));
   }
 
-  // Recruiting/Staff: Office Assistant is admitted here too, but with
-  // narrower access than Service Manager — requireRecruitingAccess and the
-  // Staff pages' own area-access checks (src/lib/officeAssistant.ts) decide
-  // what it can actually see/do once past this gate.
+  // Recruiting: Office Assistant and (narrower still) a Sales Rep
+  // individually granted the RECRUITING area are both admitted here too,
+  // with much narrower access than Service Manager —
+  // requireRecruitingAccess (src/lib/requireRecruitingAccess.ts) and this
+  // section's own per-action checks decide what either can actually see/do
+  // once past this gate; a Sales Rep with no such grant is redirected
+  // there, not here, same as an Office Assistant with no grant already is.
   if (
-    (pathname.startsWith("/recruiting") || pathname.startsWith("/staff")) &&
+    pathname.startsWith("/recruiting") &&
+    payload.role !== "ADMIN" &&
+    payload.role !== "SERVICE_MANAGER" &&
+    payload.role !== "OFFICE_ASSISTANT" &&
+    payload.role !== "SALES_REP"
+  ) {
+    return NextResponse.redirect(new URL("/", req.url));
+  }
+
+  // Staff: deliberately NOT extended to Sales Rep — this role has no
+  // grantable path to Staff Directory at all (see SALES_REP_GRANTABLE_AREAS
+  // in src/lib/permissionAreas.ts), so it stays closed at this earliest
+  // gate rather than relying solely on the page-level check.
+  if (
+    pathname.startsWith("/staff") &&
     payload.role !== "ADMIN" &&
     payload.role !== "SERVICE_MANAGER" &&
     payload.role !== "OFFICE_ASSISTANT"

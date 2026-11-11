@@ -60,7 +60,9 @@ export default async function PermissionsPage() {
           Assign roles and grant employees access to departments beyond HR — useful for an
           assistant or virtual assistant who needs to see (or edit) a specific department
           without full Owner access. Office Assistant rows also get finer-grained area
-          controls below, instead of whole-department access.
+          controls below, instead of whole-department access. A Sales Rep can also be
+          individually granted narrow HR areas (HR Summary, Recruiting, Onboarding,
+          Training) this same way, on top of — never instead of — her existing Sales access.
         </p>
       </div>
       <PermissionsTable users={rows} eligibleManagers={eligibleManagers} />

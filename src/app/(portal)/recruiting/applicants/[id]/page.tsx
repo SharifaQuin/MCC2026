@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
+import { isAreaGrantRole } from "@/lib/officeAssistant";
 import { STAGE_LABELS, SCHEDULING_STAGES, INTERVIEW_SCORECARD_COMPETENCIES, DEFAULT_PHONE_SCREEN_CRITERIA, WORKING_SESSION_CHECKLIST_ITEMS, getOnboardingChecklist, SCORED_CATEGORIES, INTERVIEW_EMAIL_SUBJECT_PREFIXES } from "@/lib/recruiting";
 import { getMessageTemplates } from "@/lib/messageTemplates";
 import { formatInBusinessTimezone } from "@/lib/timezone";
@@ -35,7 +36,7 @@ export default async function ApplicantDetailPage({
   // rejection" shows anywhere on this page at all, so it's never a
   // dead-end link for an Office Assistant who only has view access and
   // could never actually submit the request it leads to.
-  const canRequestRejection = session.role === "OFFICE_ASSISTANT" && canEdit;
+  const canRequestRejection = isAreaGrantRole(session.role) && canEdit;
 
   const applicant = await prisma.applicant.findUnique({
     where: { id: params.id },
@@ -325,7 +326,7 @@ export default async function ApplicantDetailPage({
       {applicant.stage === "IN_PERSON_SCHEDULED" && (
         <InterviewDecisionPanel
           applicantId={applicant.id}
-          canDirectlyReject={session.role !== "OFFICE_ASSISTANT"}
+          canDirectlyReject={!isAreaGrantRole(session.role)}
           canRequestRejection={canRequestRejection}
         />
       )}
@@ -340,7 +341,7 @@ export default async function ApplicantDetailPage({
           // flow instead — every other role with recruiting edit access
           // (exactly who rejectApplicantAction itself allows) keeps the
           // direct Reject & Send Email / Reject (No Email) controls.
-          canDirectlyReject={session.role !== "OFFICE_ASSISTANT"}
+          canDirectlyReject={!isAreaGrantRole(session.role)}
           canRequestRejection={canRequestRejection}
         />
       </div>

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import type { Role } from "@/lib/session";
 import type { Department, PermissionArea } from "@prisma/client";
-import { PERMISSION_AREAS } from "@/lib/officeAssistant";
+import { PERMISSION_AREAS, SALES_REP_GRANTABLE_AREAS } from "@/lib/officeAssistant";
 import { logAudit } from "@/lib/auditLog";
 import { getTrueActorId } from "@/lib/impersonation";
 
@@ -75,15 +75,28 @@ export async function updateDepartmentAccessAction(
 }
 
 const GRANTABLE_AREAS = new Set<PermissionArea>(PERMISSION_AREAS.map((a) => a.area));
+const SALES_REP_GRANTABLE_AREA_SET = new Set<PermissionArea>(SALES_REP_GRANTABLE_AREAS);
 
-// Office Assistant's own finer-grained areas — same None/View/Edit shape as
-// department access, but only ever consulted for that one role (see
-// getAreaAccessForUser). Changing this takes effect on that person's very
-// next request, no re-login required.
+// Office Assistant's and Sales Rep's own finer-grained areas — same
+// None/View/Edit shape as department access, but only ever consulted for
+// those two roles (see getAreaAccessForUser/isAreaGrantRole). Changing
+// this takes effect on that person's very next request, no re-login
+// required.
 export async function updateAreaAccessAction(userId: string, area: string, level: AccessLevel) {
   const session = await requireAdmin();
   if (!GRANTABLE_AREAS.has(area as PermissionArea)) throw new Error("Invalid area");
   const permArea = area as PermissionArea;
+
+  // Defense in depth, matching getAreaAccessForUser's own read-side filter:
+  // a Sales Rep may only ever be granted her narrower allowlist. Training
+  // Content Editing is exempt — it's settable for any role via this same
+  // action (see TrainingContentEditToggle), independent of this allowlist.
+  if (permArea !== "TRAINING_CONTENT_EDIT") {
+    const target = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (target?.role === "SALES_REP" && !SALES_REP_GRANTABLE_AREA_SET.has(permArea)) {
+      throw new Error("This area isn't available for a Sales Rep.");
+    }
+  }
 
   if (level === "NONE") {
     await prisma.areaAccess.deleteMany({ where: { userId, area: permArea } });

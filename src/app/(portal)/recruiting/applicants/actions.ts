@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
-import { getAreaAccessForUser } from "@/lib/officeAssistant";
+import { getAreaAccessForUser, isAreaGrantRole } from "@/lib/officeAssistant";
 import { sendEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
 import {
@@ -73,7 +73,7 @@ export interface StageActionResult {
 const OFFICE_ASSISTANT_BLOCKED_STAGES_SET = new Set<ApplicantStage>(OFFICE_ASSISTANT_BLOCKED_STAGES);
 
 function routineStageTransitionError(role: string, stage: ApplicantStage): string | null {
-  if (role === "OFFICE_ASSISTANT" && OFFICE_ASSISTANT_BLOCKED_STAGES_SET.has(stage)) {
+  if (isAreaGrantRole(role) && OFFICE_ASSISTANT_BLOCKED_STAGES_SET.has(stage)) {
     return "This stage change needs the authorized manager — submit a Send for approval request instead.";
   }
   return null;
@@ -250,7 +250,7 @@ export async function setApplicantStageAction(
     await releaseBookedInterviewSlot(applicantId);
   }
 
-  if (session.role === "OFFICE_ASSISTANT") {
+  if (isAreaGrantRole(session.role)) {
     await logAudit({
       actorId: getTrueActorId(session),
       action: "APPLICANT_STAGE_CHANGED",
@@ -292,7 +292,7 @@ export async function rejectApplicantAction(
 ): Promise<StageActionResult> {
   const { session, canEdit } = await requireRecruitingAccess();
   if (!canEdit) return { ok: false, error: "Not authorized to make changes here." };
-  if (session.role === "OFFICE_ASSISTANT") {
+  if (isAreaGrantRole(session.role)) {
     return {
       ok: false,
       error: "Rejecting an applicant needs the authorized manager — submit a Send for approval request instead.",
@@ -391,7 +391,7 @@ export async function addApplicantNoteAction(applicantId: string, formData: Form
   const body = String(formData.get("body") ?? "").trim();
   if (!body) return;
   await prisma.applicantNote.create({ data: { applicantId, authorId: getTrueActorId(session), body } });
-  if (session.role === "OFFICE_ASSISTANT") {
+  if (isAreaGrantRole(session.role)) {
     await logAudit({
       actorId: getTrueActorId(session),
       action: "APPLICANT_NOTE_ADDED",
@@ -623,7 +623,7 @@ export async function savePhoneScreenAction(
     },
   });
 
-  if (session.role === "OFFICE_ASSISTANT") {
+  if (isAreaGrantRole(session.role)) {
     await logAudit({
       actorId: getTrueActorId(session),
       action: "PHONE_SCREEN_SAVED",
@@ -715,7 +715,7 @@ export async function saveInterviewScorecardAction(
     })
   );
 
-  if (session.role === "OFFICE_ASSISTANT") {
+  if (isAreaGrantRole(session.role)) {
     await logAudit({
       actorId: getTrueActorId(session),
       action: "INTERVIEW_SCORECARD_SAVED",
@@ -730,7 +730,7 @@ export async function saveInterviewScorecardAction(
 export async function deleteInterviewScorecardAction(applicantId: string, scorecardId: string) {
   const { session, canEdit } = await requireRecruitingAccess();
   requireEdit(canEdit);
-  if (session.role === "OFFICE_ASSISTANT") {
+  if (isAreaGrantRole(session.role)) {
     throw new Error("Deleting a scorecard isn't available for this role.");
   }
   await prisma.interviewScorecard.delete({ where: { id: scorecardId } });
@@ -748,7 +748,7 @@ export async function saveWorkingSessionAction(
 ) {
   const { session, canEdit } = await requireRecruitingAccess();
   requireEdit(canEdit);
-  if (session.role === "OFFICE_ASSISTANT") {
+  if (isAreaGrantRole(session.role)) {
     throw new Error("Working session evaluations aren't available for this role.");
   }
 
@@ -808,7 +808,7 @@ export async function saveWorkingSessionAction(
 export async function addReferenceCheckAction(applicantId: string, formData: FormData) {
   const { session, canEdit } = await requireRecruitingAccess();
   requireEdit(canEdit);
-  if (session.role === "OFFICE_ASSISTANT") {
+  if (isAreaGrantRole(session.role)) {
     throw new Error("Reference checks aren't available for this role.");
   }
 
@@ -844,7 +844,7 @@ export async function addReferenceCheckAction(applicantId: string, formData: For
 export async function deleteReferenceCheckAction(applicantId: string, referenceCheckId: string) {
   const { session, canEdit } = await requireRecruitingAccess();
   requireEdit(canEdit);
-  if (session.role === "OFFICE_ASSISTANT") {
+  if (isAreaGrantRole(session.role)) {
     throw new Error("Reference checks aren't available for this role.");
   }
   await prisma.referenceCheck.delete({ where: { id: referenceCheckId } });
@@ -858,20 +858,19 @@ export async function toggleOnboardingChecklistItemAction(
 ) {
   const { session, canEdit: recruitingCanEdit } = await requireRecruitingAccess();
   // Onboarding has its own owner-configurable area, distinct from Recruiting
-  // (the Permissions screen shows them as separate rows) — Office
-  // Assistant's edit right here comes from the ONBOARDING grant, not from
-  // RECRUITING edit, even though reaching this applicant at all still needs
-  // RECRUITING view.
-  const canEdit =
-    session.role === "OFFICE_ASSISTANT"
-      ? (await getAreaAccessForUser(session.sub, "ONBOARDING")).canEdit
-      : recruitingCanEdit;
+  // (the Permissions screen shows them as separate rows) — a grant-based
+  // editor's (Office Assistant or Sales Rep) edit right here comes from
+  // their own ONBOARDING grant, not from RECRUITING edit, even though
+  // reaching this applicant at all still needs RECRUITING view.
+  const canEdit = isAreaGrantRole(session.role)
+    ? (await getAreaAccessForUser(session.sub, "ONBOARDING")).canEdit
+    : recruitingCanEdit;
   requireEdit(canEdit);
-  if (session.role === "OFFICE_ASSISTANT" && OFFICE_ASSISTANT_BLOCKED_ONBOARDING_ITEMS.has(itemKey)) {
+  if (isAreaGrantRole(session.role) && OFFICE_ASSISTANT_BLOCKED_ONBOARDING_ITEMS.has(itemKey)) {
     throw new Error("This onboarding item needs the authorized manager.");
   }
   await setOnboardingChecklistItem(applicantId, itemKey, completed, getTrueActorId(session));
-  if (session.role === "OFFICE_ASSISTANT") {
+  if (isAreaGrantRole(session.role)) {
     await logAudit({
       actorId: getTrueActorId(session),
       action: "ONBOARDING_CHECKLIST_TOGGLED",
@@ -906,7 +905,7 @@ export async function sendApplicantEmailAction(applicantId: string, formData: Fo
     },
   });
 
-  if (session.role === "OFFICE_ASSISTANT") {
+  if (isAreaGrantRole(session.role)) {
     await logAudit({
       actorId: getTrueActorId(session),
       action: "APPLICANT_EMAIL_SENT",
@@ -967,7 +966,7 @@ export async function sendApplicantTextAction(applicantId: string, formData: For
     },
   });
 
-  if (session.role === "OFFICE_ASSISTANT") {
+  if (isAreaGrantRole(session.role)) {
     await logAudit({
       actorId: getTrueActorId(session),
       action: "APPLICANT_TEXT_SENT",

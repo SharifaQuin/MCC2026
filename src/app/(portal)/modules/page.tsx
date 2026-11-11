@@ -18,9 +18,6 @@ const statusStyles: Record<string, string> = {
 export default async function ModulesPage() {
   const session = await getSession();
   if (!session) redirect("/login");
-  // Sales-only account — training content is never part of her experience,
-  // even by direct URL.
-  if (session.role === "SALES_REP") redirect("/sales");
   await requireOnboardingComplete(session);
   await requireOfficeAssistantTrainingAccess(session);
   // A Rookie-mode trainee never browses the classic Academy directly —

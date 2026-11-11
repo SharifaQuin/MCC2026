@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/session";
 import { markLessonComplete } from "@/lib/courses";
-import { getAreaAccessForUser } from "@/lib/officeAssistant";
+import { getAreaAccessForUser, isAreaGrantRole } from "@/lib/officeAssistant";
 
 // Plain route handler (not a Server Action) on purpose: Next.js
 // automatically refreshes the calling page's server-rendered tree after
@@ -15,9 +15,10 @@ export async function POST(req: Request, { params }: { params: { lessonId: strin
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Not logged in." }, { status: 401 });
   // Mirrors the server-side Training-grant check now enforced on the page
-  // routes above this — an Office Assistant blocked from /modules must not
-  // be able to mark a lesson watched by calling this route directly either.
-  if (session.role === "OFFICE_ASSISTANT") {
+  // routes above this — a grant-based editor (Office Assistant or Sales
+  // Rep) blocked from /modules must not be able to mark a lesson watched
+  // by calling this route directly either.
+  if (isAreaGrantRole(session.role)) {
     const access = await getAreaAccessForUser(session.sub, "TRAINING");
     if (!access.canView) return NextResponse.json({ error: "Not authorized." }, { status: 403 });
   }
