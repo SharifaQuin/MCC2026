@@ -43,8 +43,10 @@ export default async function PortalLayout({ children }: { children: React.React
   // or access changes, only whether this one nav link shows.
   const hideModulesNavLink = (await getTrainingExperienceVersion()) === "rookie";
 
-  const officeAssistantAreas =
-    session.role === "OFFICE_ASSISTANT" ? (await getAllAreaAccessForUser(session.sub)).areas : undefined;
+  const grantedAreas =
+    session.role === "OFFICE_ASSISTANT" || session.role === "SALES_REP"
+      ? (await getAllAreaAccessForUser(session.sub)).areas
+      : undefined;
   const pendingApprovalCount =
     session.role === "ADMIN" || session.role === "SERVICE_MANAGER"
       ? await prisma.approvalRequest.count({ where: { managerId: session.sub, status: "PENDING" } })
@@ -67,7 +69,7 @@ export default async function PortalLayout({ children }: { children: React.React
     language: session.language,
     departments,
     hideModulesLink: hideModulesNavLink,
-    officeAssistantAreas,
+    grantedAreas,
     pendingApprovalCount,
     openProblemReportCount,
     canEditTrainingContent,

@@ -8,7 +8,7 @@ import {
   updateApprovalManagerAction,
   type AccessLevel,
 } from "./actions";
-import { PERMISSION_AREAS } from "@/lib/permissionAreas";
+import { PERMISSION_AREAS, SALES_REP_GRANTABLE_AREAS } from "@/lib/permissionAreas";
 import type { PermissionArea } from "@prisma/client";
 
 export interface PermissionUserRow {
@@ -162,27 +162,41 @@ function ApprovalManagerSelect({
   );
 }
 
-// Office Assistant's own area grants only — Training Content Editing is
-// shown as its own always-visible column in the main table instead (it's
-// settable for any role, not just Office Assistant), so it's excluded here
-// to avoid showing the same toggle twice for an Office Assistant row.
+// Office Assistant's own area grants — Training Content Editing is shown as
+// its own always-visible column in the main table instead (it's settable
+// for any role, not just Office Assistant), so it's excluded here to avoid
+// showing the same toggle twice for an Office Assistant row.
 const OFFICE_ASSISTANT_AREAS = PERMISSION_AREAS.filter((a) => a.area !== "TRAINING_CONTENT_EDIT");
 
-function OfficeAssistantAreaPanel({
+// A Sales Rep's own, deliberately narrower set — see SALES_REP_GRANTABLE_AREAS's
+// own comment in src/lib/permissionAreas.ts for why Staff Directory, Sales
+// Leads, Callback Queue, Operational Status, and Assigned Tasks are left
+// out entirely (not just hidden, never offered) for this role.
+const SALES_REP_AREAS = PERMISSION_AREAS.filter((a) => (SALES_REP_GRANTABLE_AREAS as PermissionArea[]).includes(a.area));
+
+// Shown below a row for either grant-based role (Office Assistant's full
+// area list, or a Sales Rep's narrower one — see `areas`) — the owner-
+// configured area grants plus the approval-manager picker that governs
+// "Send for approval" requests from either role.
+function GrantedAreaPanel({
   user,
+  areas,
+  heading,
   eligibleManagers,
 }: {
   user: PermissionUserRow;
+  areas: typeof PERMISSION_AREAS;
+  heading: string;
   eligibleManagers: { id: string; name: string }[];
 }) {
   return (
     <tr>
       <td colSpan={3 + GRANTABLE_DEPARTMENTS.length} className="bg-neutral-50 px-3 py-4">
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-          Office Assistant Areas — {user.name}
+          {heading} — {user.name}
         </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {OFFICE_ASSISTANT_AREAS.map(({ area, label }) => (
+          {areas.map(({ area, label }) => (
             <div key={area} className="flex items-center justify-between gap-2 rounded-md border border-neutral-200 bg-white px-2 py-1.5">
               <span className="text-xs text-neutral-700">{label}</span>
               <AccessSelect
@@ -236,6 +250,7 @@ export default function PermissionsTable({
           {users.map((u) => {
             const currentRole = roleOverrides[u.id] ?? u.role;
             const isOfficeAssistant = currentRole === "OFFICE_ASSISTANT";
+            const isSalesRep = currentRole === "SALES_REP";
             return (
               <Fragment key={u.id}>
                 <tr>
@@ -269,7 +284,20 @@ export default function PermissionsTable({
                   </td>
                 </tr>
                 {isOfficeAssistant && (
-                  <OfficeAssistantAreaPanel user={u} eligibleManagers={eligibleManagers} />
+                  <GrantedAreaPanel
+                    user={u}
+                    areas={OFFICE_ASSISTANT_AREAS}
+                    heading="Office Assistant Areas"
+                    eligibleManagers={eligibleManagers}
+                  />
+                )}
+                {isSalesRep && (
+                  <GrantedAreaPanel
+                    user={u}
+                    areas={SALES_REP_AREAS}
+                    heading="Sales Rep HR Areas"
+                    eligibleManagers={eligibleManagers}
+                  />
                 )}
               </Fragment>
             );

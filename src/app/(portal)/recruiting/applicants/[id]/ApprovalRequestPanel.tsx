@@ -1,15 +1,16 @@
 import { prisma } from "@/lib/prisma";
 import type { SessionPayload } from "@/lib/session";
-import { getAreaAccessForUser } from "@/lib/officeAssistant";
+import { getAreaAccessForUser, isAreaGrantRole } from "@/lib/officeAssistant";
 import { formatInBusinessTimezone } from "@/lib/timezone";
 import ApprovalRequestControls, { type ApprovalRequestRow } from "./ApprovalRequestControls";
 
-// Shown to two different audiences on the same applicant page: an Office
-// Assistant who can submit a request here (if they have RECRUITING edit),
-// and the applicant's own routed manager, who can decide a pending one.
-// Each only ever sees their own side of a request — a requester never sees
-// another requester's rows, and a non-manager viewer sees nothing here at
-// all besides their own submitted history.
+// Shown to two different audiences on the same applicant page: a
+// grant-based editor (Office Assistant or Sales Rep) who can submit a
+// request here (if they have RECRUITING edit), and the applicant's own
+// routed manager, who can decide a pending one. Each only ever sees their
+// own side of a request — a requester never sees another requester's rows,
+// and a non-manager viewer sees nothing here at all besides their own
+// submitted history.
 export default async function ApprovalRequestPanel({
   applicantId,
   session,
@@ -24,7 +25,7 @@ export default async function ApprovalRequestPanel({
   openRejectionRequest?: boolean;
 }) {
   const canSubmit =
-    session.role === "OFFICE_ASSISTANT" &&
+    isAreaGrantRole(session.role) &&
     (await getAreaAccessForUser(session.sub, "RECRUITING")).canEdit;
 
   const isAdmin = session.role === "ADMIN";

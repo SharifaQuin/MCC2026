@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { getAreaAccessForUser } from "@/lib/officeAssistant";
+import { getAreaAccessForUser, isAreaGrantRole } from "@/lib/officeAssistant";
 import { logAudit } from "@/lib/auditLog";
 import { getTrueActorId } from "@/lib/impersonation";
 
@@ -14,12 +14,12 @@ export interface TrainingAssignmentState {
 
 // Assigning/reassigning who trains whom is operational scheduling, not a
 // training-quality judgment call (field evaluations, quiz results, and
-// certification decisions stay entirely out of this Office Assistant's
+// certification decisions stay entirely out of a grant-based editor's
 // reach — they aren't exposed by this file or by its narrow staff view).
 async function requireHrAccess() {
   const session = await getSession();
   if (!session) throw new Error("Not authorized");
-  if (session.role === "OFFICE_ASSISTANT") {
+  if (isAreaGrantRole(session.role)) {
     const access = await getAreaAccessForUser(session.sub, "TRAINING");
     if (!access.canEdit) throw new Error("Not authorized");
     return session;
@@ -84,7 +84,7 @@ export async function assignTrainerAction(
     }),
   ]);
 
-  if (session.role === "OFFICE_ASSISTANT") {
+  if (isAreaGrantRole(session.role)) {
     await logAudit({
       actorId: getTrueActorId(session),
       action: "TRAINING_ASSIGNMENT_SET",
@@ -110,7 +110,7 @@ export async function endTrainingAssignmentAction(
     where: { id: assignmentId },
     data: { active: false, endDate: new Date() },
   });
-  if (session.role === "OFFICE_ASSISTANT") {
+  if (isAreaGrantRole(session.role)) {
     await logAudit({
       actorId: getTrueActorId(session),
       action: "TRAINING_ASSIGNMENT_ENDED",

@@ -9,7 +9,6 @@ import BackToTraining from "@/components/BackToTraining";
 export default async function GlossaryPage() {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (session.role === "SALES_REP") redirect("/sales");
   await requireOnboardingComplete(session);
   await requireOfficeAssistantTrainingAccess(session);
   const labels = t(session.language);

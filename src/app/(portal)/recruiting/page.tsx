@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
+import { isAreaGrantRole } from "@/lib/officeAssistant";
 import {
   loadRecruitingDashboard,
   getApplicantFunnelBySource,
@@ -162,7 +163,11 @@ export default async function RecruitingPage() {
         <Stat label="Hired" value={stats.hired} />
       </div>
 
-      <PipelineBoard columns={columns} isOfficeAssistant={session.role === "OFFICE_ASSISTANT"} />
+      {/* isOfficeAssistant: the prop name predates the Sales Rep grant path,
+          but its meaning ("hide the one-tap quick action for a stage this
+          viewer can't move an applicant to directly") applies identically
+          to either grant-based role — see isAreaGrantRole. */}
+      <PipelineBoard columns={columns} isOfficeAssistant={isAreaGrantRole(session.role)} />
 
       {funnelBySource.length > 0 && (
         <div className="mt-6 rounded-lg border border-neutral-200 bg-white p-4">

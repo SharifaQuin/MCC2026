@@ -30,6 +30,18 @@ const OFFICE_ASSISTANT_NAV_LINKS: Array<{ area: PermissionArea; href: string; la
   { area: "ASSIGNED_TASKS", href: "/todo", label: "To-Do" },
 ];
 
+// A Sales Rep's own narrower set of grantable HR-adjacent areas (see
+// SALES_REP_GRANTABLE_AREAS in src/lib/permissionAreas.ts) — deliberately
+// NOT the full OFFICE_ASSISTANT_NAV_LINKS list above. She already has her
+// own Leads/Callbacks/To-Do links in the "sales-work" group below from her
+// existing Sales department access, so those never need to also appear
+// here even if (hypothetically) granted; Staff and Operations stay closed
+// to this role entirely (see getAreaAccessForUser's own area allowlist).
+const SALES_REP_HR_NAV_LINKS: Array<{ area: PermissionArea; href: string; label: string }> = [
+  { area: "HR_SUMMARY", href: "/hr", label: "HR Summary" },
+  { area: "RECRUITING", href: "/recruiting", label: "Recruiting" },
+];
+
 // The single source of truth for "what links does this person see" — used
 // by both the desktop sidebar and the mobile drawer so they can never drift
 // apart, and by getPageTitle() below for the mobile top bar's page name.
@@ -41,7 +53,7 @@ export function buildNavGroups({
   language,
   departments,
   hideModulesLink,
-  officeAssistantAreas,
+  grantedAreas,
   pendingApprovalCount,
   openProblemReportCount,
   canEditTrainingContent,
@@ -50,7 +62,12 @@ export function buildNavGroups({
   language: Language;
   departments: AccessibleDepartment[];
   hideModulesLink?: boolean;
-  officeAssistantAreas?: Partial<Record<PermissionArea, AreaAccessResult>>;
+  // Populated for both roles whose access to these areas comes from an
+  // owner-configured AreaAccess grant rather than role/department — Office
+  // Assistant (the full area list) and, narrower, a Sales Rep individually
+  // granted one or more HR-adjacent areas. See isAreaGrantRole in
+  // src/lib/officeAssistant.ts.
+  grantedAreas?: Partial<Record<PermissionArea, AreaAccessResult>>;
   pendingApprovalCount?: number;
   openProblemReportCount?: number;
   // Settable for any role via the Permissions screen (see
@@ -139,24 +156,35 @@ export function buildNavGroups({
     });
   }
 
-  // An Office Assistant can also be an active technician going through the
-  // same module/quiz/glossary content as a Trainee — their Training area
-  // grant (set on the Permissions screen, independent of every other area)
-  // is what decides whether they see this group at all, same as every other
-  // Office Assistant nav link below. No other role is affected: Trainees
-  // already get their own "My Training" group above, and every other role
-  // either has no need for it or reaches it a different way.
-  if (role === "OFFICE_ASSISTANT" && officeAssistantAreas?.TRAINING?.canView) {
+  // An Office Assistant (or a Sales Rep individually granted Training) can
+  // also be going through the same module/quiz/glossary content as a
+  // Trainee — their Training area grant (set on the Permissions screen,
+  // independent of every other area) is what decides whether they see this
+  // group at all, same as every other grant-based nav link below. No other
+  // role is affected: Trainees already get their own "My Training" group
+  // above, and every other role either has no need for it or reaches it a
+  // different way.
+  if ((role === "OFFICE_ASSISTANT" || role === "SALES_REP") && grantedAreas?.TRAINING?.canView) {
     const trainingLinks: NavLinkItem[] = [];
     if (!hideModulesLink) trainingLinks.push({ href: "/modules", label: labels.training });
     trainingLinks.push({ href: "/progress", label: labels.progress }, { href: "/glossary", label: labels.glossary });
     groups.push({ key: "training", label: labels.navMyTraining, links: trainingLinks });
   }
 
-  if (role === "OFFICE_ASSISTANT" && officeAssistantAreas) {
-    const links = OFFICE_ASSISTANT_NAV_LINKS.filter((link) => officeAssistantAreas[link.area]?.canView).filter(
+  if (role === "OFFICE_ASSISTANT" && grantedAreas) {
+    const links = OFFICE_ASSISTANT_NAV_LINKS.filter((link) => grantedAreas[link.area]?.canView).filter(
       (link, i, arr) => arr.findIndex((l) => l.href === link.href) === i
     );
+    if (links.length > 0) {
+      groups.push({ key: "work-areas", label: labels.navYourWorkAreas, links });
+    }
+  }
+
+  // A Sales Rep's own equivalent of the group above, using her deliberately
+  // narrower link set — her existing "sales-work" group already covers
+  // Leads/Callbacks/To-Do, so this only ever surfaces HR Summary/Recruiting.
+  if (role === "SALES_REP" && grantedAreas) {
+    const links = SALES_REP_HR_NAV_LINKS.filter((link) => grantedAreas[link.area]?.canView);
     if (links.length > 0) {
       groups.push({ key: "work-areas", label: labels.navYourWorkAreas, links });
     }

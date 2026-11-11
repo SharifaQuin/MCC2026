@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
+import { isAreaGrantRole } from "@/lib/officeAssistant";
 import {
   NEEDS_DECISION_STAGES,
   formatRelativeTime,
@@ -125,7 +126,7 @@ export default async function RecruitingInboxPage() {
               onBook={bookZoomInterviewAction}
               onInvite={inviteToInterviewAction}
               onPass={passApplicantAction}
-              canPass={session.role !== "OFFICE_ASSISTANT"}
+              canPass={!isAreaGrantRole(session.role)}
             />
           ))
         )}
