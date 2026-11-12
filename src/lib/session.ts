@@ -1,7 +1,9 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { prisma } from "@/lib/prisma";
 
-export const SESSION_COOKIE = "mcc_session";
+import { SESSION_COOKIE } from "@/lib/sessionCookie";
+export { SESSION_COOKIE };
 
 export type Role = "TRAINEE" | "ADMIN" | "TRAINER" | "SERVICE_MANAGER" | "OFFICE_ASSISTANT" | "SALES_REP";
 export type Language = "EN" | "ES";
@@ -54,7 +56,18 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
 export async function getSession(): Promise<SessionPayload | null> {
   const token = cookies().get(SESSION_COOKIE)?.value;
   if (!token) return null;
-  return verifySessionToken(token);
+  const payload = await verifySessionToken(token);
+  if (!payload) return null;
+
+  // A valid, unexpired token isn't enough on its own — the account itself
+  // may have been deactivated since this cookie was issued (sessions last
+  // 30 days). Re-check against the database on every call so deactivation
+  // takes effect immediately, with no 30-day window where a revoked
+  // account's existing cookie still works.
+  const user = await prisma.user.findUnique({ where: { id: payload.sub }, select: { active: true } });
+  if (!user || !user.active) return null;
+
+  return payload;
 }
 
 export async function setSessionCookie(payload: SessionPayload) {
