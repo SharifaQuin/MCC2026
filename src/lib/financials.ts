@@ -90,6 +90,20 @@ export type ChecklistTaskWithEffectiveStatus = ChecklistTask & {
   effectiveStatus: ChecklistTaskStatus;
 };
 
+// These two unassigned TEAM tasks (seeded in prisma/seed.ts) ask whoever
+// sees them to log leads/marketing spend — work a Trainee has no part in and
+// no access to the Marketing & Leads Tracker for. Matched by exact
+// task/frequency text rather than id, since a per-install seeded task's id
+// isn't stable across installs/reseeds. Every other TEAM task, and these two
+// for every other role, are unaffected.
+const TRAINEE_EXCLUDED_TEAM_TASKS: { task: string; frequency: ChecklistFrequency }[] = [
+  {
+    task: "Log any new lead/client in the Marketing & Leads Tracker (source, type, value)",
+    frequency: "DAILY",
+  },
+  { task: "Check in on Marketing spend vs. leads generated so far", frequency: "WEEKLY" },
+];
+
 // Role-scoped checklist read: ADMIN (the Owner) sees every task. For
 // everyone else, assignment is a hard privacy boundary, not just a label:
 // once a task has an assigneeId, it's visible to exactly that one person
@@ -101,13 +115,18 @@ export async function getChecklistTasksForRole(
   role: Role,
   userId?: string
 ): Promise<ChecklistTaskWithEffectiveStatus[]> {
+  const baseWhere =
+    role === "ADMIN"
+      ? undefined
+      : userId
+        ? { OR: [{ assigneeId: null, visibility: "TEAM" as const }, { assigneeId: userId }] }
+        : { assigneeId: null, visibility: "TEAM" as const };
+
   const tasks = await prisma.checklistTask.findMany({
     where:
-      role === "ADMIN"
-        ? undefined
-        : userId
-          ? { OR: [{ assigneeId: null, visibility: "TEAM" }, { assigneeId: userId }] }
-          : { assigneeId: null, visibility: "TEAM" },
+      role === "TRAINEE" && baseWhere
+        ? { AND: [baseWhere, { NOT: TRAINEE_EXCLUDED_TEAM_TASKS }] }
+        : baseWhere,
     orderBy: [{ order: "asc" }, { createdAt: "asc" }],
   });
   const now = new Date();
