@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
-import { SESSION_COOKIE } from "@/lib/session";
+// Edge-safe import: @/lib/session now looks up the user via Prisma inside
+// getSession() (see its active-user check), which isn't usable from the
+// Edge runtime middleware runs on — @/lib/sessionCookie has just the
+// cookie name and nothing else.
+import { SESSION_COOKIE } from "@/lib/sessionCookie";
 
 function getSecret() {
   return new TextEncoder().encode(process.env.AUTH_SECRET ?? "");
