@@ -4,19 +4,24 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
-import { seedDefaultHiringQuestions, saveInterviewLogistics } from "@/lib/recruiting";
-import type { JobPostingRoleTrack } from "@prisma/client";
+import {
+  seedDefaultHiringQuestions,
+  saveInterviewLogistics,
+  slugifyPostingTitle,
+  duplicateJobPosting,
+} from "@/lib/recruiting";
+import type { JobPostingRoleTrack, PrescreenQuestionCategory, PrescreenQuestionType } from "@prisma/client";
 
 const VALID_ROLE_TRACKS = new Set(["LEAD_TECHNICIAN", "ASSISTANT_TECHNICIAN", "OTHER"]);
-
-function slugify(text: string) {
-  return (
-    text
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "") || `posting-${Date.now()}`
-  );
-}
+const VALID_QUESTION_TYPES = new Set(["SINGLE_SELECT", "MULTI_SELECT", "TEXT", "DATE"]);
+const VALID_QUESTION_CATEGORIES = new Set([
+  "REQUIRED",
+  "PREFERRED",
+  "QUALIFICATION",
+  "APPLICATION",
+  "CULTURE_BEHAVIORAL",
+  "OPTIONAL",
+]);
 
 export async function createJobPostingAction(formData: FormData) {
   await requireRecruitingAccess();
@@ -30,7 +35,7 @@ export async function createJobPostingAction(formData: FormData) {
   const roleTrackRaw = String(formData.get("roleTrack") ?? "OTHER");
   const roleTrack = (VALID_ROLE_TRACKS.has(roleTrackRaw) ? roleTrackRaw : "OTHER") as JobPostingRoleTrack;
 
-  let slug = slugify(titleEn);
+  let slug = slugifyPostingTitle(titleEn);
   const existing = await prisma.jobPosting.findUnique({ where: { slug } });
   if (existing) slug = `${slug}-${Date.now().toString().slice(-5)}`;
 
@@ -89,8 +94,25 @@ export async function addPrescreenQuestionAction(jobPostingId: string) {
   await requireRecruitingAccess();
 
   const count = await prisma.prescreenQuestion.count({ where: { jobPostingId } });
+  // New questions default to the posting's last step (so a question added
+  // to flesh out a step the owner is already building stays on it, rather
+  // than silently vanishing into a null stepLabel the apply wizard can't
+  // show at all — see applyPartTimeHouseCleanerPrescreenFix's own comment
+  // for exactly that failure mode) and to SINGLE_SELECT.
+  const lastQuestion = await prisma.prescreenQuestion.findFirst({
+    where: { jobPostingId },
+    orderBy: { order: "desc" },
+    select: { stepLabel: true },
+  });
+
   const question = await prisma.prescreenQuestion.create({
-    data: { jobPostingId, textEn: "New question", order: count + 1 },
+    data: {
+      jobPostingId,
+      textEn: "New question",
+      order: count + 1,
+      stepLabel: lastQuestion?.stepLabel ?? null,
+      type: "SINGLE_SELECT",
+    },
   });
   // Start every question with two blank answer options so there's
   // somewhere to immediately fill in point values.
@@ -120,21 +142,49 @@ export async function saveQuestionWithOptionsAction(
 ) {
   await requireRecruitingAccess();
   const textEn = String(formData.get("textEn") ?? "").trim();
-  await prisma.prescreenQuestion.update({ where: { id: questionId }, data: { textEn } });
+  const shortLabel = String(formData.get("shortLabel") ?? "").trim() || null;
+  const stepLabel = String(formData.get("stepLabel") ?? "").trim() || null;
+  const typeRaw = String(formData.get("type") ?? "SINGLE_SELECT");
+  const type = (VALID_QUESTION_TYPES.has(typeRaw) ? typeRaw : "SINGLE_SELECT") as PrescreenQuestionType;
+  const categoryRaw = String(formData.get("category") ?? "REQUIRED");
+  const category = (
+    VALID_QUESTION_CATEGORIES.has(categoryRaw) ? categoryRaw : "REQUIRED"
+  ) as PrescreenQuestionCategory;
+  const required = formData.get("required") === "on";
+  const maxLengthRaw = String(formData.get("maxLength") ?? "").trim();
+  const maxLength = maxLengthRaw ? Number(maxLengthRaw) || null : null;
 
+  await prisma.prescreenQuestion.update({
+    where: { id: questionId },
+    data: { textEn, shortLabel, stepLabel, type, category, required, maxLength },
+  });
+
+  // Only touch an option whose fields were actually submitted — the editor
+  // hides the answer-choice inputs entirely for TEXT/DATE questions, and a
+  // field that was never rendered shouldn't silently blank out an existing
+  // option (e.g. a brief switch to TEXT and back to SINGLE_SELECT must not
+  // lose the answer choices that were there before).
   await Promise.all(
-    optionIds.map((optionId) =>
-      prisma.prescreenOption.update({
+    optionIds.map((optionId) => {
+      if (!formData.has(`option_${optionId}_text`)) return null;
+      return prisma.prescreenOption.update({
         where: { id: optionId },
         data: {
           textEn: String(formData.get(`option_${optionId}_text`) ?? "").trim(),
           points: Number(formData.get(`option_${optionId}_points`) ?? 0) || 0,
         },
-      })
-    )
+      });
+    })
   );
 
   revalidatePath(`/recruiting/postings/${jobPostingId}`);
+}
+
+export async function duplicateJobPostingAction(jobPostingId: string) {
+  await requireRecruitingAccess();
+  const copy = await duplicateJobPosting(jobPostingId);
+  revalidatePath("/recruiting/postings");
+  redirect(`/recruiting/postings/${copy.id}`);
 }
 
 export async function addPrescreenOptionAction(jobPostingId: string, questionId: string) {

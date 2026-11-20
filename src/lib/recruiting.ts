@@ -2721,6 +2721,344 @@ export async function seedDefaultHiringQuestions(jobPostingId: string) {
   });
 }
 
+export function slugifyPostingTitle(text: string): string {
+  return (
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "") || `posting-${Date.now()}`
+  );
+}
+
+// Copies every PrescreenQuestion (and its PrescreenOptions) from one
+// posting to another, remapping conditionalOnOptionId to the newly
+// created option ids so a follow-up/conditional question keeps working on
+// the copy. Only ever reads from sourceJobPostingId and creates new rows
+// under targetJobPostingId — never updates or deletes anything on the
+// source. The caller decides whether to clear the target's existing
+// questions first (see duplicateJobPosting below, and the one-time
+// data-fix script in scripts/). Returns a map of old question id -> new
+// question id, in case a caller needs to locate a specific copied
+// question afterward.
+export async function clonePrescreenQuestions(
+  tx: Prisma.TransactionClient,
+  sourceJobPostingId: string,
+  targetJobPostingId: string
+): Promise<Map<string, string>> {
+  const sourceQuestions = await tx.prescreenQuestion.findMany({
+    where: { jobPostingId: sourceJobPostingId },
+    include: { options: { orderBy: { order: "asc" } } },
+    orderBy: { order: "asc" },
+  });
+
+  const optionIdMap = new Map<string, string>();
+  const newQuestionByOldId = new Map<string, { id: string; conditionalOnOptionId: string | null }>();
+
+  for (const q of sourceQuestions) {
+    const newQuestion = await tx.prescreenQuestion.create({
+      data: {
+        jobPostingId: targetJobPostingId,
+        order: q.order,
+        textEn: q.textEn,
+        shortLabel: q.shortLabel,
+        category: q.category,
+        type: q.type,
+        required: q.required,
+        maxLength: q.maxLength,
+        stepLabel: q.stepLabel,
+      },
+    });
+    newQuestionByOldId.set(q.id, { id: newQuestion.id, conditionalOnOptionId: q.conditionalOnOptionId });
+
+    for (const opt of q.options) {
+      const newOption = await tx.prescreenOption.create({
+        data: { questionId: newQuestion.id, order: opt.order, textEn: opt.textEn, points: opt.points },
+      });
+      optionIdMap.set(opt.id, newOption.id);
+    }
+  }
+
+  for (const [, { id, conditionalOnOptionId }] of newQuestionByOldId) {
+    if (!conditionalOnOptionId) continue;
+    const remapped = optionIdMap.get(conditionalOnOptionId);
+    if (!remapped) {
+      throw new Error(
+        `clonePrescreenQuestions: couldn't remap conditionalOnOptionId ${conditionalOnOptionId} — ` +
+          `its option wasn't copied (is it on a different posting?).`
+      );
+    }
+    await tx.prescreenQuestion.update({ where: { id }, data: { conditionalOnOptionId: remapped } });
+  }
+
+  const questionIdMap = new Map<string, string>();
+  for (const [oldId, { id }] of newQuestionByOldId) questionIdMap.set(oldId, id);
+  return questionIdMap;
+}
+
+async function clonePhoneScreenQuestions(
+  tx: Prisma.TransactionClient,
+  sourceJobPostingId: string,
+  targetJobPostingId: string
+): Promise<void> {
+  const rows = await tx.phoneScreenQuestion.findMany({
+    where: { jobPostingId: sourceJobPostingId },
+    orderBy: { order: "asc" },
+  });
+  if (rows.length === 0) return;
+  await tx.phoneScreenQuestion.createMany({
+    data: rows.map((q) => ({ jobPostingId: targetJobPostingId, order: q.order, textEn: q.textEn, textEs: q.textEs })),
+  });
+}
+
+async function cloneInterviewQuestions(
+  tx: Prisma.TransactionClient,
+  sourceJobPostingId: string,
+  targetJobPostingId: string
+): Promise<void> {
+  const rows = await tx.interviewQuestion.findMany({
+    where: { jobPostingId: sourceJobPostingId },
+    orderBy: { order: "asc" },
+  });
+  if (rows.length === 0) return;
+  await tx.interviewQuestion.createMany({
+    data: rows.map((q) => ({
+      jobPostingId: targetJobPostingId,
+      order: q.order,
+      competency: q.competency,
+      textEn: q.textEn,
+      textEs: q.textEs,
+      whatToListenFor: q.whatToListenFor,
+      roleScope: q.roleScope,
+    })),
+  });
+}
+
+// "Duplicate posting" — a full copy of a posting (every field, plus every
+// prescreen/phone-screen/interview question, with conditional-question ids
+// remapped) under a new slug derived from a new title. Always starts
+// inactive so a duplicate never silently begins accepting real
+// applications before the owner has reviewed/edited it.
+export async function duplicateJobPosting(sourceJobPostingId: string): Promise<{ id: string; slug: string }> {
+  return prisma.$transaction(async (tx) => {
+    const source = await tx.jobPosting.findUniqueOrThrow({ where: { id: sourceJobPostingId } });
+
+    const titleEn = `${source.titleEn} (Copy)`;
+    let slug = slugifyPostingTitle(titleEn);
+    const existing = await tx.jobPosting.findUnique({ where: { slug } });
+    if (existing) slug = `${slug}-${Date.now().toString().slice(-5)}`;
+
+    const copy = await tx.jobPosting.create({
+      data: {
+        slug,
+        titleEn,
+        titleEs: source.titleEs,
+        positionType: source.positionType,
+        descriptionEn: source.descriptionEn,
+        resumeRequired: source.resumeRequired,
+        passThresholdPct: source.passThresholdPct,
+        roleTrack: source.roleTrack,
+        active: false,
+      },
+    });
+
+    await clonePrescreenQuestions(tx, source.id, copy.id);
+    await clonePhoneScreenQuestions(tx, source.id, copy.id);
+    await cloneInterviewQuestions(tx, source.id, copy.id);
+
+    return { id: copy.id, slug: copy.slug };
+  });
+}
+
+// One-time fix for a specific posting whose prescreen questions were all
+// added through the admin editor before it could set stepLabel/category/
+// type — every one of them has stepLabel=null, so /apply/[slug] builds
+// zero wizard steps and the application can never be completed (see
+// scripts/fix-part-time-cleaner-prescreen.ts, the one-time script that
+// calls this against production, and e2e/part-time-cleaner-posting-fix.spec.ts,
+// which calls this exact same function against dev-only fixtures to prove
+// it end to end). Deliberately specific to this one posting's required
+// changes, not a generic repair tool — see the task this shipped with for
+// the full list of what changes and why.
+export async function applyPartTimeHouseCleanerPrescreenFix(
+  tx: Prisma.TransactionClient,
+  sourceJobPostingId: string,
+  targetJobPostingId: string
+): Promise<void> {
+  // 1. Replace every prescreen question on the target with a copy of the
+  // source's.
+  await tx.prescreenQuestion.deleteMany({ where: { jobPostingId: targetJobPostingId } });
+  await clonePrescreenQuestions(tx, sourceJobPostingId, targetJobPostingId);
+
+  // 2. Remove the "Cleaning Experience" step entirely.
+  const cleaningExperienceQuestions = await tx.prescreenQuestion.findMany({
+    where: { jobPostingId: targetJobPostingId, stepLabel: "Cleaning Experience" },
+  });
+  if (cleaningExperienceQuestions.length !== 5) {
+    throw new Error(
+      `applyPartTimeHouseCleanerPrescreenFix: expected exactly 5 "Cleaning Experience" questions to remove, ` +
+        `found ${cleaningExperienceQuestions.length}. Aborting rather than guessing.`
+    );
+  }
+  const cleaningExperienceOptionIds = (
+    await tx.prescreenOption.findMany({
+      where: { questionId: { in: cleaningExperienceQuestions.map((q) => q.id) } },
+      select: { id: true },
+    })
+  ).map((o) => o.id);
+  const danglingReferences = await tx.prescreenQuestion.findMany({
+    where: {
+      jobPostingId: targetJobPostingId,
+      stepLabel: { not: "Cleaning Experience" },
+      conditionalOnOptionId: { in: cleaningExperienceOptionIds },
+    },
+  });
+  if (danglingReferences.length > 0) {
+    throw new Error(
+      `applyPartTimeHouseCleanerPrescreenFix: removing "Cleaning Experience" would orphan ` +
+        `${danglingReferences.length} other question(s) that depend on its options: ` +
+        `${danglingReferences.map((q) => q.textEn).join(" | ")}`
+    );
+  }
+  await tx.prescreenQuestion.deleteMany({
+    where: { jobPostingId: targetJobPostingId, stepLabel: "Cleaning Experience" },
+  });
+
+  // 3. Insert the new Experience question right after "How did you hear
+  // about Mama's Cleaning Crew?" and its follow-up(s).
+  const remaining = await tx.prescreenQuestion.findMany({
+    where: { jobPostingId: targetJobPostingId },
+    include: { options: true },
+    orderBy: { order: "asc" },
+  });
+
+  const heardAboutQ = remaining.find(
+    (q) => q.textEn.trim() === "How did you hear about Mama's Cleaning Crew?"
+  );
+  if (!heardAboutQ) {
+    throw new Error(
+      `applyPartTimeHouseCleanerPrescreenFix: couldn't find "How did you hear about Mama's Cleaning Crew?" ` +
+        `among the copied questions. Found instead: ${remaining.map((q) => q.textEn).join(" | ")}`
+    );
+  }
+  if (heardAboutQ.stepLabel !== "About You") {
+    throw new Error(
+      `applyPartTimeHouseCleanerPrescreenFix: expected "How did you hear..." to be in the "About You" step, ` +
+        `found "${heardAboutQ.stepLabel}".`
+    );
+  }
+
+  // Walk the conditional chain rooted at heardAboutQ's own options to find
+  // every direct/indirect follow-up, so the new question is inserted after
+  // the LAST one, not in the middle of the group.
+  const subtree = [heardAboutQ];
+  const frontier = new Set(heardAboutQ.options.map((o) => o.id));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const q of remaining) {
+      if (subtree.includes(q)) continue;
+      if (q.conditionalOnOptionId && frontier.has(q.conditionalOnOptionId)) {
+        subtree.push(q);
+        for (const o of q.options) frontier.add(o.id);
+        changed = true;
+      }
+    }
+  }
+  const insertAfterOrder = subtree.reduce((a, b) => (b.order > a.order ? b : a)).order;
+
+  await tx.prescreenQuestion.updateMany({
+    where: { jobPostingId: targetJobPostingId, order: { gt: insertAfterOrder } },
+    data: { order: { increment: 1 } },
+  });
+  const experienceQuestion = await tx.prescreenQuestion.create({
+    data: {
+      jobPostingId: targetJobPostingId,
+      order: insertAfterOrder + 1,
+      textEn: "Do you have any house cleaning experience? (No experience is fine — we'll train you.)",
+      shortLabel: "Experience",
+      category: "APPLICATION",
+      type: "SINGLE_SELECT",
+      required: true,
+      stepLabel: "About You",
+    },
+  });
+  await tx.prescreenOption.createMany({
+    data: [
+      { questionId: experienceQuestion.id, order: 1, textEn: "No experience yet", points: 0 },
+      { questionId: experienceQuestion.id, order: 2, textEn: "Less than 1 year", points: 0 },
+      { questionId: experienceQuestion.id, order: 3, textEn: "1–2 years", points: 0 },
+      { questionId: experienceQuestion.id, order: 4, textEn: "3+ years", points: 0 },
+    ],
+  });
+
+  // 4. Replace the Monday–Friday availability question with the part-time
+  // schedule question, in the same slot.
+  const availabilityQ = await tx.prescreenQuestion.findFirst({
+    where: {
+      jobPostingId: targetJobPostingId,
+      textEn: "Are you available to work Monday through Friday between 8:00 AM and 6:00 PM?",
+    },
+  });
+  if (!availabilityQ) {
+    throw new Error(
+      `applyPartTimeHouseCleanerPrescreenFix: couldn't find the Monday–Friday availability question to replace.`
+    );
+  }
+  await tx.prescreenQuestion.update({
+    where: { id: availabilityQ.id },
+    data: {
+      textEn: "Which part-time schedule can you commit to every week?",
+      shortLabel: "Part-Time Availability",
+      category: "QUALIFICATION",
+      type: "SINGLE_SELECT",
+      stepLabel: "Job Requirements",
+    },
+  });
+  await tx.prescreenOption.deleteMany({ where: { questionId: availabilityQ.id } });
+  await tx.prescreenOption.createMany({
+    data: [
+      {
+        questionId: availabilityQ.id,
+        order: 1,
+        textEn: "School hours, Monday–Friday (about 9:00 AM–2:30 PM)",
+        points: 1,
+      },
+      {
+        questionId: availabilityQ.id,
+        order: 2,
+        textEn: "2–3 set full weekdays (between 8:00 AM and 6:00 PM)",
+        points: 1,
+      },
+      { questionId: availabilityQ.id, order: 3, textEn: "Either one works for me", points: 1 },
+      { questionId: availabilityQ.id, order: 4, textEn: "I can't commit to a fixed weekly schedule right now", points: 0 },
+    ],
+  });
+
+  // 5. Rename the transportation question — wording only.
+  const transportationQ = await tx.prescreenQuestion.findFirst({
+    where: {
+      jobPostingId: targetJobPostingId,
+      textEn: "Do you have reliable transportation that you can use for work?",
+    },
+  });
+  if (!transportationQ) {
+    throw new Error(
+      `applyPartTimeHouseCleanerPrescreenFix: couldn't find the reliable-transportation question to rename.`
+    );
+  }
+  await tx.prescreenQuestion.update({
+    where: { id: transportationQ.id },
+    data: { textEn: "Do you have your own reliable car that you can use for work?" },
+  });
+
+  // 6. Keep the pass threshold at 100 and the posting inactive — enforced
+  // explicitly rather than assumed.
+  await tx.jobPosting.update({
+    where: { id: targetJobPostingId },
+    data: { passThresholdPct: 100, active: false },
+  });
+}
+
 // Structured Interview Scorecard's competency list (Form 3 for Lead, Form 4
 // for Assistant) — differs by role, hence a lookup rather than fixed
 // columns. Track B (roleTrack OTHER, role not yet decided) defaults to the
