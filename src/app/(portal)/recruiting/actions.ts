@@ -9,6 +9,7 @@ import {
   saveInterviewLogistics,
   slugifyPostingTitle,
   duplicateJobPosting,
+  runPartTimeHouseCleanerFix,
 } from "@/lib/recruiting";
 import type { JobPostingRoleTrack, PrescreenQuestionCategory, PrescreenQuestionType } from "@prisma/client";
 
@@ -200,4 +201,37 @@ export async function deletePrescreenOptionAction(jobPostingId: string, optionId
   await requireRecruitingAccess();
   await prisma.prescreenOption.delete({ where: { id: optionId } });
   revalidatePath(`/recruiting/postings/${jobPostingId}`);
+}
+
+export interface RunPartTimeHouseCleanerFixState {
+  error?: string;
+  success?: string;
+}
+
+// Owner-only, one-time: fixes the Part-Time House Cleaner posting's broken
+// prescreen questions (see runPartTimeHouseCleanerFix in src/lib/recruiting.ts)
+// from a button on that posting's own page — never a terminal script, since
+// this is meant to be something the Owner can run herself from the
+// dashboard she already uses.
+export async function runPartTimeHouseCleanerFixAction(
+  _prevState: RunPartTimeHouseCleanerFixState,
+  _formData: FormData
+): Promise<RunPartTimeHouseCleanerFixState> {
+  const { session } = await requireRecruitingAccess();
+  if (session.role !== "ADMIN") {
+    return { error: "Only the Owner/Admin account can run this one-time fix." };
+  }
+
+  try {
+    const result = await runPartTimeHouseCleanerFix();
+    // Deliberately no revalidatePath here: this page's fix banner only
+    // shows while isPartTimeHouseCleanerFixNeeded(posting) is true, so a
+    // revalidate right after a successful fix would re-render the parent
+    // page with that now-false, immediately unmounting this success
+    // message before the Owner ever sees it. The banner itself tells her
+    // to refresh to see the updated prescreening questions below.
+    return { success: `Fixed — ${result.questionCount} prescreening questions on "${result.titleEn}".` };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Something went wrong running the fix." };
+  }
 }

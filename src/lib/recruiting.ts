@@ -2872,13 +2872,14 @@ export async function duplicateJobPosting(sourceJobPostingId: string): Promise<{
 // One-time fix for a specific posting whose prescreen questions were all
 // added through the admin editor before it could set stepLabel/category/
 // type — every one of them has stepLabel=null, so /apply/[slug] builds
-// zero wizard steps and the application can never be completed (see
-// scripts/fix-part-time-cleaner-prescreen.ts, the one-time script that
-// calls this against production, and e2e/part-time-cleaner-posting-fix.spec.ts,
-// which calls this exact same function against dev-only fixtures to prove
-// it end to end). Deliberately specific to this one posting's required
-// changes, not a generic repair tool — see the task this shipped with for
-// the full list of what changes and why.
+// zero wizard steps and the application can never be completed. Called by
+// runPartTimeHouseCleanerFix below (which the owner triggers with a button
+// right on that posting's page — see postings/[id]/page.tsx — rather than
+// a script, since this is a one-time maintenance operation and not
+// something to expect terminal/production database access for).
+// e2e/part-time-cleaner-posting-fix.spec.ts calls this exact same function
+// against dev-only fixtures to prove it end to end. Deliberately specific
+// to this one posting's required changes, not a generic repair tool.
 export async function applyPartTimeHouseCleanerPrescreenFix(
   tx: Prisma.TransactionClient,
   sourceJobPostingId: string,
@@ -3057,6 +3058,65 @@ export async function applyPartTimeHouseCleanerPrescreenFix(
     where: { id: targetJobPostingId },
     data: { passThresholdPct: 100, active: false },
   });
+}
+
+const PART_TIME_CLEANER_SOURCE_POSTING_ID = "cmuflxjv20002108dp6bw74ar"; // Cleaning Technician
+const PART_TIME_CLEANER_TARGET_POSTING_ID = "cmwpehomm00n8exng5u8qed5e"; // Part-Time House Cleaner (No Experience Needed)
+
+// True only for the one specific posting this one-time fix targets, and
+// only while it's still in the broken state (every prescreen question's
+// stepLabel unset) — drives the "Run one-time fix" banner on that
+// posting's page (postings/[id]/page.tsx) so it shows up only there, and
+// disappears on its own once the fix has run.
+export function isPartTimeHouseCleanerFixNeeded(posting: {
+  id: string;
+  prescreenQuestions: { stepLabel: string | null }[];
+}): boolean {
+  return (
+    posting.id === PART_TIME_CLEANER_TARGET_POSTING_ID &&
+    posting.prescreenQuestions.length > 0 &&
+    posting.prescreenQuestions.every((q) => q.stepLabel === null)
+  );
+}
+
+// Runs applyPartTimeHouseCleanerPrescreenFix with the two real posting ids
+// baked in, behind the same safety checks a terminal-run script would
+// have: refuses if the target doesn't look like the broken state this fix
+// expects (so it can't be run twice, or against an already-fixed posting),
+// and refuses if the target already has any applicants on file (replacing
+// its prescreen questions would cascade-delete their saved answers).
+export async function runPartTimeHouseCleanerFix(): Promise<{ questionCount: number; titleEn: string }> {
+  const target = await prisma.jobPosting.findUniqueOrThrow({
+    where: { id: PART_TIME_CLEANER_TARGET_POSTING_ID },
+    include: { prescreenQuestions: true },
+  });
+
+  if (!isPartTimeHouseCleanerFixNeeded(target)) {
+    throw new Error(
+      "This posting doesn't look like the broken state this fix expects (every question's step should " +
+        "currently be unset) — has it already been fixed?"
+    );
+  }
+
+  const applicantCount = await prisma.applicant.count({
+    where: { jobPostingId: PART_TIME_CLEANER_TARGET_POSTING_ID },
+  });
+  if (applicantCount > 0) {
+    throw new Error(
+      `This posting already has ${applicantCount} applicant(s) on file. Replacing its prescreen questions ` +
+        `would delete their saved answers — resolve that manually first.`
+    );
+  }
+
+  await prisma.$transaction((tx) =>
+    applyPartTimeHouseCleanerPrescreenFix(tx, PART_TIME_CLEANER_SOURCE_POSTING_ID, PART_TIME_CLEANER_TARGET_POSTING_ID)
+  );
+
+  const final = await prisma.jobPosting.findUniqueOrThrow({
+    where: { id: PART_TIME_CLEANER_TARGET_POSTING_ID },
+    include: { prescreenQuestions: true },
+  });
+  return { questionCount: final.prescreenQuestions.length, titleEn: final.titleEn };
 }
 
 // Structured Interview Scorecard's competency list (Form 3 for Lead, Form 4
