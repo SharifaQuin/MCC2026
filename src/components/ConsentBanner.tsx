@@ -10,13 +10,15 @@ function setConsentCookie(value: "granted" | "declined") {
   document.cookie = `${AD_CONSENT_COOKIE}=${value}; path=/lead-form; max-age=${oneYear}; SameSite=Lax${secure}`;
 }
 
-// Opt-in, not opt-out: shown only while the visitor hasn't yet answered
-// (see getAdConsentStatus) — declining or accepting both dismiss it for a
-// year via the cookie above. router.refresh() re-runs the server-rendered
-// tree on the current page so <MetaPixel> picks up the new consent value
-// immediately, without a full page reload. Submitting the quote form
-// itself is entirely unaffected by this choice either way.
-export default function ConsentBanner() {
+// Opt-in, not opt-out: ConsentControls (src/components/ConsentControls.tsx)
+// shows this automatically while the visitor hasn't yet answered, and lets
+// them reopen it afterward to change their mind — either way, choosing
+// Accept or Decline here dismisses it for a year via the cookie above.
+// router.refresh() re-runs the server-rendered tree on the current page so
+// <MetaPixel> picks up the new consent value immediately, without a full
+// page reload. Submitting the quote form itself is entirely unaffected by
+// this choice either way.
+export default function ConsentBanner({ onDismiss }: { onDismiss?: () => void }) {
   const router = useRouter();
   const [dismissed, setDismissed] = useState(false);
 
@@ -25,11 +27,12 @@ export default function ConsentBanner() {
   function choose(value: "granted" | "declined") {
     setConsentCookie(value);
     setDismissed(true);
+    onDismiss?.();
     router.refresh();
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 border-t border-neutral-200 bg-white p-4 shadow-lg">
+    <div className="mt-6 rounded-md border border-neutral-200 bg-white p-4 shadow-lg">
       <div className="mx-auto flex max-w-xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-neutral-700">
           We use Meta (Facebook/Instagram) ad tracking to measure how our ads are performing. This

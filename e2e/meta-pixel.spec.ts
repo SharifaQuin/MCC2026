@@ -111,6 +111,34 @@ test.describe.serial("Meta Pixel on the public lead form", () => {
     expect((await getFbqCalls(page)).length).toBe(0);
   });
 
+  test("A visitor who declined can change their mind later via the preferences link, and the Pixel starts loading", async ({
+    page,
+  }) => {
+    await installFbqSpy(page);
+    await page.goto("/lead-form");
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: "Decline" }).click();
+    await page.waitForLoadState("networkidle");
+    await expect(page.locator("text=We use Meta (Facebook/Instagram) ad tracking")).toHaveCount(0);
+    expect((await getFbqCalls(page)).length).toBe(0);
+
+    // No banner anymore, but a small link to reopen it is always present.
+    await page.getByRole("button", { name: "Ad-tracking preferences" }).click();
+    await expect(page.locator("text=We use Meta (Facebook/Instagram) ad tracking")).toBeVisible();
+
+    await page.getByRole("button", { name: "Accept" }).click();
+    await expect(page.locator("text=We use Meta (Facebook/Instagram) ad tracking")).toHaveCount(0);
+    await expect
+      .poll(async () => getFbqCalls(page))
+      .toContainEqual(["track", "PageView"]);
+
+    // The updated (granted) choice persists on a fresh visit too.
+    await installFbqSpy(page);
+    await page.goto("/lead-form");
+    await page.waitForLoadState("networkidle");
+    expect(await getFbqCalls(page)).toContainEqual(["track", "PageView"]);
+  });
+
   test("Accepting the consent banner starts the Pixel immediately (PageView fires) and the choice persists", async ({
     page,
   }) => {
