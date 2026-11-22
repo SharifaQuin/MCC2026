@@ -11,7 +11,7 @@ export default function PrivacyPolicyPage() {
 
       <main className="mx-auto max-w-3xl px-4 py-12 text-sm leading-6 text-neutral-700 sm:px-8">
         <h1 className="mb-2 text-2xl font-bold text-neutral-900">Privacy Policy</h1>
-        <p className="mb-8 text-xs text-neutral-400">Last updated: September 20, 2026</p>
+        <p className="mb-8 text-xs text-neutral-400">Last updated: November 22, 2026</p>
 
         <p className="mb-6">
           This Privacy Policy describes how Mama&apos;s Cleaning Crew (&quot;we,&quot; &quot;us&quot;) collects, uses, and
@@ -63,7 +63,11 @@ export default function PrivacyPolicyPage() {
           <li>Following up with prospective customers about service inquiries.</li>
           <li>Tracking company financial performance for internal owner/management reporting.</li>
         </ul>
-        <p className="mb-6">We do not sell personal information to third parties.</p>
+        <p className="mb-6">
+          We do not sell personal information to third parties. Some browser/device-level information is shared with
+          Meta through the Meta Pixel described in Section 4, solely to measure ad performance for our Facebook and
+          Instagram campaigns.
+        </p>
 
         <h2 className="mb-2 mt-8 text-base font-semibold text-neutral-900">4. Third-party services we use</h2>
         <p className="mb-4">
@@ -89,6 +93,15 @@ export default function PrivacyPolicyPage() {
           </li>
           <li>
             <strong>Cloudflare Turnstile:</strong> to prevent automated spam submissions on our public lead form.
+          </li>
+          <li>
+            <strong>Meta Pixel (Facebook/Instagram):</strong> on our public lead form only, to measure how many
+            visitors from our Facebook and Instagram ads submit a service inquiry. This does not include your name,
+            phone number, email address, street address, or anything you write in the form — it only records that a
+            page was viewed and that a form was successfully submitted. Meta may use browser/device information
+            (such as cookies and IP address) collected through this pixel for its own ad-measurement and ad-targeting
+            purposes; see Meta&apos;s own privacy policy for details, and their Ad Preferences page to control how
+            your information is used for ads across Meta&apos;s services.
           </li>
         </ul>
 

@@ -5,8 +5,10 @@ import {
   LEAD_FREQUENCY_OPTIONS,
   LEAD_HOW_HEARD_OPTIONS,
   guessHowHeardFromSrc,
+  parseLeadUtmParams,
 } from "@/lib/leads";
 import { submitLeadAction } from "./actions";
+import MetaPixel from "@/components/MetaPixel";
 
 const ERROR_MESSAGES: Record<string, string> = {
   incomplete: "Please fill out your name, email, phone number, and every required field.",
@@ -16,7 +18,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function LeadFormPage({
   searchParams,
 }: {
-  searchParams: { error?: string; src?: string };
+  searchParams: { error?: string; src?: string; [key: string]: string | string[] | undefined };
 }) {
   const errorMessage = searchParams.error ? ERROR_MESSAGES[searchParams.error] : null;
   const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || null;
@@ -26,8 +28,15 @@ export default async function LeadFormPage({
   ]);
   const defaultHowHeard = guessHowHeardFromSrc(searchParams.src) ?? "";
 
+  const usp = new URLSearchParams();
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (typeof value === "string") usp.set(key, value);
+  }
+  const utm = parseLeadUtmParams(usp);
+
   return (
     <div className="mx-auto max-w-xl px-4 py-8">
+      <MetaPixel />
       <h1 className="text-2xl font-semibold text-neutral-900">{config.headline}</h1>
       <p className="mt-2 text-neutral-600">{config.intro}</p>
 
@@ -39,6 +48,10 @@ export default async function LeadFormPage({
 
       <form action={submitLeadAction} className="relative mt-6 space-y-4 rounded-lg border border-neutral-200 bg-white p-6">
         <input type="hidden" name="src" value={searchParams.src ?? ""} />
+        <input type="hidden" name="utmSource" value={utm.utmSource ?? ""} />
+        <input type="hidden" name="utmMedium" value={utm.utmMedium ?? ""} />
+        <input type="hidden" name="utmCampaign" value={utm.utmCampaign ?? ""} />
+        <input type="hidden" name="utmContent" value={utm.utmContent ?? ""} />
         {/* Honeypot — hidden from real visitors via CSS, not the "hidden" attribute a bot can detect easily. */}
         <div className="absolute -left-[9999px]" aria-hidden="true">
           <label htmlFor="website">Leave this field blank</label>

@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import type { LeadSource } from "@prisma/client";
 import {
@@ -59,6 +60,13 @@ export async function submitLeadAction(formData: FormData) {
   const source: LeadSource = VALID_HOW_HEARD_VALUES.has(howHeardRaw)
     ? (howHeardRaw as LeadSource)
     : parseLeadSource(String(formData.get("src") ?? ""));
+  // Click-through attribution captured as hidden fields on page load (see
+  // the form page) — purely informational, saved alongside the customer's
+  // own "How did you hear" answer above, never replacing it.
+  const utmSource = String(formData.get("utmSource") ?? "").trim() || null;
+  const utmMedium = String(formData.get("utmMedium") ?? "").trim() || null;
+  const utmCampaign = String(formData.get("utmCampaign") ?? "").trim() || null;
+  const utmContent = String(formData.get("utmContent") ?? "").trim() || null;
 
   // Honeypot — a real visitor never fills in this hidden field. Silently
   // "succeed" so a bot doesn't learn its submission was rejected.
@@ -215,6 +223,10 @@ export async function submitLeadAction(formData: FormData) {
       frequency,
       message,
       source,
+      utmSource,
+      utmMedium,
+      utmCampaign,
+      utmContent,
       customFields: customFields.length > 0 ? customFields : undefined,
     },
   });
@@ -245,6 +257,25 @@ export async function submitLeadAction(formData: FormData) {
   } catch (err) {
     console.error("[leadAutoReply] failed:", err);
   }
+
+  // This short-lived cookie (not a URL param, so the redirect target stays
+  // exactly "/lead-form/thank-you" — several existing tests assert that
+  // exact URL) is what tells the thank-you page a NEW lead was actually
+  // just saved — see MetaPixelLeadEvent, which only fires Meta's Lead
+  // event when it's present. The honeypot/duplicate-active/reopened-
+  // Unable-to-Contact branches above redirect without setting it, on
+  // purpose: none of them save a new Lead row, so none of them should
+  // count as a conversion. 5 minutes is just long enough to cover the
+  // redirect and page render; a refresh within that window still can't
+  // double-fire the event — MetaPixelLeadEvent's own localStorage check
+  // (keyed on this exact lead id) handles that separately.
+  cookies().set("mcc_last_lead_id", lead.id, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/lead-form",
+    maxAge: 300,
+  });
 
   redirect("/lead-form/thank-you");
 }
