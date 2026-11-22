@@ -8,7 +8,9 @@ import {
   parseLeadUtmParams,
 } from "@/lib/leads";
 import { submitLeadAction } from "./actions";
+import { getAdConsentStatus } from "@/lib/consent";
 import MetaPixel from "@/components/MetaPixel";
+import ConsentBanner from "@/components/ConsentBanner";
 
 const ERROR_MESSAGES: Record<string, string> = {
   incomplete: "Please fill out your name, email, phone number, and every required field.",
@@ -33,10 +35,11 @@ export default async function LeadFormPage({
     if (typeof value === "string") usp.set(key, value);
   }
   const utm = parseLeadUtmParams(usp);
+  const consent = getAdConsentStatus();
 
   return (
-    <div className="mx-auto max-w-xl px-4 py-8">
-      <MetaPixel />
+    <div className={`mx-auto max-w-xl px-4 py-8 ${consent === "unset" ? "pb-40" : ""}`}>
+      <MetaPixel consent={consent} />
       <h1 className="text-2xl font-semibold text-neutral-900">{config.headline}</h1>
       <p className="mt-2 text-neutral-600">{config.intro}</p>
 
@@ -271,6 +274,7 @@ export default async function LeadFormPage({
       {turnstileSiteKey && (
         <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer />
       )}
+      {consent === "unset" && <ConsentBanner />}
     </div>
   );
 }

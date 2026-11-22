@@ -1,4 +1,5 @@
 import Script from "next/script";
+import type { AdConsentStatus } from "@/lib/consent";
 
 // Meta Pixel base code — loads fbq and fires an automatic PageView.
 // Deliberately NOT included in the root layout: it only renders on the
@@ -7,9 +8,14 @@ import Script from "next/script";
 // Pixel ID comes from an env var (same pattern as NEXT_PUBLIC_TURNSTILE_SITE_KEY
 // in src/app/lead-form/page.tsx) rather than being hardcoded — if it's
 // unset, this renders nothing and the page works exactly as it did before.
-export default function MetaPixel() {
+//
+// Also gated on the visitor's own ad-tracking consent choice (see
+// src/lib/consent.ts and ConsentBanner) — opt-in, not opt-out: nothing
+// loads at all until consent is explicitly "granted". Declining or not
+// yet answering never affects the quote form itself, only this.
+export default function MetaPixel({ consent }: { consent: AdConsentStatus }) {
   const pixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID;
-  if (!pixelId) return null;
+  if (!pixelId || consent !== "granted") return null;
 
   return (
     <>

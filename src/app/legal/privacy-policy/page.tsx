@@ -98,10 +98,12 @@ export default function PrivacyPolicyPage() {
             <strong>Meta Pixel (Facebook/Instagram):</strong> on our public lead form only, to measure how many
             visitors from our Facebook and Instagram ads submit a service inquiry. This does not include your name,
             phone number, email address, street address, or anything you write in the form — it only records that a
-            page was viewed and that a form was successfully submitted. Meta may use browser/device information
-            (such as cookies and IP address) collected through this pixel for its own ad-measurement and ad-targeting
-            purposes; see Meta&apos;s own privacy policy for details, and their Ad Preferences page to control how
-            your information is used for ads across Meta&apos;s services.
+            page was viewed and that a form was successfully submitted. It only runs if you choose &quot;Accept&quot;
+            on the ad-tracking banner shown on that page — choosing &quot;Decline,&quot; or simply not answering,
+            means it never loads at all, and either way your quote request is submitted the same way. Meta may use
+            browser/device information (such as cookies and IP address) collected through this pixel, when enabled,
+            for its own ad-measurement and ad-targeting purposes; see Meta&apos;s own privacy policy for details, and
+            their Ad Preferences page to control how your information is used for ads across Meta&apos;s services.
           </li>
         </ul>
 
