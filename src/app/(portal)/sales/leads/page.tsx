@@ -171,7 +171,7 @@ export default async function LeadsPage({
           name="q"
           placeholder="Search by name, email, or phone"
           defaultValue={q ?? ""}
-          className="w-full max-w-xs rounded-md border border-neutral-300 px-3 py-2 text-sm"
+          className="w-full max-w-xs rounded-lg border border-neutral-300 px-3 py-2 text-sm"
         />
         <select
           name="source"

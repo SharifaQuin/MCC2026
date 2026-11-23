@@ -9,6 +9,7 @@ import { getTrainingExperienceVersion } from "@/lib/rookieJourney";
 import { buildNavGroups } from "@/lib/navigation";
 import Sidebar from "@/components/nav/Sidebar";
 import MobileNav from "@/components/nav/MobileNav";
+import BottomNav from "@/components/nav/BottomNav";
 import GoalProgressBar from "@/components/GoalProgressBar";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 
@@ -75,6 +76,15 @@ export default async function PortalLayout({ children }: { children: React.React
     canEditTrainingContent,
   });
 
+  // The mobile bottom-tab bar is the plain employee's phone experience
+  // specifically (see BottomNav's own comment) — every other role keeps
+  // the existing hamburger-drawer-only mobile nav, unchanged. It's purely
+  // additive: the drawer (MobileNav) is still rendered underneath for a
+  // Trainee too, so every permitted link stays reachable from there as
+  // well, not just these four tabs.
+  const showBottomNav = session.role === "TRAINEE";
+  const trainingHref = hideModulesNavLink ? "/rookie" : "/modules";
+
   return (
     <div className="flex min-h-screen">
       <Sidebar
@@ -100,7 +110,10 @@ export default async function PortalLayout({ children }: { children: React.React
           )}
           <GoalProgressBar session={session} departments={departments} />
         </div>
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8">{children}</main>
+        <main className={`mx-auto w-full max-w-7xl flex-1 px-4 py-8 ${showBottomNav ? "pb-24 lg:pb-8" : ""}`}>
+          {children}
+        </main>
+        {showBottomNav && <BottomNav trainingHref={trainingHref} />}
       </div>
     </div>
   );

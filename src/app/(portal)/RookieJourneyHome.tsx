@@ -1,32 +1,22 @@
 import Link from "next/link";
 import { t } from "@/lib/i18n";
 import type { SessionPayload } from "@/lib/session";
-import { getTodaysRookieTraining, type RookieRailStop } from "@/lib/rookieJourney";
+import { getTodaysRookieTraining, ROOKIE_DAY_COUNT } from "@/lib/rookieJourney";
 import { getOnboardingDocumentsForUser } from "@/lib/onboarding";
 import { getSignedDocumentsForUser } from "@/lib/documentTemplates";
 import { getEmployeePayrollEntries } from "@/lib/payroll";
 import { prisma } from "@/lib/prisma";
 import { getChecklistTasksForRole } from "@/lib/financials";
 import AssignedChecklist from "@/components/AssignedChecklist";
+import { ChartIcon, BookIcon, DocsIcon, DollarIcon } from "@/components/icons";
 
-function RailDot({ stop }: { stop: RookieRailStop }) {
-  const isMilestone = Number(stop.label) > 10;
-  const isReviewableDay = !isMilestone && stop.status === "done";
-  const base = "flex h-9 min-w-9 items-center justify-center rounded-full px-1 text-xs font-semibold";
-  const style =
-    stop.status === "current"
-      ? "bg-brand-600 text-white ring-4 ring-brand-100"
-      : stop.status === "done"
-        ? "bg-green-100 text-green-800"
-        : "bg-neutral-100 text-neutral-400";
-  const dot = <div className={`${base} ${style}`}>{isMilestone ? `★${stop.label}` : stop.label}</div>;
-  return (
-    <div className="flex flex-col items-center gap-1">
-      {isReviewableDay ? <Link href={`/rookie/day/${stop.label}`}>{dot}</Link> : dot}
-    </div>
-  );
-}
-
+// The compact "Home" card for a Trainee in the Rookie Journey experience —
+// greeting, today's progress, and the same shortcut tiles the mobile
+// bottom-nav's Home tab is meant to surface. The full rail + day-by-day
+// detail this used to render lives at /rookie now (src/app/(portal)/rookie/
+// page.tsx) — same getTodaysRookieTraining() call, same enrollment/unlock/
+// completion rules either way, just split across two screens instead of
+// one long one, matching the approved Home-vs-Training mockup split.
 export default async function RookieJourneyHome({ session }: { session: SessionPayload }) {
   const labels = t(session.language);
   const isEs = session.language === "ES";
@@ -58,7 +48,9 @@ export default async function RookieJourneyHome({ session }: { session: SessionP
     onboardingDocs.filter((d) => !d.signedAt).length + personnelDocs.filter((d) => !d.signedAt).length;
   const pendingPayroll = payrollEntries.find((p) => p.status === "PENDING");
 
-  const { position, rail, day } = training;
+  const { position, day } = training;
+  const daysComplete = position.phase === "ROOKIE_DAY" ? position.day - 1 : ROOKIE_DAY_COUNT;
+  const progressPct = Math.min(100, (daysComplete / ROOKIE_DAY_COUNT) * 100);
 
   const firstIncomplete = day?.sequence.find((e) => !e.completed) ?? null;
   const anyCompleted = day?.sequence.some((e) => e.completed) ?? false;
@@ -69,189 +61,141 @@ export default async function RookieJourneyHome({ session }: { session: SessionP
     : null;
   const primaryLabel = anyCompleted ? labels.rookieContinueDay : labels.rookieStartDay;
 
-  const milestoneLine =
-    position.phase === "AWAITING_30"
-      ? labels.sealOfApproval30
-      : position.phase === "AWAITING_60"
-        ? labels.day60Review
-        : position.phase === "AWAITING_90"
-          ? labels.day90Review
-          : null;
-
   return (
     <div>
-      <h1 className="mb-1 text-2xl font-semibold">
+      <h1 className="mb-1 text-2xl font-semibold text-neutral-900">
         {labels.welcome}, {firstName}!
       </h1>
-      {position.phase === "ROOKIE_DAY" ? (
-        <p className="mb-4 text-sm text-neutral-600">
-          {labels.rookieOnDayOf} <span className="font-semibold text-neutral-900">{position.day}</span>{" "}
-          {labels.rookieOfRookieTraining}
-        </p>
-      ) : (
-        <p className="mb-4 text-sm text-neutral-600">{labels.rookieTrainingComplete}</p>
-      )}
+      <p className="mb-6 text-sm text-neutral-500">
+        {new Date().toLocaleDateString(isEs ? "es-US" : "en-US", { weekday: "long", month: "long", day: "numeric" })}
+      </p>
 
-      {/* Progress rail — Day 1..10, then 30/60/90 milestones */}
-      <div className="mb-6 -mx-1 flex items-center gap-1.5 overflow-x-auto px-1 pb-2">
-        {rail.map((stop, i) => (
-          <div key={stop.key} className="flex items-center gap-1.5">
-            <RailDot stop={stop} />
-            {i < rail.length - 1 && <div className="h-0.5 w-3 shrink-0 bg-neutral-200" />}
-          </div>
-        ))}
-      </div>
-
-      {milestoneLine && (
-        <div className="mb-6 rounded-lg border border-gold-200 bg-gold-50 p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-gold-700">{labels.nextMilestone}</p>
-          <p className="font-medium text-neutral-900">{milestoneLine}</p>
-        </div>
-      )}
-
-      {user?.certificationStatus === "CERTIFIED" && (
-        <div className="mb-6 flex items-center justify-between rounded-lg border border-green-200 bg-green-50 p-4">
-          <p className="font-medium text-green-800">{labels.certifiedBanner}</p>
-          <Link
-            href={`/certificate/${session.sub}`}
-            className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
-          >
-            {labels.viewMyCertificate}
-          </Link>
-        </div>
-      )}
-
-      {pendingDocsCount > 0 && (
-        <Link
-          href="/documents"
-          className="mb-6 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 p-4 hover:border-amber-300"
-        >
-          <p className="font-medium text-amber-800">
-            {isEs
-              ? `Tienes ${pendingDocsCount} documento(s) por firmar`
-              : `You have ${pendingDocsCount} document${pendingDocsCount === 1 ? "" : "s"} to sign`}
-          </p>
-          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">→</span>
-        </Link>
-      )}
-
-      {pendingPayroll && (
-        <Link
-          href={`/payroll/${pendingPayroll.id}`}
-          className="mb-6 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 p-4 hover:border-amber-300"
-        >
-          <p className="font-medium text-amber-800">{pendingPayroll.payPeriodLabel}</p>
-          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">→</span>
-        </Link>
-      )}
-
-      {day && (
-        <section className="mb-6 rounded-lg border border-neutral-200 bg-white p-5">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="text-lg font-medium text-neutral-900">
-              {labels.dayWord} {day.dayNumber} — {isEs ? day.titleEs : day.titleEn}
-            </h2>
-          </div>
-          <p className="mb-4 text-sm text-neutral-600">{isEs ? day.descriptionEs : day.descriptionEn}</p>
-
-          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            {labels.todaysTraining}
-          </h3>
-          {day.sequence.length === 0 ? (
-            <p className="mb-4 text-sm text-neutral-400">
-              {isEs ? "Nada asignado para hoy todavía." : "Nothing assigned for today yet."}
+      <div className="space-y-4">
+        {position.phase === "ROOKIE_DAY" && (
+          <section className="rounded-2xl border border-neutral-200 bg-white p-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gold-600">
+              {labels.rookieJourneyTitle}
             </p>
-          ) : (
-            <ul className="mb-4 space-y-1.5">
-              {day.sequence.map((entry) => {
-                const entryTitle = isEs && entry.titleEs ? entry.titleEs : entry.titleEn;
-                const href =
-                  entry.kind === "LESSON"
-                    ? `/modules/${entry.moduleSlug}/lesson/${entry.lessonOrder}`
-                    : `/rookie/content/${entry.id}`;
-                return (
-                  <li key={`${entry.kind}-${entry.id}`}>
-                    <Link
-                      href={href}
-                      className="flex items-center gap-3 rounded-md border border-neutral-200 px-3 py-2 hover:border-brand-300"
-                    >
-                      <span
-                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs ${
-                          entry.completed
-                            ? "bg-green-100 text-green-700"
-                            : "border border-neutral-300 text-neutral-400"
-                        }`}
-                      >
-                        {entry.completed ? "✓" : ""}
-                      </span>
-                      <span className="text-sm font-medium text-neutral-900">{entryTitle}</span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+            <h2 className="mt-1 text-lg font-semibold text-neutral-900">
+              {isEs
+                ? `${labels.dayWord} ${position.day} de ${ROOKIE_DAY_COUNT}, ¡sigue así!`
+                : `${labels.dayWord} ${position.day} of ${ROOKIE_DAY_COUNT}, keep going!`}
+            </h2>
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-neutral-100">
+              <div className="h-full rounded-full bg-gold-500" style={{ width: `${progressPct}%` }} />
+            </div>
+            <p className="mt-2 text-xs text-neutral-500">
+              {isEs ? `${daysComplete} días completados` : `${daysComplete} days complete`}
+            </p>
 
-          {day.allLessonsComplete && day.sequence.length > 0 ? (
-            <p className="mb-4 text-sm font-medium text-green-700">{labels.todaysTrainingAllDone}</p>
-          ) : (
-            primaryHref && (
+            {day && day.sequence.length > 0 && (
+              <div className="mt-4 border-t border-neutral-100 pt-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  {labels.todaysTraining}
+                </p>
+                <ul className="space-y-1.5">
+                  {day.sequence.map((entry) => {
+                    const entryTitle = isEs && entry.titleEs ? entry.titleEs : entry.titleEn;
+                    return (
+                      <li key={`${entry.kind}-${entry.id}`} className="flex items-center gap-2 text-sm">
+                        <span
+                          className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                            entry.completed ? "bg-green-500" : "border-2 border-neutral-300"
+                          }`}
+                        />
+                        <span className={entry.completed ? "text-neutral-500 line-through" : "text-neutral-800"}>
+                          {entryTitle}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {day && !(day.allLessonsComplete && day.sequence.length > 0) && primaryHref && (
               <Link
                 href={primaryHref}
-                className="mb-4 inline-block rounded-md bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700"
+                className="mt-4 inline-block rounded-md bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700"
               >
                 {primaryLabel}
               </Link>
-            )
-          )}
+            )}
 
-          <p className="mb-3 text-xs text-neutral-500">
-            {labels.estimatedAcademyTimeToday}: {day.estimatedAcademyMinutes} {labels.minutesWord}
-          </p>
+            <Link href="/rookie" className="mt-3 block text-sm font-medium text-brand-700 hover:underline">
+              {labels.rookieJourneyTitle} →
+            </Link>
+          </section>
+        )}
 
-          {day.fieldSkills.length > 0 && (
-            <div className="mb-3">
-              <h3 className="mb-1.5 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-                {labels.todaysFieldFocus}
-              </h3>
-              <div className="flex flex-wrap gap-1.5">
-                {day.fieldSkills.map((s) => (
-                  <span
-                    key={s.id}
-                    className="rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-700"
-                  >
-                    {isEs ? s.labelEs : s.labelEn}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
+        {user?.certificationStatus === "CERTIFIED" && (
+          <div className="flex items-center justify-between rounded-2xl border border-green-200 bg-green-50 p-4">
+            <p className="font-medium text-green-800">{labels.certifiedBanner}</p>
+            <Link
+              href={`/certificate/${session.sub}`}
+              className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+            >
+              {labels.viewMyCertificate}
+            </Link>
+          </div>
+        )}
 
-          {(day.fieldGoalEn || day.fieldGoalEs) && (
-            <p className="text-sm text-neutral-600">
-              <span className="font-medium">{labels.rookieFieldGoalLabel}:</span>{" "}
-              {isEs ? day.fieldGoalEs : day.fieldGoalEn}
+        {pendingDocsCount > 0 && (
+          <Link
+            href="/documents"
+            className="flex items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 p-4 hover:border-amber-300"
+          >
+            <p className="font-medium text-amber-800">
+              {isEs
+                ? `Tienes ${pendingDocsCount} documento(s) por firmar`
+                : `You have ${pendingDocsCount} document${pendingDocsCount === 1 ? "" : "s"} to sign`}
             </p>
-          )}
-        </section>
-      )}
+            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">
+              {isEs ? "Firmar →" : "Sign Now →"}
+            </span>
+          </Link>
+        )}
 
-      {checklistItems.length > 0 && (
-        <section className="mb-6 rounded-lg border border-neutral-200 bg-white p-5">
-          <h2 className="mb-2 text-lg font-medium text-neutral-900">{isEs ? "Tus Tareas" : "Your Tasks"}</h2>
-          <AssignedChecklist tasks={checklistItems} canEdit={true} />
-        </section>
-      )}
+        {pendingPayroll && (
+          <Link
+            href={`/payroll/${pendingPayroll.id}`}
+            className="flex items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 p-4 hover:border-amber-300"
+          >
+            <p className="font-medium text-amber-800">{pendingPayroll.payPeriodLabel}</p>
+            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">→</span>
+          </Link>
+        )}
 
-      <p className="mt-4 text-sm text-neutral-500">
-        <Link href="/progress" className="text-brand-700 hover:underline">
-          {labels.progress}
-        </Link>
-        {" · "}
-        <Link href="/glossary" className="text-brand-700 hover:underline">
-          {labels.glossary}
-        </Link>
-      </p>
+        {checklistItems.length > 0 && (
+          <section className="rounded-2xl border border-neutral-200 bg-white p-5">
+            <h2 className="mb-2 text-lg font-medium text-neutral-900">{isEs ? "Tus Tareas" : "Your Tasks"}</h2>
+            <AssignedChecklist tasks={checklistItems} canEdit={true} />
+          </section>
+        )}
+
+        <div className="grid grid-cols-2 gap-4">
+          <Link href="/progress" className="rounded-2xl border border-neutral-200 bg-white p-4 hover:border-brand-300">
+            <ChartIcon className="h-5 w-5 text-brand-600" />
+            <p className="mt-2 text-sm font-semibold text-neutral-900">{labels.progress}</p>
+            <p className="text-xs text-neutral-500">{isEs ? "Estrellas y logros" : "Stars & milestones"}</p>
+          </Link>
+          <Link href="/glossary" className="rounded-2xl border border-neutral-200 bg-white p-4 hover:border-brand-300">
+            <BookIcon className="h-5 w-5 text-brand-600" />
+            <p className="mt-2 text-sm font-semibold text-neutral-900">{labels.glossary}</p>
+            <p className="text-xs text-neutral-500">{isEs ? "Términos y frases" : "Terms & phrases"}</p>
+          </Link>
+          <Link href="/documents" className="rounded-2xl border border-neutral-200 bg-white p-4 hover:border-brand-300">
+            <DocsIcon className="h-5 w-5 text-brand-600" />
+            <p className="mt-2 text-sm font-semibold text-neutral-900">{labels.documents}</p>
+            <p className="text-xs text-neutral-500">{isEs ? "Firmar y revisar" : "Sign & review"}</p>
+          </Link>
+          <Link href="/payroll" className="rounded-2xl border border-neutral-200 bg-white p-4 hover:border-brand-300">
+            <DollarIcon className="h-5 w-5 text-brand-600" />
+            <p className="mt-2 text-sm font-semibold text-neutral-900">{labels.payroll}</p>
+            <p className="text-xs text-neutral-500">{isEs ? "Tus registros de pago" : "Your pay records"}</p>
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }

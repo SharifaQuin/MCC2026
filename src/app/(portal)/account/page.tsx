@@ -3,7 +3,44 @@ import { getSession } from "@/lib/session";
 import { t } from "@/lib/i18n";
 import { getActingAsCandidates, ROLE_LABELS as ACTING_AS_ROLE_LABELS } from "@/lib/impersonation";
 import { actAsStaffMemberAction } from "../staff/actingAsActions";
+import { setLanguageAction } from "@/app/actions/language";
 import ChangePasswordForm from "./ChangePasswordForm";
+import { KeyIcon, GlobeIcon, BookIcon, FlagIcon, SignOutIcon, ChevronRightIcon } from "@/components/icons";
+
+// A settings row styled to match the mockup's consolidated Profile screen
+// (Change password / Language / Help & Policies / Report a Problem / Sign
+// out, one list) — every row here reuses the exact same link or action the
+// gear-dropdown menu (SettingsGear.tsx) already offers; nothing new.
+function SettingsRow({
+  icon,
+  children,
+  href,
+  danger,
+}: {
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  href?: string;
+  danger?: boolean;
+}) {
+  const content = (
+    <>
+      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${danger ? "bg-red-50 text-red-600" : "bg-brand-50 text-brand-700"}`}>
+        {icon}
+      </span>
+      <span className={`flex-1 text-sm font-medium ${danger ? "text-red-600" : "text-neutral-800"}`}>{children}</span>
+      {href && <ChevronRightIcon className="h-4 w-4 shrink-0 text-neutral-300" />}
+    </>
+  );
+  const rowClass = "flex items-center gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 hover:border-brand-200";
+  if (href) {
+    return (
+      <Link href={href} className={rowClass}>
+        {content}
+      </Link>
+    );
+  }
+  return <div className={rowClass}>{content}</div>;
+}
 
 export default async function AccountPage() {
   const session = await getSession();
@@ -14,17 +51,79 @@ export default async function AccountPage() {
   // no separate !session.actingAs check is needed, matching the original.
   const isAdmin = session?.role === "ADMIN";
   const actingAsCandidates = isAdmin ? await getActingAsCandidates() : [];
+  // Mirrors layout.tsx's identical check exactly — Trainer/Service Manager
+  // screens have no Spanish content, so the toggle stays hidden here too.
+  const showLanguageToggle = session?.role !== "TRAINER" && session?.role !== "SERVICE_MANAGER";
 
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold text-brand-900">{labels.myAccount}</h1>
-      {session?.actingAs ? (
-        <div className="max-w-sm rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          Changing a password is unavailable while viewing and acting as another user.
-        </div>
-      ) : (
-        <ChangePasswordForm />
-      )}
+
+      <div className="space-y-2">
+        {session?.actingAs ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            Changing a password is unavailable while viewing and acting as another user.
+          </div>
+        ) : (
+          <details className="group rounded-xl border border-neutral-200 bg-white">
+            <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700">
+                <KeyIcon className="h-4 w-4" />
+              </span>
+              <span className="flex-1 text-sm font-medium text-neutral-800">Change Password</span>
+              <ChevronRightIcon className="h-4 w-4 shrink-0 text-neutral-300 transition-transform group-open:rotate-90" />
+            </summary>
+            <div className="border-t border-neutral-100 px-4 py-4">
+              <ChangePasswordForm />
+            </div>
+          </details>
+        )}
+
+        {showLanguageToggle && (
+          <div className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700">
+              <GlobeIcon className="h-4 w-4" />
+            </span>
+            <span className="flex-1 text-sm font-medium text-neutral-800">Language: EN / ES</span>
+            <div className="flex gap-1">
+              <form action={setLanguageAction.bind(null, "EN")}>
+                <button
+                  className={`rounded px-2.5 py-1 text-xs font-semibold ${
+                    session?.language === "EN" ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-600"
+                  }`}
+                >
+                  EN
+                </button>
+              </form>
+              <form action={setLanguageAction.bind(null, "ES")}>
+                <button
+                  className={`rounded px-2.5 py-1 text-xs font-semibold ${
+                    session?.language === "ES" ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-600"
+                  }`}
+                >
+                  ES
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        <SettingsRow icon={<BookIcon className="h-4 w-4" />} href="/help">
+          {labels.navHelpPolicies}
+        </SettingsRow>
+
+        <SettingsRow icon={<FlagIcon className="h-4 w-4" />} href="/report-a-problem">
+          {labels.navReportProblem}
+        </SettingsRow>
+
+        <form action="/logout" method="POST">
+          <button type="submit" className="w-full text-left">
+            <SettingsRow icon={<SignOutIcon className="h-4 w-4" />} danger>
+              {labels.logout}
+            </SettingsRow>
+          </button>
+        </form>
+      </div>
 
       {isAdmin && (
         <div className="space-y-4 border-t border-neutral-200 pt-6">

@@ -125,7 +125,7 @@ test.describe.serial("Sales Rep sees her assigned to-dos on /sales and /todo", (
   test("Visiting /sales shows the assigned task in a dedicated section", async ({ page }) => {
     await loginAs(page, ASSIGNEE_EMAIL, PASSWORD);
     await page.goto("/sales");
-    await expect(page.getByRole("heading", { name: "Your Assigned Tasks" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "My Tasks" })).toBeVisible();
     const html = await page.content();
     expect(html).toContain(TASK_TEXT);
   });

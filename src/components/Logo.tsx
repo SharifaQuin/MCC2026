@@ -6,9 +6,20 @@ interface LogoProps {
   // menu button, page name, and gear — just the icon still reads as "MCC
   // branding" without risking horizontal overflow at 390px.
   iconOnly?: boolean;
+  // For use on a navy (brand-600/700) background — e.g. the desktop
+  // sidebar — where the wordmark's usual dark-navy text would disappear.
+  // The icon itself is already two-tone (gold outline / navy heart) and
+  // reads fine on light or dark backgrounds unchanged.
+  light?: boolean;
 }
 
-export default function Logo({ size = "sm", withTagline = false, className = "", iconOnly = false }: LogoProps) {
+export default function Logo({
+  size = "sm",
+  withTagline = false,
+  className = "",
+  iconOnly = false,
+  light = false,
+}: LogoProps) {
   const iconSize = size === "lg" ? 56 : 32;
   const nameSize = size === "lg" ? "text-2xl" : "text-base";
 
@@ -47,12 +58,12 @@ export default function Logo({ size = "sm", withTagline = false, className = "",
     <div className={`flex items-center gap-3 ${className}`}>
       {icon}
       <div className="leading-tight">
-        <p className={`font-semibold tracking-tight text-brand-700 ${nameSize}`}>
+        <p className={`font-semibold tracking-tight ${light ? "text-white" : "text-brand-700"} ${nameSize}`}>
           Mama&apos;s Cleaning Crew
         </p>
         {withTagline && (
-          <p className="text-sm font-medium uppercase tracking-wide text-gold-600">
-            Training Portal
+          <p className={`text-sm font-medium uppercase tracking-wide ${light ? "text-gold-400" : "text-gold-600"}`}>
+            Team Portal
           </p>
         )}
       </div>
