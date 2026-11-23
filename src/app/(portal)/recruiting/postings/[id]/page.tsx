@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireRecruitingAccess } from "@/lib/requireRecruitingAccess";
+import { isPartTimeHouseCleanerFixNeeded } from "@/lib/recruiting";
 import { updateJobPostingAction } from "../../actions";
 import PrescreenQuestionEditor from "./PrescreenQuestionEditor";
+import PartTimeHouseCleanerFixBanner from "./PartTimeHouseCleanerFixBanner";
 
 export default async function JobPostingDetailPage({ params }: { params: { id: string } }) {
-  await requireRecruitingAccess();
+  const { session } = await requireRecruitingAccess();
 
   const posting = await prisma.jobPosting.findUnique({
     where: { id: params.id },
@@ -35,6 +37,10 @@ export default async function JobPostingDetailPage({ params }: { params: { id: s
           View Applicants ({posting._count.applicants})
         </Link>
       </div>
+
+      {session.role === "ADMIN" && isPartTimeHouseCleanerFixNeeded(posting) && (
+        <PartTimeHouseCleanerFixBanner />
+      )}
 
       <div className="mb-6 rounded-lg border border-brand-200 bg-brand-50 p-4">
         <p className="text-sm font-medium text-neutral-700">Application link — post this on Indeed / ZipRecruiter:</p>

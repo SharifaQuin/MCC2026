@@ -20,7 +20,12 @@ export default async function ApplyPage({
 }) {
   const posting = await prisma.jobPosting.findUnique({
     where: { slug: params.slug },
-    include: { prescreenQuestions: { include: { options: true }, orderBy: { order: "asc" } } },
+    include: {
+      prescreenQuestions: {
+        include: { options: { orderBy: { order: "asc" } } },
+        orderBy: { order: "asc" },
+      },
+    },
   });
 
   if (!posting || !posting.active) {
