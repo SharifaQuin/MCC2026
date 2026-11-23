@@ -6,7 +6,7 @@ import {
   updateChecklistTaskNotesAction,
   updateChecklistTaskTargetDateAction,
 } from "@/app/actions/financials";
-import { getDueStatus, getDueSortPriority, getEffectiveTargetDate } from "@/lib/checklistDisplay";
+import { getDueStatus, getDueSortPriority, getEffectiveTargetDate, formatDueDate } from "@/lib/checklistDisplay";
 import type { ChecklistFrequency, ChecklistTaskStatus } from "@prisma/client";
 
 export interface AssignedChecklistRow {
@@ -83,7 +83,7 @@ function TaskRow({ task, canEdit }: { task: AssignedChecklistRow; canEdit: boole
             )}
           </div>
           {effectiveDue && task.effectiveStatus !== "DONE" && (
-            <p className="mt-0.5 text-[11px] text-neutral-400">Due {effectiveDue.toLocaleDateString()}</p>
+            <p className="mt-0.5 text-[11px] text-neutral-400">Due {formatDueDate(effectiveDue)}</p>
           )}
         </div>
         <button

@@ -1,6 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/lib/password";
+import { formatDueDate } from "../src/lib/checklistDisplay";
+import { fridayOfBusinessWeek, lastDayOfBusinessMonth } from "../src/lib/timezone";
 
 // Coverage for the MCC Team Portal visual/navigation refresh: the mobile
 // bottom-tab bar for the plain employee (Trainee) experience, the new
@@ -454,5 +456,110 @@ test.describe.serial("MCC Team Portal redesign", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByText("Won This Month (from quotes)")).toBeVisible();
     await expect(page.getByText("Won This Month", { exact: true })).toHaveCount(0);
+  });
+});
+
+// Review fix #6: AssignedChecklist's collapsed "Due {date}" label used
+// effectiveDue.toLocaleDateString() with no timeZone argument. That
+// re-reads a UTC-midnight-encoded effective date (every date
+// getEffectiveTargetDate returns, manual or computed) as if its Y/M/D
+// digits were local wall-clock time — in a timezone behind UTC, like
+// America/Los_Angeles, that lands one calendar day early. The due-today/
+// overdue ordering itself was unaffected (it's computed from the business
+// timezone, not the browser's), only this label's text. A separate,
+// non-serial describe block with its own fixtures and a pinned
+// `timezoneId`, so this doesn't accidentally pass just because CI happens
+// to run in UTC, and doesn't disturb the main suite's shared fixtures.
+test.describe("Review fix #6: due-date label doesn't shift a day in America/Los_Angeles", () => {
+  test.use({ timezoneId: "America/Los_Angeles" });
+
+  const TZ_RUN_ID = `${Date.now()}-tz`;
+  const TZ_EMAIL = `redesign-tz-${TZ_RUN_ID}@example.com`;
+  const TZ_PASSWORD = "Test-Password-123!";
+  let tzUserId: string;
+  const tzTaskIds: string[] = [];
+  // Manual (One-Time) due date, ~60 days out so it's never "overdue"/"due
+  // soon" regardless of which day the suite runs — this test only checks
+  // the label text, not the badge (that's review fix #4's job).
+  const manualDate = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 60));
+
+  test.beforeAll(async () => {
+    const user = await prisma.user.create({
+      data: {
+        email: TZ_EMAIL,
+        name: `Redesign TZ ${TZ_RUN_ID}`,
+        role: "SALES_REP",
+        passwordHash: await hashPassword(TZ_PASSWORD),
+        mustSetPassword: false,
+        active: true,
+        departmentAccess: { create: [{ department: "SALES", canEdit: true }] },
+      },
+    });
+    tzUserId = user.id;
+
+    const manual = await prisma.checklistTask.create({
+      data: {
+        task: `Redesign TZ manual task ${TZ_RUN_ID}`,
+        frequency: "ONE_TIME",
+        owner: "TEAM",
+        visibility: "TEAM",
+        category: "SALES",
+        targetDate: manualDate,
+        assigneeId: tzUserId,
+        order: 1,
+      },
+    });
+    // Monthly tasks always display the last day of the current business
+    // month (getEffectiveTargetDate ignores any stored targetDate for
+    // MONTHLY tasks entirely), so no targetDate is needed here.
+    const monthly = await prisma.checklistTask.create({
+      data: {
+        task: `Redesign TZ monthly task ${TZ_RUN_ID}`,
+        frequency: "MONTHLY",
+        owner: "TEAM",
+        visibility: "TEAM",
+        category: "SALES",
+        assigneeId: tzUserId,
+        order: 2,
+      },
+    });
+    // Weekly task opted into a Friday deadline.
+    const friday = await prisma.checklistTask.create({
+      data: {
+        task: `Redesign TZ friday task ${TZ_RUN_ID}`,
+        frequency: "WEEKLY",
+        dueFridayOfWeek: true,
+        owner: "TEAM",
+        visibility: "TEAM",
+        category: "SALES",
+        assigneeId: tzUserId,
+        order: 3,
+      },
+    });
+    tzTaskIds.push(manual.id, monthly.id, friday.id);
+  });
+
+  test.afterAll(async () => {
+    await prisma.checklistTask.deleteMany({ where: { id: { in: tzTaskIds } } });
+    await prisma.departmentAccess.deleteMany({ where: { userId: tzUserId } });
+    await prisma.user.delete({ where: { id: tzUserId } });
+  });
+
+  test("manual, monthly month-end, and Friday-weekly due dates all show their correct calendar day", async ({
+    page,
+  }) => {
+    const now = new Date();
+    const expectedManual = formatDueDate(manualDate);
+    const expectedMonthEnd = formatDueDate(lastDayOfBusinessMonth(now));
+    const expectedFriday = formatDueDate(fridayOfBusinessWeek(now));
+
+    await loginAs(page, TZ_EMAIL, TZ_PASSWORD);
+    await page.goto("/sales");
+    await page.waitForLoadState("networkidle");
+
+    const myTasks = page.locator('[data-testid="sales-rep-my-tasks"]');
+    await expect(myTasks.getByText(`Due ${expectedManual}`, { exact: true })).toBeVisible();
+    await expect(myTasks.getByText(`Due ${expectedMonthEnd}`, { exact: true })).toBeVisible();
+    await expect(myTasks.getByText(`Due ${expectedFriday}`, { exact: true })).toBeVisible();
   });
 });

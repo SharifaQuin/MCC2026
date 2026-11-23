@@ -75,6 +75,25 @@ export function getEffectiveTargetDate(
   return task.targetDate ? new Date(task.targetDate) : null;
 }
 
+// Formats a due date for display without letting the viewer's own
+// timezone shift its calendar day. `date` (from getEffectiveTargetDate) is
+// always UTC-midnight-encoded, so reading it back with the default,
+// no-timeZone-argument `toLocaleDateString()` re-interprets those UTC
+// Y/M/D digits as if they were local wall-clock time — in a timezone
+// behind UTC (e.g. America/Los_Angeles) that lands on the previous local
+// calendar day. Pinning the formatter's `timeZone` to "UTC" reads the same
+// Y/M/D digits back out directly, so the displayed date matches the
+// intended calendar day regardless of which timezone the viewer (or the
+// server rendering this, if ever done server-side) is in.
+export function formatDueDate(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
+    timeZone: "UTC",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).format(date);
+}
+
 export type DueStatus = "OVERDUE" | "DUE_SOON" | null;
 
 // The shared day-math behind both getDueStatus (below) and any
