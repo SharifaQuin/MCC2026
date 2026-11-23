@@ -128,8 +128,11 @@ test.describe.serial("Meta Pixel on the public lead form", () => {
 
     await page.getByRole("button", { name: "Accept" }).click();
     await expect(page.locator("text=We use Meta (Facebook/Instagram) ad tracking")).toHaveCount(0);
+    // router.refresh()'s round trip can take noticeably longer on a loaded
+    // CI runner than locally — give it real headroom rather than the
+    // default 5s poll timeout.
     await expect
-      .poll(async () => getFbqCalls(page))
+      .poll(async () => getFbqCalls(page), { timeout: 15000 })
       .toContainEqual(["track", "PageView"]);
 
     // The updated (granted) choice persists on a fresh visit too.
@@ -153,8 +156,11 @@ test.describe.serial("Meta Pixel on the public lead form", () => {
     // router.refresh() re-renders the server tree so <MetaPixel> now mounts
     // its <Script>, but that mount (and the script actually executing) lands
     // slightly after the refresh's own network activity settles — so poll
-    // for the calls rather than relying on waitForLoadState.
-    await expect.poll(async () => getFbqCalls(page)).toContainEqual(["init", "1409553047075047"]);
+    // for the calls rather than relying on waitForLoadState. A loaded CI
+    // runner can take noticeably longer than this sandbox, so give it room.
+    await expect
+      .poll(async () => getFbqCalls(page), { timeout: 15000 })
+      .toContainEqual(["init", "1409553047075047"]);
     const calls = await getFbqCalls(page);
     expect(calls).toContainEqual(["track", "PageView"]);
 
@@ -209,11 +215,12 @@ test.describe.serial("Meta Pixel on the public lead form", () => {
     // readable via page JS. MetaPixelLeadEvent consumes it via its own
     // client-side fetch, which resolves independently of page-load
     // network-idle, so poll for the Lead call itself rather than racing it.
+    // A loaded CI runner can take noticeably longer than this sandbox.
     await expect
       .poll(async () => {
         const calls = await getFbqCalls(page);
         return calls.filter((c) => c[0] === "track" && c[1] === "Lead").length;
-      })
+      }, { timeout: 15000 })
       .toBe(1);
 
     const firstLoadCalls = await getFbqCalls(page);
