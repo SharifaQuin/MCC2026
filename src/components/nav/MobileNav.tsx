@@ -91,7 +91,7 @@ export default function MobileNav({
 
   return (
     <div className="lg:hidden" data-testid="mobile-nav">
-      <div className="flex h-14 items-center gap-2 border-b border-neutral-200 bg-white px-3">
+      <div className="flex h-14 items-center gap-2 bg-brand-600 px-3">
         <button
           ref={menuButtonRef}
           type="button"
@@ -99,15 +99,20 @@ export default function MobileNav({
           aria-expanded={open}
           aria-haspopup="dialog"
           onClick={() => setOpen(true)}
-          className="shrink-0 rounded-md p-2 text-neutral-600 hover:bg-neutral-100"
+          className="shrink-0 rounded-md p-2 text-white/80 hover:bg-white/10 hover:text-white"
         >
           <HamburgerIcon />
         </button>
         <Link href="/" className="shrink-0">
           <Logo iconOnly />
         </Link>
-        <p className="min-w-0 flex-1 truncate text-sm font-medium text-neutral-700">{pageTitle}</p>
-        <SettingsGear name={name} language={language} showLanguageToggle={showLanguageToggle} />
+        <p className="min-w-0 flex-1 truncate text-sm font-medium text-white/90">{pageTitle}</p>
+        <SettingsGear
+          name={name}
+          language={language}
+          showLanguageToggle={showLanguageToggle}
+          buttonClassName="rounded-full p-2 text-white/70 hover:bg-white/10 hover:text-white"
+        />
       </div>
 
       {open && (
@@ -137,7 +142,7 @@ export default function MobileNav({
               </button>
             </div>
             <div className="flex-1 overflow-y-auto px-3 py-4">
-              <NavLinks groups={groups} onNavigate={close} />
+              <NavLinks groups={groups} onNavigate={close} onDark={false} />
             </div>
           </div>
         </>

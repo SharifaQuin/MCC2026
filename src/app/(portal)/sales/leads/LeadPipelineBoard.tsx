@@ -16,12 +16,21 @@ interface Card {
   assignedToName: string | null;
 }
 
+// Subtle, consistent per-column tint so a glance tells the stages apart —
+// purely visual, same four stages/order as LEAD_PIPELINE_COLUMNS.
+const COLUMN_STYLES: Record<string, string> = {
+  NEW_INQUIRY: "bg-neutral-50",
+  CONTACTED: "bg-blue-50/60",
+  QUOTED: "bg-amber-50/60",
+  WON: "bg-green-50/60",
+};
+
 function LeadCard({ lead }: { lead: Card }) {
   const [pending, startTransition] = useTransition();
   const primary = PRIMARY_NEXT_LEAD_STAGE[lead.stage];
 
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white p-3 shadow-sm">
+    <div className="rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
       <Link
         href={`/sales/leads/${lead.id}`}
         className="font-medium text-brand-700 hover:underline"
@@ -61,16 +70,16 @@ export default function LeadPipelineBoard({
   return (
     <div className="flex gap-4 overflow-x-auto pb-4">
       {columns.map((col) => (
-        <div key={col.stage} className="w-64 shrink-0">
+        <div key={col.stage} className={`w-64 shrink-0 rounded-2xl p-2 ${COLUMN_STYLES[col.stage] ?? "bg-neutral-50"}`}>
           <div className="mb-2 flex items-center justify-between px-1">
             <h3 className="text-sm font-semibold text-neutral-700">{col.label}</h3>
-            <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-500">
+            <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-neutral-500 shadow-sm">
               {col.leads.length}
             </span>
           </div>
           <div className="space-y-2">
             {col.leads.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-neutral-200 p-3 text-center text-xs text-neutral-400">
+              <p className="rounded-xl border border-dashed border-neutral-300 p-3 text-center text-xs text-neutral-400">
                 Empty
               </p>
             ) : (

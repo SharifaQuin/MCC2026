@@ -75,7 +75,54 @@ export function getEffectiveTargetDate(
   return task.targetDate ? new Date(task.targetDate) : null;
 }
 
+// Formats a due date for display without letting the viewer's own
+// timezone shift its calendar day. `date` (from getEffectiveTargetDate) is
+// always UTC-midnight-encoded, so reading it back with the default,
+// no-timeZone-argument `toLocaleDateString()` re-interprets those UTC
+// Y/M/D digits as if they were local wall-clock time — in a timezone
+// behind UTC (e.g. America/Los_Angeles) that lands on the previous local
+// calendar day. Pinning the formatter's `timeZone` to "UTC" reads the same
+// Y/M/D digits back out directly, so the displayed date matches the
+// intended calendar day regardless of which timezone the viewer (or the
+// server rendering this, if ever done server-side) is in.
+export function formatDueDate(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
+    timeZone: "UTC",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).format(date);
+}
+
 export type DueStatus = "OVERDUE" | "DUE_SOON" | null;
+
+// The shared day-math behind both getDueStatus (below) and any
+// sort/priority ordering that needs to know "is this overdue / due today /
+// later" without re-deriving it — a Done task has no meaningful due-ness
+// either way, so this returns null for one same as getDueStatus does.
+// `due` is a pure calendar date (UTC-midnight-encoded, whether computed
+// here or stored from a plain <input type="date">) — read its Y/M/D
+// directly rather than re-interpreting it through the business timezone,
+// which would shift a UTC-midnight value back a day. `now`, in contrast,
+// is a real moment in time, so what calendar day it currently is DOES
+// depend on the business timezone.
+export function getDaysUntilDue(
+  task: {
+    frequency: ChecklistFrequency;
+    targetDate: string | Date | null;
+    dueFridayOfWeek?: boolean;
+    effectiveStatus: ChecklistTaskStatus;
+  },
+  now: Date = new Date()
+): number | null {
+  if (task.effectiveStatus === "DONE") return null;
+  const due = getEffectiveTargetDate(task, now);
+  if (!due) return null;
+
+  const startOfToday = new Date(`${businessDateKey(now)}T00:00:00Z`);
+  const startOfDue = Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate());
+  return Math.round((startOfDue - startOfToday.getTime()) / 86400000);
+}
 
 // A due-date flag shown right on the task — no email, no scheduled job,
 // just computed at read time same as effectiveStatus. Done tasks never show
@@ -91,23 +138,30 @@ export function getDueStatus(
   },
   now: Date = new Date()
 ): DueStatus {
-  if (task.effectiveStatus === "DONE") return null;
-  const due = getEffectiveTargetDate(task, now);
-  if (!due) return null;
-
-  // `due` is a pure calendar date (UTC-midnight-encoded, whether computed
-  // here or stored from a plain <input type="date">) — read its Y/M/D
-  // directly rather than re-interpreting it through the business timezone,
-  // which would shift a UTC-midnight value back a day. `now`, in contrast,
-  // is a real moment in time, so what calendar day it currently is DOES
-  // depend on the business timezone.
-  const startOfToday = new Date(`${businessDateKey(now)}T00:00:00Z`);
-  const startOfDue = Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate());
-  const daysUntilDue = Math.round((startOfDue - startOfToday.getTime()) / 86400000);
-
+  const daysUntilDue = getDaysUntilDue(task, now);
+  if (daysUntilDue === null) return null;
   if (daysUntilDue < 0) return "OVERDUE";
   if (daysUntilDue <= 2) return "DUE_SOON";
   return null;
+}
+
+// Sort priority for "overdue first, then due today, then everything else"
+// list ordering — 0/1/2 so callers can Array.prototype.sort on it directly
+// (stable sort keeps each bucket's own original ordering otherwise).
+export function getDueSortPriority(
+  task: {
+    frequency: ChecklistFrequency;
+    targetDate: string | Date | null;
+    dueFridayOfWeek?: boolean;
+    effectiveStatus: ChecklistTaskStatus;
+  },
+  now: Date = new Date()
+): 0 | 1 | 2 {
+  const daysUntilDue = getDaysUntilDue(task, now);
+  if (daysUntilDue === null) return 2;
+  if (daysUntilDue < 0) return 0;
+  if (daysUntilDue === 0) return 1;
+  return 2;
 }
 
 // Keyword lists checked in this order (first match wins) — deliberately

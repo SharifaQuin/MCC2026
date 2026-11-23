@@ -93,7 +93,19 @@ export function buildNavGroups({
 
   if (role === "TRAINEE") {
     const trainingLinks: NavLinkItem[] = [];
-    if (!hideModulesLink) trainingLinks.push({ href: "/modules", label: labels.modules });
+    // While Rookie Journey is the active training mode, /modules isn't the
+    // live curriculum (see hideModulesLink's own definition) — but that's
+    // not a reason to leave this Trainee with no persistent route to their
+    // training at all. /rookie (the full rail + day-by-day detail, plus
+    // the 30/60/90 milestones once the 10 days are done) stays reachable
+    // from here on desktop and in the mobile drawer regardless of which
+    // day/phase they're in — no calendar cutoff, same page the mobile
+    // bottom-nav's "Training" tab already points to.
+    if (hideModulesLink) {
+      trainingLinks.push({ href: "/rookie", label: labels.rookieJourneyTitle });
+    } else {
+      trainingLinks.push({ href: "/modules", label: labels.modules });
+    }
     trainingLinks.push({ href: "/progress", label: labels.progress }, { href: "/glossary", label: labels.glossary });
     if (trainingLinks.length > 0) {
       groups.push({ key: "training", label: labels.navMyTraining, links: trainingLinks });

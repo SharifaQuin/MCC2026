@@ -9,24 +9,70 @@ import { getChecklistTasksForRole } from "@/lib/financials";
 import AssignedChecklist from "@/components/AssignedChecklist";
 import AdSpendForm from "./AdSpendForm";
 import NextOpenSlotsCard from "./NextOpenSlotsCard";
+import { PeopleIcon, DollarIcon, ClipboardListIcon, CalendarIcon } from "@/components/icons";
 
 function Stat({
   label,
   value,
   accent,
   caption,
+  prominent,
 }: {
   label: string;
   value: string;
   accent?: boolean;
   caption?: React.ReactNode;
+  prominent?: boolean;
 }) {
+  if (prominent) {
+    return (
+      <div className="rounded-xl border border-neutral-200 bg-white p-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">{label}</p>
+        <p className="mt-1 text-2xl font-bold text-neutral-900">{value}</p>
+        {caption && <p className="mt-1 text-xs text-neutral-500">{caption}</p>}
+      </div>
+    );
+  }
   return (
     <div className="rounded-md bg-neutral-50 p-3">
       <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">{label}</p>
       <p className={`mt-0.5 text-xl font-semibold ${accent ? "text-brand-700" : "text-neutral-900"}`}>{value}</p>
       {caption && <p className="mt-0.5 text-xs text-neutral-500">{caption}</p>}
     </div>
+  );
+}
+
+function HighlightStat({ label, value, caption }: { label: string; value: string; caption?: string }) {
+  return (
+    <div className="rounded-xl bg-brand-600 p-4 text-white">
+      <p className="text-xs font-medium uppercase tracking-wide text-gold-400">{label}</p>
+      <p className="mt-1 text-2xl font-bold">{value}</p>
+      {caption && <p className="mt-1 text-xs text-white/70">{caption}</p>}
+    </div>
+  );
+}
+
+function ShortcutCard({
+  href,
+  label,
+  caption,
+  icon,
+}: {
+  href: string;
+  label: string;
+  caption: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-label={label}
+      className="rounded-xl border border-neutral-200 bg-white p-4 transition-colors hover:border-gold-400"
+    >
+      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gold-50 text-gold-600">{icon}</span>
+      <p className="mt-3 text-sm font-semibold text-neutral-900" aria-hidden="true">{label}</p>
+      <p className="mt-0.5 text-xs text-neutral-500" aria-hidden="true">{caption}</p>
+    </Link>
   );
 }
 
@@ -73,12 +119,16 @@ export default async function SalesPage() {
   // Monthly Goal Stat tile's new caption below — same text, two places.
   const goalProgressText = goalHit ? "Goal hit! 🎉" : `${money(dash.revenueRemaining)} to go`;
 
+  const salesProgressPct = dash.goal > 0 ? Math.min(100, (dash.revenueTowardGoal / dash.goal) * 100) : 0;
+
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold">Sales</h1>
+      <h1 className="mb-6 text-2xl font-semibold">
+        {isSalesRep ? "Good day — here's where things stand" : "Sales"}
+      </h1>
 
       {isSalesRep && overdueSalesTasks.length > 0 && (
-        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-5">
+        <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
           <p className="mb-2 font-medium text-amber-900">Overdue Sales Tasks</p>
           <div className="flex flex-wrap gap-2">
             {overdueSalesTasks.map((t) => (
@@ -91,23 +141,112 @@ export default async function SalesPage() {
       )}
 
       {isSalesRep && (
-        <section className="mb-6 rounded-lg border border-neutral-200 bg-white p-6">
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <h2 className="text-lg font-medium text-neutral-900">Your Assigned Tasks</h2>
-            <Link href="/todo" className="text-xs font-medium text-brand-700 hover:underline">
-              Open full To-Do list →
-            </Link>
+        <section className="mb-6 rounded-2xl border border-neutral-200 bg-white p-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium text-neutral-900">Goal Progress</h2>
+            {dash.goal > 0 && (
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  goalHit ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"
+                }`}
+              >
+                {goalProgressText}
+              </span>
+            )}
           </div>
-          <div className="mt-4">
-            <AssignedChecklist tasks={assignedTaskRows} canEdit={true} />
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <Stat
+              label="Monthly Goal"
+              value={dash.goal > 0 ? money(dash.goal) : "Not set"}
+              caption={dash.goal > 0 ? goalProgressText : undefined}
+              prominent
+            />
+            <Stat
+              label={dash.actuals.entered ? "Actual Revenue" : "Won This Month (from quotes)"}
+              value={money(dash.revenueTowardGoal)}
+              prominent
+            />
+            <HighlightStat
+              label="Left to Reach Goal"
+              value={dash.goal > 0 ? money(Math.max(0, dash.revenueRemaining)) : "—"}
+              caption={dash.goal > 0 ? `${Math.round(salesProgressPct)}% of the way there` : undefined}
+            />
+          </div>
+          {dash.goal > 0 && (
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-neutral-100">
+              <div className="h-full rounded-full bg-gold-500" style={{ width: `${salesProgressPct}%` }} />
+            </div>
+          )}
+
+          <div className="mt-6 grid gap-6 md:grid-cols-2">
+            <div data-testid="sales-rep-my-tasks">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-neutral-900">My Tasks</h3>
+                <Link href="/todo" className="text-xs font-medium text-brand-700 hover:underline">
+                  View all tasks →
+                </Link>
+              </div>
+              <div className="mt-3">
+                <AssignedChecklist tasks={assignedTaskRows} canEdit={true} />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-neutral-900">Pending Opportunities</h3>
+              {dash.topOpportunities.length === 0 ? (
+                <p className="mt-3 text-sm text-neutral-400">No pending opportunities right now.</p>
+              ) : (
+                <ul className="mt-3 space-y-1.5 text-sm">
+                  {dash.topOpportunities.map((o) => (
+                    <li key={o.id} className="flex items-center justify-between gap-2 rounded-lg border border-neutral-100 px-3 py-2">
+                      <Link
+                        href={`/sales/pricing-tool?quote=${encodeURIComponent(o.id)}`}
+                        className="min-w-0 truncate font-medium text-brand-700 hover:underline"
+                      >
+                        {o.clientName}, {o.city}
+                      </Link>
+                      <span className="shrink-0 text-neutral-600">{money(o.value)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         </section>
       )}
 
-      <section className="rounded-lg border border-neutral-200 bg-white p-6">
+      {isSalesRep && (
+        <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+          <ShortcutCard
+            href="/sales/leads"
+            label="Leads & Callbacks"
+            caption="Lead follow-ups"
+            icon={<PeopleIcon className="h-4 w-4" />}
+          />
+          <ShortcutCard
+            href="/sales/pricing-tool"
+            label="Pricing Calculator"
+            caption="Build a quote"
+            icon={<DollarIcon className="h-4 w-4" />}
+          />
+          <ShortcutCard
+            href="/sales/quotes"
+            label="Quotes"
+            caption="Pending & won"
+            icon={<ClipboardListIcon className="h-4 w-4" />}
+          />
+          <ShortcutCard
+            href="/sales/open-slots"
+            label="Open Slots"
+            caption="Book from a lead"
+            icon={<CalendarIcon className="h-4 w-4" />}
+          />
+        </div>
+      )}
+
+      <section className="rounded-2xl border border-neutral-200 bg-white p-6">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-medium text-neutral-900">This Month</h2>
-          {dash.goal > 0 && (
+          {!isSalesRep && dash.goal > 0 && (
             <span
               className={`rounded-full px-3 py-1 text-xs font-medium ${
                 goalHit ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"
@@ -118,39 +257,58 @@ export default async function SalesPage() {
           )}
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Stat
-            label={dash.actuals.entered ? "Actual Revenue" : "Won This Month (from quotes)"}
-            value={money(dash.revenueTowardGoal)}
-            accent
-          />
-          {/* Lead-level (not quote-level) outcome counts, up top and
-              prominent — distinct from the dollar figure above, which is
-              from quotes. All-time Won/Lost counts stay fully visible, just
-              moved to the end of this grid so the month reads first. */}
-          <Stat label="Leads Won This Month" value={String(monthlyLeadOutcomes.wonThisMonth)} />
-          <Stat label="Leads Lost This Month" value={String(monthlyLeadOutcomes.lostThisMonth)} />
-          <Stat
-            label="Monthly Goal"
-            value={dash.goal > 0 ? money(dash.goal) : "Not set"}
-            caption={dash.goal > 0 ? goalProgressText : undefined}
-          />
-          <Stat
-            label="Cleanings Needed"
-            value={goalHit ? "0" : dash.goal > 0 ? String(dash.cleaningsNeeded) : "—"}
-          />
-          <Stat label="Pending Quotes" value={String(dash.pendingCount)} />
-          <Stat
-            label="Win Rate"
-            value={dash.winRate === null ? "—" : `${Math.round(dash.winRate * 100)}%`}
-          />
-          <Stat
-            label="Avg. Job Value"
-            value={dash.averageJobValue ? money(dash.averageJobValue) : "—"}
-          />
-          <Stat label="Won (all-time)" value={String(dash.wonCount)} />
-          <Stat label="Lost (all-time)" value={String(dash.lostCount)} />
-        </div>
+        {isSalesRep ? (
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <Stat label="Leads Won This Month" value={String(monthlyLeadOutcomes.wonThisMonth)} />
+            <Stat label="Leads Lost This Month" value={String(monthlyLeadOutcomes.lostThisMonth)} />
+            <Stat
+              label="Cleanings Needed"
+              value={goalHit ? "0" : dash.goal > 0 ? String(dash.cleaningsNeeded) : "—"}
+            />
+            <Stat label="Pending Quotes" value={String(dash.pendingCount)} />
+            <Stat
+              label="Win Rate"
+              value={dash.winRate === null ? "—" : `${Math.round(dash.winRate * 100)}%`}
+            />
+            <Stat label="Avg. Job Value" value={dash.averageJobValue ? money(dash.averageJobValue) : "—"} />
+            <Stat label="Won (all-time)" value={String(dash.wonCount)} />
+            <Stat label="Lost (all-time)" value={String(dash.lostCount)} />
+          </div>
+        ) : (
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <Stat
+              label={dash.actuals.entered ? "Actual Revenue" : "Won This Month (from quotes)"}
+              value={money(dash.revenueTowardGoal)}
+              accent
+            />
+            {/* Lead-level (not quote-level) outcome counts, up top and
+                prominent — distinct from the dollar figure above, which is
+                from quotes. All-time Won/Lost counts stay fully visible, just
+                moved to the end of this grid so the month reads first. */}
+            <Stat label="Leads Won This Month" value={String(monthlyLeadOutcomes.wonThisMonth)} />
+            <Stat label="Leads Lost This Month" value={String(monthlyLeadOutcomes.lostThisMonth)} />
+            <Stat
+              label="Monthly Goal"
+              value={dash.goal > 0 ? money(dash.goal) : "Not set"}
+              caption={dash.goal > 0 ? goalProgressText : undefined}
+            />
+            <Stat
+              label="Cleanings Needed"
+              value={goalHit ? "0" : dash.goal > 0 ? String(dash.cleaningsNeeded) : "—"}
+            />
+            <Stat label="Pending Quotes" value={String(dash.pendingCount)} />
+            <Stat
+              label="Win Rate"
+              value={dash.winRate === null ? "—" : `${Math.round(dash.winRate * 100)}%`}
+            />
+            <Stat
+              label="Avg. Job Value"
+              value={dash.averageJobValue ? money(dash.averageJobValue) : "—"}
+            />
+            <Stat label="Won (all-time)" value={String(dash.wonCount)} />
+            <Stat label="Lost (all-time)" value={String(dash.lostCount)} />
+          </div>
+        )}
 
         {isAdmin && (
           <form action={setSalesGoalAction} className="mt-5 flex flex-wrap items-end gap-3">
@@ -246,7 +404,7 @@ export default async function SalesPage() {
           </div>
         )}
 
-        {dash.goal > 0 && !goalHit && dash.topOpportunities.length > 0 && (
+        {!isSalesRep && dash.goal > 0 && !goalHit && dash.topOpportunities.length > 0 && (
           <div className="mt-6 rounded-md border border-neutral-200 bg-neutral-50 p-4">
             <p className="text-sm font-medium text-neutral-900">
               Closest pending opportunities toward the goal

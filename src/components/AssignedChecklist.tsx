@@ -6,7 +6,8 @@ import {
   updateChecklistTaskNotesAction,
   updateChecklistTaskTargetDateAction,
 } from "@/app/actions/financials";
-import type { ChecklistTaskStatus } from "@prisma/client";
+import { getDueStatus, getDueSortPriority, getEffectiveTargetDate, formatDueDate } from "@/lib/checklistDisplay";
+import type { ChecklistFrequency, ChecklistTaskStatus } from "@prisma/client";
 
 export interface AssignedChecklistRow {
   id: string;
@@ -15,7 +16,7 @@ export interface AssignedChecklistRow {
   notes: string | null;
   targetDate: string | null;
   dueFridayOfWeek: boolean;
-  frequency: string;
+  frequency: ChecklistFrequency;
 }
 
 const STATUS_CYCLE: ChecklistTaskStatus[] = ["NOT_STARTED", "IN_PROGRESS", "DONE"];
@@ -28,6 +29,14 @@ const STATUS_LABELS: Record<ChecklistTaskStatus, string> = {
   NOT_STARTED: "Not Started",
   IN_PROGRESS: "In Progress",
   DONE: "Done",
+};
+const DUE_BADGE_STYLES: Record<"OVERDUE" | "DUE_SOON", string> = {
+  OVERDUE: "bg-red-100 text-red-700",
+  DUE_SOON: "bg-amber-100 text-amber-800",
+};
+const DUE_BADGE_LABELS: Record<"OVERDUE" | "DUE_SOON", string> = {
+  OVERDUE: "Overdue",
+  DUE_SOON: "Due soon",
 };
 
 // A deliberately narrow checklist view for any non-admin viewer (Trainee,
@@ -42,6 +51,8 @@ function TaskRow({ task, canEdit }: { task: AssignedChecklistRow; canEdit: boole
   const [expanded, setExpanded] = useState(false);
   const [notesDraft, setNotesDraft] = useState(task.notes ?? "");
   const [dateDraft, setDateDraft] = useState(task.targetDate ? task.targetDate.slice(0, 10) : "");
+  const dueStatus = getDueStatus(task);
+  const effectiveDue = getEffectiveTargetDate(task);
 
   function advance(e: React.MouseEvent) {
     e.stopPropagation();
@@ -62,7 +73,19 @@ function TaskRow({ task, canEdit }: { task: AssignedChecklistRow; canEdit: boole
         }}
         className="flex cursor-pointer items-center justify-between gap-3"
       >
-        <p className="min-w-0 truncate text-sm font-medium text-neutral-900">{task.task}</p>
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <p className="min-w-0 truncate text-sm font-medium text-neutral-900">{task.task}</p>
+            {dueStatus && (
+              <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${DUE_BADGE_STYLES[dueStatus]}`}>
+                {DUE_BADGE_LABELS[dueStatus]}
+              </span>
+            )}
+          </div>
+          {effectiveDue && task.effectiveStatus !== "DONE" && (
+            <p className="mt-0.5 text-[11px] text-neutral-400">Due {formatDueDate(effectiveDue)}</p>
+          )}
+        </div>
         <button
           type="button"
           disabled={pending || !canEdit}
@@ -147,9 +170,16 @@ export default function AssignedChecklist({
     return <p className="text-sm text-neutral-400">Nothing assigned or shared with you right now.</p>;
   }
 
+  // Overdue first, then due today, then everything else — same
+  // effective-date/status rules as the badge above (recurring-task due
+  // dates included), just used for ordering instead of a flag. A stable
+  // sort keeps each bucket's own original (server) ordering otherwise, so
+  // this never reorders two tasks that are equally due.
+  const sorted = tasks.slice().sort((a, b) => getDueSortPriority(a) - getDueSortPriority(b));
+
   return (
     <div className="space-y-2">
-      {tasks.map((t) => (
+      {sorted.map((t) => (
         <TaskRow key={t.id} task={t} canEdit={canEdit} />
       ))}
     </div>
