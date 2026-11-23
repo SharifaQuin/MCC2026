@@ -32,7 +32,7 @@ export default function Sidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-4">
-        <NavLinks groups={groups} />
+        <NavLinks groups={groups} onDark />
       </div>
 
       <div className="flex items-center justify-between border-t border-white/10 px-4 py-3">

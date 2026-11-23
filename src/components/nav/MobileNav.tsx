@@ -142,7 +142,7 @@ export default function MobileNav({
               </button>
             </div>
             <div className="flex-1 overflow-y-auto px-3 py-4">
-              <NavLinks groups={groups} onNavigate={close} />
+              <NavLinks groups={groups} onNavigate={close} onDark={false} />
             </div>
           </div>
         </>

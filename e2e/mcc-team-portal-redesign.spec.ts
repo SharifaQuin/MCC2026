@@ -15,6 +15,12 @@ const TRAINEE_EMAIL = `redesign-trainee-${RUN_ID}@example.com`;
 const TRAINEE_PASSWORD = "Test-Password-123!";
 const OA_EMAIL = `redesign-oa-${RUN_ID}@example.com`;
 const OA_PASSWORD = "Test-Password-123!";
+const ESTABLISHED_EMAIL = `redesign-established-${RUN_ID}@example.com`;
+const ESTABLISHED_PASSWORD = "Test-Password-123!";
+const ONBOARDING_EMAIL = `redesign-onboarding-${RUN_ID}@example.com`;
+const ONBOARDING_PASSWORD = "Test-Password-123!";
+const SALES_REP_EMAIL = `redesign-sales-rep-${RUN_ID}@example.com`;
+const SALES_REP_PASSWORD = "Test-Password-123!";
 
 const prisma = new PrismaClient();
 
@@ -33,6 +39,11 @@ async function logout(page: Page) {
 test.describe.serial("MCC Team Portal redesign", () => {
   let traineeId: string;
   let officeAssistantId: string;
+  let establishedId: string;
+  let onboardingId: string;
+  let onboardingDocId: string;
+  let salesRepId: string;
+  const taskIds: string[] = [];
 
   test.beforeAll(async () => {
     const trainee = await prisma.user.create({
@@ -58,11 +69,134 @@ test.describe.serial("MCC Team Portal redesign", () => {
       },
     });
     officeAssistantId = oa.id;
+
+    // Past day 10 (review item #2) — hireDate 20 days ago AND every Day
+    // 1-10 lesson/content item actually completed, which is what
+    // getEffectiveRookiePosition requires before it defers to the
+    // calendar and advances past ROOKIE_DAY (it's catch-up-aware, not a
+    // pure date cutoff — see that function's own comment). No onboarding
+    // left pending (review item #3 is tested separately, with its own
+    // fixture below).
+    const established = await prisma.user.create({
+      data: {
+        email: ESTABLISHED_EMAIL,
+        name: `Redesign Established ${RUN_ID}`,
+        role: "TRAINEE",
+        passwordHash: await hashPassword(ESTABLISHED_PASSWORD),
+        mustSetPassword: false,
+        active: true,
+        hireDate: new Date(Date.now() - 20 * 86400000),
+      },
+    });
+    establishedId = established.id;
+
+    const rookieDays = await prisma.rookieDay.findMany({
+      where: { dayNumber: { lte: 10 } },
+      select: {
+        lessons: { where: { slot: "ROOKIE_DAY" }, select: { lessonId: true } },
+        contentItems: { select: { id: true } },
+      },
+    });
+    const allLessonIds = rookieDays.flatMap((d) => d.lessons.map((l) => l.lessonId));
+    const allContentIds = rookieDays.flatMap((d) => d.contentItems.map((c) => c.id));
+    if (allLessonIds.length > 0) {
+      await prisma.lessonProgress.createMany({
+        data: allLessonIds.map((lessonId) => ({ userId: establishedId, lessonId })),
+        skipDuplicates: true,
+      });
+    }
+    if (allContentIds.length > 0) {
+      await prisma.rookieContentProgress.createMany({
+        data: allContentIds.map((contentItemId) => ({ userId: establishedId, contentItemId })),
+        skipDuplicates: true,
+      });
+    }
+
+    // Has one unsigned onboarding document (review item #3).
+    const onboardingDoc = await prisma.onboardingDocument.create({
+      data: { title: `Redesign Onboarding Doc ${RUN_ID}`, order: 999, assignByDefault: false },
+    });
+    onboardingDocId = onboardingDoc.id;
+    const onboardingUser = await prisma.user.create({
+      data: {
+        email: ONBOARDING_EMAIL,
+        name: `Redesign Onboarding ${RUN_ID}`,
+        role: "TRAINEE",
+        passwordHash: await hashPassword(ONBOARDING_PASSWORD),
+        mustSetPassword: false,
+        active: true,
+      },
+    });
+    onboardingId = onboardingUser.id;
+    await prisma.onboardingAssignment.create({
+      data: { documentId: onboardingDocId, userId: onboardingId, signedAt: null },
+    });
+
+    const salesRep = await prisma.user.create({
+      data: {
+        email: SALES_REP_EMAIL,
+        name: `Redesign Sales Rep ${RUN_ID}`,
+        role: "SALES_REP",
+        passwordHash: await hashPassword(SALES_REP_PASSWORD),
+        mustSetPassword: false,
+        active: true,
+        departmentAccess: { create: [{ department: "SALES", canEdit: true }] },
+      },
+    });
+    salesRepId = salesRep.id;
+
+    const now = new Date();
+    const overdueDate = new Date(now.getTime() - 3 * 86400000);
+    const todayDate = now;
+    const futureDate = new Date(now.getTime() + 10 * 86400000);
+    const future = await prisma.checklistTask.create({
+      data: {
+        task: `Redesign future task ${RUN_ID}`,
+        frequency: "ONE_TIME",
+        owner: "TEAM",
+        visibility: "TEAM",
+        category: "SALES",
+        targetDate: futureDate,
+        assigneeId: salesRepId,
+        order: 1,
+      },
+    });
+    const overdue = await prisma.checklistTask.create({
+      data: {
+        task: `Redesign overdue task ${RUN_ID}`,
+        frequency: "ONE_TIME",
+        owner: "TEAM",
+        visibility: "TEAM",
+        category: "SALES",
+        targetDate: overdueDate,
+        assigneeId: salesRepId,
+        order: 2,
+      },
+    });
+    const dueToday = await prisma.checklistTask.create({
+      data: {
+        task: `Redesign due-today task ${RUN_ID}`,
+        frequency: "ONE_TIME",
+        owner: "TEAM",
+        visibility: "TEAM",
+        category: "SALES",
+        targetDate: todayDate,
+        assigneeId: salesRepId,
+        order: 3,
+      },
+    });
+    taskIds.push(future.id, overdue.id, dueToday.id);
   });
 
   test.afterAll(async () => {
+    await prisma.checklistTask.deleteMany({ where: { id: { in: taskIds } } });
+    await prisma.departmentAccess.deleteMany({ where: { userId: salesRepId } });
+    await prisma.onboardingAssignment.deleteMany({ where: { userId: onboardingId } });
+    await prisma.onboardingDocument.delete({ where: { id: onboardingDocId } });
     await prisma.areaAccess.deleteMany({ where: { userId: officeAssistantId } });
-    await prisma.user.deleteMany({ where: { id: { in: [traineeId, officeAssistantId] } } });
+    await prisma.user.deleteMany({
+      where: { id: { in: [traineeId, officeAssistantId, establishedId, onboardingId, salesRepId] } },
+    });
     await prisma.$disconnect();
   });
 
@@ -216,5 +350,109 @@ test.describe.serial("MCC Team Portal redesign", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByText("Financial Overview")).toHaveCount(0);
     await expect(page.locator("main").getByRole("link", { name: /^Management$/ })).toHaveCount(0);
+  });
+
+  // --- Review fixes ---------------------------------------------------
+
+  test("Review fix #1: phone drawer links are readable (dark text) in normal, selected, and hover states", async ({
+    page,
+  }) => {
+    function luminance(rgb: string): number {
+      const m = rgb.match(/\d+/g)?.map(Number) ?? [255, 255, 255];
+      return (m[0] + m[1] + m[2]) / 3;
+    }
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await loginAs(page, TRAINEE_EMAIL, TRAINEE_PASSWORD);
+    await page.goto("/documents");
+    await page.waitForLoadState("networkidle");
+    await page.locator('[data-testid="mobile-nav"] button[aria-label="Open menu"]').click();
+
+    const docsLink = page.locator('div[role="dialog"] a', { hasText: "Documents" });
+    await expect(docsLink).toBeVisible();
+    // Selected (aria-current="page", since we navigated here directly).
+    const selectedColor = await docsLink.evaluate((el) => getComputedStyle(el).color);
+    expect(luminance(selectedColor)).toBeLessThan(220);
+
+    const otherLink = page.locator('div[role="dialog"] a', { hasText: "Glossary" });
+    const normalColor = await otherLink.evaluate((el) => getComputedStyle(el).color);
+    expect(luminance(normalColor)).toBeLessThan(220);
+
+    await otherLink.hover();
+    const hoverColor = await otherLink.evaluate((el) => getComputedStyle(el).color);
+    expect(luminance(hoverColor)).toBeLessThan(220);
+  });
+
+  test("Review fix #2: an established employee (past day 10) still has a desktop/drawer route to the Rookie overview and its 30/60/90 milestones", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await loginAs(page, ESTABLISHED_EMAIL, ESTABLISHED_PASSWORD);
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+
+    // Home no longer shows a permanent "Day X of 10" onboarding card.
+    await expect(page.getByText(/of 10, keep going/i)).toHaveCount(0);
+
+    // But the sidebar still links to it.
+    const sidebarLink = page.locator('[data-testid="desktop-sidebar"]').getByRole("link", {
+      name: /Rookie Journey|Camino Rookie/,
+    });
+    await expect(sidebarLink).toHaveAttribute("href", "/rookie");
+    await sidebarLink.click();
+    await page.waitForURL(/\/rookie$/);
+
+    await expect(page.getByText("Training Days")).toBeVisible();
+    // Days 1-10 remain visible as completed history (not hidden by a
+    // calendar cutoff), and a 30/60/90 milestone is now reachable too.
+    await expect(page.getByText("Next Milestone", { exact: false })).toBeVisible();
+
+    // Same route from the mobile drawer.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    await page.locator('[data-testid="mobile-nav"] button[aria-label="Open menu"]').click();
+    await expect(
+      page.locator('div[role="dialog"] a', { hasText: /Rookie Journey|Camino Rookie/ })
+    ).toHaveAttribute("href", "/rookie");
+  });
+
+  test("Review fix #3: /rookie refuses a Trainee with unsigned onboarding documents, same as every other training page", async ({
+    page,
+  }) => {
+    await loginAs(page, ONBOARDING_EMAIL, ONBOARDING_PASSWORD);
+    await page.goto("/rookie");
+    await expect(page).toHaveURL(/\/documents/);
+    await expect(page.getByText("Training Days")).toHaveCount(0);
+  });
+
+  test("Review fix #4: Sales Rep My Tasks shows overdue tasks first, then due-today, then later — with a visible due/overdue indicator, no expansion needed", async ({
+    page,
+  }) => {
+    await loginAs(page, SALES_REP_EMAIL, SALES_REP_PASSWORD);
+    await page.goto("/sales");
+    await page.waitForLoadState("networkidle");
+
+    const myTasks = page.locator('[data-testid="sales-rep-my-tasks"]');
+    await expect(myTasks.getByText("Overdue", { exact: true })).toBeVisible();
+    await expect(myTasks.getByText("Due soon", { exact: true })).toBeVisible();
+
+    const taskTexts = await myTasks.locator("p.font-medium").allTextContents();
+    const overdueIdx = taskTexts.findIndex((t) => t.includes("overdue task"));
+    const dueTodayIdx = taskTexts.findIndex((t) => t.includes("due-today task"));
+    const futureIdx = taskTexts.findIndex((t) => t.includes("future task"));
+    expect(overdueIdx).toBeGreaterThanOrEqual(0);
+    expect(dueTodayIdx).toBeGreaterThan(overdueIdx);
+    expect(futureIdx).toBeGreaterThan(dueTodayIdx);
+  });
+
+  test("Review fix #5: Sales Rep's Won tile says '(from quotes)' so a quote total can't be mistaken for collected revenue", async ({
+    page,
+  }) => {
+    await loginAs(page, SALES_REP_EMAIL, SALES_REP_PASSWORD);
+    await page.goto("/sales");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByText("Won This Month (from quotes)")).toBeVisible();
+    await expect(page.getByText("Won This Month", { exact: true })).toHaveCount(0);
   });
 });

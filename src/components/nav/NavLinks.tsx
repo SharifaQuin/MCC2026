@@ -37,11 +37,22 @@ const GROUP_ICONS: Record<string, (p: { className?: string }) => React.ReactElem
   "training-content-editor": EditIcon,
 };
 
-// Shared by the desktop sidebar and the mobile drawer so the two can never
-// show different links for the same session — only the surrounding chrome
-// differs. Rendered on a navy background in both places now, so colors
-// below are the light-on-navy variants, not the old light-mode ones.
-export default function NavLinks({ groups, onNavigate }: { groups: NavGroup[]; onNavigate?: () => void }) {
+// Shared by the desktop sidebar (navy background) and the mobile drawer
+// (white background) so the two can never show different links for the
+// same session — only the surrounding chrome differs. `onDark` picks the
+// matching text/active-state colors for whichever background the caller
+// actually uses; getting this wrong is exactly what produced unreadable
+// white-on-white links in the drawer, so it's a required prop, not a
+// default, to force every caller to state its own background explicitly.
+export default function NavLinks({
+  groups,
+  onNavigate,
+  onDark,
+}: {
+  groups: NavGroup[];
+  onNavigate?: () => void;
+  onDark: boolean;
+}) {
   const pathname = usePathname();
 
   return (
@@ -50,7 +61,11 @@ export default function NavLinks({ groups, onNavigate }: { groups: NavGroup[]; o
         const GroupIcon = GROUP_ICONS[group.key] ?? ChartIcon;
         return (
           <div key={group.key}>
-            <p className="mb-1.5 flex items-center gap-1.5 px-2 text-[11px] font-semibold uppercase tracking-wide text-gold-400/90">
+            <p
+              className={`mb-1.5 flex items-center gap-1.5 px-2 text-[11px] font-semibold uppercase tracking-wide ${
+                onDark ? "text-gold-400/90" : "text-neutral-500"
+              }`}
+            >
               <GroupIcon className="h-3.5 w-3.5" />
               {group.label}
             </p>
@@ -65,8 +80,12 @@ export default function NavLinks({ groups, onNavigate }: { groups: NavGroup[]; o
                       aria-current={active ? "page" : undefined}
                       className={`flex items-center justify-between rounded-md px-2 py-1.5 text-sm font-medium transition-colors ${
                         active
-                          ? "bg-gold-500 text-brand-900"
-                          : "text-white/80 hover:bg-white/10 hover:text-white"
+                          ? onDark
+                            ? "bg-gold-500 text-brand-900"
+                            : "bg-brand-50 text-brand-700"
+                          : onDark
+                            ? "text-white/80 hover:bg-white/10 hover:text-white"
+                            : "text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900"
                       }`}
                     >
                       <span className="truncate">{link.label}</span>

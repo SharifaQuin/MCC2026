@@ -162,7 +162,7 @@ export default async function SalesPage() {
               prominent
             />
             <Stat
-              label={dash.actuals.entered ? "Actual Revenue" : "Won This Month"}
+              label={dash.actuals.entered ? "Actual Revenue" : "Won This Month (from quotes)"}
               value={money(dash.revenueTowardGoal)}
               prominent
             />
@@ -179,7 +179,7 @@ export default async function SalesPage() {
           )}
 
           <div className="mt-6 grid gap-6 md:grid-cols-2">
-            <div>
+            <div data-testid="sales-rep-my-tasks">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-neutral-900">My Tasks</h3>
                 <Link href="/todo" className="text-xs font-medium text-brand-700 hover:underline">

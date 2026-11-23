@@ -380,7 +380,7 @@ export default async function HomePage() {
               prominent
             />
             <Stat
-              label={sales.actuals.entered ? "Actual Revenue" : "Won This Month"}
+              label={sales.actuals.entered ? "Actual Revenue" : "Won This Month (from quotes)"}
               value={money(sales.revenueTowardGoal)}
               href="/sales/quotes?status=won"
               prominent

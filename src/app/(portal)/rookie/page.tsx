@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { t } from "@/lib/i18n";
 import { getTodaysRookieTraining, getTrainingExperienceVersion, type RookieRailStop } from "@/lib/rookieJourney";
+import { requireOnboardingComplete } from "@/lib/onboarding";
 import { prisma } from "@/lib/prisma";
 
 function RailDot({ stop }: { stop: RookieRailStop }) {
@@ -32,6 +33,12 @@ export default async function RookieJourneyPage() {
   const session = await getSession();
   if (!session) redirect("/login");
   if (session.role !== "TRAINEE") redirect("/");
+  // Same gate every other training-facing page (modules, lessons, quiz,
+  // /rookie/day/[dayNumber]) already applies — a no-op once nothing's
+  // unsigned, a redirect to /documents otherwise. Lesson-level access
+  // (getRookieLessonAccess/getRookieContentAccess) is unaffected and still
+  // runs separately wherever this page links into actual lesson content.
+  await requireOnboardingComplete(session);
   const trainingVersion = await getTrainingExperienceVersion();
   if (trainingVersion === "classic") redirect("/modules");
 
