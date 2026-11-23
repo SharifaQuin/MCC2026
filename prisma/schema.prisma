@@ -1826,6 +1826,15 @@ model Lead {
   address          String?
   source           LeadSource @default(OTHER)
   sourceDetail     String?
+  // Standard click-through attribution, captured from the lead form URL's
+  // query string when a visitor arrives (e.g. from a Facebook/Instagram ad)
+  // — nullable since most leads (organic, referral, walk-in) will never
+  // have any of these. Separate from `source`/`sourceDetail` above, which
+  // come from the customer's own "How did you hear about us?" answer.
+  utmSource        String?
+  utmMedium        String?
+  utmCampaign      String?
+  utmContent       String?
   serviceInterest  String?
   squareFootage    Int?
   frequency        String?

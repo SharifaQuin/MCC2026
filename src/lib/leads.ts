@@ -119,6 +119,28 @@ export function guessHowHeardFromSrc(raw: string | null | undefined): string | n
   return isDropdownOption ? guess : null;
 }
 
+// Standard click-through attribution, captured from the lead form URL's
+// query string alongside (not replacing) ?src= — e.g. a Facebook/Instagram
+// ad landing on /lead-form?utm_source=facebook&utm_medium=cpc&... Every
+// field is optional; most leads (organic, referral, walk-in) will never
+// have any of these.
+export interface LeadUtmParams {
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  utmContent: string | null;
+}
+
+export function parseLeadUtmParams(searchParams: URLSearchParams): LeadUtmParams {
+  const get = (key: string) => searchParams.get(key)?.trim() || null;
+  return {
+    utmSource: get("utm_source"),
+    utmMedium: get("utm_medium"),
+    utmCampaign: get("utm_campaign"),
+    utmContent: get("utm_content"),
+  };
+}
+
 export const LEAD_STAGE_LABELS: Record<string, string> = {
   NEW_INQUIRY: "New Inquiry",
   CONTACTED: "Contacted",

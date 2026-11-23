@@ -1,0 +1,48 @@
+import Script from "next/script";
+import type { AdConsentStatus } from "@/lib/consent";
+
+// Meta Pixel base code — loads fbq and fires an automatic PageView.
+// Deliberately NOT included in the root layout: it only renders on the
+// public lead-generation pages that actually need it (the quote form and
+// its thank-you page), never on the authenticated employee dashboard.
+// Pixel ID comes from an env var (same pattern as NEXT_PUBLIC_TURNSTILE_SITE_KEY
+// in src/app/lead-form/page.tsx) rather than being hardcoded — if it's
+// unset, this renders nothing and the page works exactly as it did before.
+//
+// Also gated on the visitor's own ad-tracking consent choice (see
+// src/lib/consent.ts and ConsentBanner) — opt-in, not opt-out: nothing
+// loads at all until consent is explicitly "granted". Declining or not
+// yet answering never affects the quote form itself, only this.
+export default function MetaPixel({ consent }: { consent: AdConsentStatus }) {
+  const pixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID;
+  if (!pixelId || consent !== "granted") return null;
+
+  return (
+    <>
+      <Script id="meta-pixel-base" strategy="afterInteractive">
+        {`
+          !function(f,b,e,v,n,t,s)
+          {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+          n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+          if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+          n.queue=[];t=b.createElement(e);t.async=!0;
+          t.src=v;s=b.getElementsByTagName(e)[0];
+          s.parentNode.insertBefore(t,s)}(window, document,'script',
+          'https://connect.facebook.net/en_US/fbevents.js');
+          fbq('init', '${pixelId}');
+          fbq('track', 'PageView');
+        `}
+      </Script>
+      <noscript>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          height="1"
+          width="1"
+          style={{ display: "none" }}
+          src={`https://www.facebook.com/tr?id=${pixelId}&ev=PageView&noscript=1`}
+          alt=""
+        />
+      </noscript>
+    </>
+  );
+}
