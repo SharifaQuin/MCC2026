@@ -5,8 +5,8 @@ import { findPedroPaezCandidates, revokeCallbackQueueGrant } from "../scripts/li
 
 // Coverage for the "sales-only account, owner-only financial controls,
 // callbacks and recurring tasks" correction brief:
-//   1. Owner-only financial editing (setSalesGoalAction/setSalesActualsAction/
-//      setLeadSourceSpendAction + the /api/sales/storage bypass)
+//   1. Owner-only financial editing (setSalesGoalAction/saveRevenueSnapshotAction/
+//      saveSalesLaborAction/setLeadSourceSpendAction + the /api/sales/storage bypass)
 //   2. Sales-only navigation/landing/Today content for SALES_REP
 //   3. Callbacks-first /sales/leads view for SALES_REP, owner's pipeline unchanged
 //   4. Pedro's CALLBACK_QUEUE revocation (via disposable fixture, not a real account)
@@ -104,7 +104,8 @@ test.describe.serial("Sales-rep corrections (browser)", () => {
     await page.goto("/sales");
     await expect(page.getByLabel(/set this month.s revenue goal/i)).toBeVisible();
     await expect(page.getByRole("button", { name: "Save Goal" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Save Actuals" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save Revenue" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save Labor" })).toBeVisible();
     await logout(page);
 
     await loginAs(page, SALES_REP_EMAIL, SALES_REP_PASSWORD);
@@ -112,7 +113,8 @@ test.describe.serial("Sales-rep corrections (browser)", () => {
     await expect(page.getByRole("heading", { name: "This Month" })).toBeVisible();
     await expect(page.getByLabel(/set this month.s revenue goal/i)).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Save Goal" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Save Actuals" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Save Revenue" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Save Labor" })).toHaveCount(0);
     await logout(page);
   });
 

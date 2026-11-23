@@ -85,28 +85,78 @@ export async function setSalesGoal(revenueGoal: number): Promise<void> {
   });
 }
 
+// Revenue ("Completed cleaning charges") and labor are deliberately read
+// from two different stores, and have been since the revenue-entry rework
+// in src/lib/salesRevenueSnapshot.ts:
+//  - Revenue prefers the new, structured SalesRevenueSnapshot row for this
+//    month; if none exists yet, it falls back to this same legacy
+//    SalesToolData row's `revenue` field (a month entered before that
+//    rework, never migrated or reclassified — just read as-is).
+//  - Labor always comes from this legacy-named SalesToolData row's `labor`
+//    field, written only by setSalesLabor below, completely independent of
+//    whatever the revenue side is doing — a revenue-only save can never
+//    see or touch this field, by construction, not just by convention.
+// `labor` is null (not 0) whenever that field is genuinely absent — a
+// month where labor was never entered reads as unknown, never as zero;
+// an explicitly-saved 0 round-trips as 0, same as any other real figure.
 export async function getSalesActuals(monthKey: string = currentMonthKey()): Promise<SalesActuals> {
-  const row = await prisma.salesToolData.findUnique({ where: { key: actualsKey(monthKey) } });
-  if (!row) return { revenue: 0, labor: 0, profit: 0, entered: false };
-  try {
-    const parsed = JSON.parse(row.value) as { revenue?: number; labor?: number };
-    const revenue = typeof parsed.revenue === "number" ? parsed.revenue : 0;
-    const labor = typeof parsed.labor === "number" ? parsed.labor : 0;
-    return { revenue, labor, profit: revenue - labor, entered: true };
-  } catch {
-    return { revenue: 0, labor: 0, profit: 0, entered: false };
+  const [snapshot, legacyRow] = await Promise.all([
+    prisma.salesRevenueSnapshot.findUnique({ where: { monthKey } }),
+    prisma.salesToolData.findUnique({ where: { key: actualsKey(monthKey) } }),
+  ]);
+
+  let revenue = 0;
+  let entered = false;
+  if (snapshot) {
+    revenue = snapshot.revenue;
+    entered = true;
+  } else if (legacyRow) {
+    try {
+      const parsed = JSON.parse(legacyRow.value) as { revenue?: number };
+      if (typeof parsed.revenue === "number") {
+        revenue = parsed.revenue;
+        entered = true;
+      }
+    } catch {
+      // Malformed legacy row — read as "nothing entered", never throws.
+    }
   }
+
+  let labor: number | null = null;
+  if (legacyRow) {
+    try {
+      const parsed = JSON.parse(legacyRow.value) as { labor?: number };
+      if (typeof parsed.labor === "number") labor = parsed.labor;
+    } catch {
+      // Malformed — labor stays unknown rather than guessed at.
+    }
+  }
+
+  const profit = labor !== null ? revenue - labor : null;
+  return { revenue, labor, profit, entered };
 }
 
-export async function setSalesActuals(
-  revenue: number,
-  labor: number,
-  monthKey: string = currentMonthKey()
-): Promise<void> {
+// Merges `labor` into whatever's already stored under this month's legacy
+// key, rather than replacing the row outright — so a labor-only save can
+// never drop a legacy month's `revenue` field (still read as the fallback
+// above) any more than a revenue save can touch labor. `labor` may be 0;
+// that's a real entered value, distinct from the field being absent.
+export async function setSalesLabor(labor: number, monthKey: string = currentMonthKey()): Promise<void> {
+  const key = actualsKey(monthKey);
+  const existing = await prisma.salesToolData.findUnique({ where: { key } });
+  let merged: Record<string, unknown> = {};
+  if (existing) {
+    try {
+      merged = JSON.parse(existing.value) as Record<string, unknown>;
+    } catch {
+      merged = {};
+    }
+  }
+  merged.labor = labor;
   await prisma.salesToolData.upsert({
-    where: { key: actualsKey(monthKey) },
-    create: { key: actualsKey(monthKey), value: JSON.stringify({ revenue, labor }) },
-    update: { value: JSON.stringify({ revenue, labor }) },
+    where: { key },
+    create: { key, value: JSON.stringify(merged) },
+    update: { value: JSON.stringify(merged) },
   });
 }
 

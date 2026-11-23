@@ -403,7 +403,7 @@ export default async function HomePage() {
             />
             {isAdmin && (
               <Stat
-                label="Profit So Far"
+                label="Revenue less entered labor"
                 value={sales.actuals.entered && sales.actuals.profit !== null ? money(sales.actuals.profit) : "—"}
               />
             )}

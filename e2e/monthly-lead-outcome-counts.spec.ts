@@ -222,10 +222,10 @@ test.describe("Sales page shows monthly lead-outcome counts prominently", () => 
 
     // Position: the new monthly tiles read before the de-emphasized
     // all-time ones, which now sit at the end of the grid. Scoped to the
-    // main Stat grid specifically (`.first()`) — the Admin-only "Actuals
-    // This Month" sub-block below it reuses the same Stat component/classes
-    // for its own, unrelated tiles (Actual Revenue/Labor/Profit So Far) and
-    // would otherwise be counted too.
+    // main Stat grid specifically (`.first()`) — the Admin-only "Completed
+    // Cleaning Revenue" sub-block below it reuses the same Stat component/
+    // classes for its own, unrelated tiles (Completed Cleaning Charges/
+    // Labor/Revenue less entered labor) and would otherwise be counted too.
     const labels = await thisMonthSection
       .locator("div.grid")
       .first()

@@ -76,6 +76,14 @@ export function businessDateKey(date: Date): string {
   }).format(date);
 }
 
+// "YYYY-MM" for a date's calendar month in the business timezone — e.g. so
+// a reporting-month picker that defaults to "this month" agrees with the
+// business's own calendar, not whichever timezone the server process
+// happens to run in.
+export function businessMonthKey(date: Date = new Date()): string {
+  return businessDateKey(date).slice(0, 7);
+}
+
 // "YYYY-Www" ISO week key for a date's calendar day in the business timezone.
 export function businessISOWeekKey(date: Date): string {
   const [y, m, d] = businessDateKey(date).split("-").map(Number);
@@ -138,6 +146,16 @@ export function businessMonthRangeUtc(now: Date = new Date()): { start: Date; en
     start: zonedTimeToUtc(`${monthStartKey}T00:00`),
     end: zonedTimeToUtc(`${nextMonthStartKey}T00:00`),
   };
+}
+
+// The inverse of zonedTimeToUtc: "YYYY-MM-DDTHH:mm" for a Date as read in
+// the business timezone, for pre-filling a <input type="datetime-local">
+// so it shows (and round-trips through zonedTimeToUtc back to) the same
+// business-timezone wall-clock time, not the viewer's or server's own.
+export function businessDateTimeInputValue(date: Date): string {
+  const { year, month, day, hour, minute } = businessTimeParts(date);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}`;
 }
 
 // { year, month, day, weekday, hour, minute } of a Date as read in the
