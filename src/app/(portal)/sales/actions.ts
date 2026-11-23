@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/session";
 import { setSalesGoal, setSalesLabor } from "@/lib/salesDashboard";
-import { saveRevenueSnapshot, type SaveRevenueSnapshotResult } from "@/lib/salesRevenueSnapshot";
+import { saveRevenueSnapshot, parseStrictMoney, type SaveRevenueSnapshotResult } from "@/lib/salesRevenueSnapshot";
 import { setLeadSourceSpendAmount } from "@/lib/leads";
 import type { LeadSource } from "@prisma/client";
 
@@ -94,9 +94,12 @@ export async function saveSalesLaborAction(
   if (raw === "") {
     return { ok: false, error: "Labor is required — enter 0 if there was none, rather than leaving it blank." };
   }
-  const labor = Number(raw);
-  if (!Number.isFinite(labor) || labor < 0) {
-    return { ok: false, error: "Labor must be a non-negative number." };
+  const labor = parseStrictMoney(raw);
+  if (labor === null) {
+    return {
+      ok: false,
+      error: "Labor must be a plain non-negative amount like 1234.56 — no hex, scientific notation, or other formats.",
+    };
   }
 
   await setSalesLabor(labor, monthKey);

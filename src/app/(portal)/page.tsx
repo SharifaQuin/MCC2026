@@ -405,6 +405,7 @@ export default async function HomePage() {
               <Stat
                 label="Revenue less entered labor"
                 value={sales.actuals.entered && sales.actuals.profit !== null ? money(sales.actuals.profit) : "—"}
+                caption={sales.actuals.profit !== null ? "Excludes other expenses — not net profit" : undefined}
               />
             )}
             <Stat label="Pending Quotes" value={sales.pendingCount} href="/sales/quotes?status=pending" />

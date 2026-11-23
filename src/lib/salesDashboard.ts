@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { businessMonthKey } from "@/lib/timezone";
 
 const SERVICE_LABELS: Record<string, string> = {
   standard: "Standard Clean",
@@ -58,10 +59,6 @@ export interface SalesDashboard {
 
 const GOAL_KEY = "sales:goal";
 
-function currentMonthKey(now: Date = new Date()): string {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-}
-
 function actualsKey(monthKey: string): string {
   return `sales:actuals:${monthKey}`;
 }
@@ -99,7 +96,7 @@ export async function setSalesGoal(revenueGoal: number): Promise<void> {
 // `labor` is null (not 0) whenever that field is genuinely absent — a
 // month where labor was never entered reads as unknown, never as zero;
 // an explicitly-saved 0 round-trips as 0, same as any other real figure.
-export async function getSalesActuals(monthKey: string = currentMonthKey()): Promise<SalesActuals> {
+export async function getSalesActuals(monthKey: string = businessMonthKey()): Promise<SalesActuals> {
   const [snapshot, legacyRow] = await Promise.all([
     prisma.salesRevenueSnapshot.findUnique({ where: { monthKey } }),
     prisma.salesToolData.findUnique({ where: { key: actualsKey(monthKey) } }),
@@ -141,7 +138,7 @@ export async function getSalesActuals(monthKey: string = currentMonthKey()): Pro
 // never drop a legacy month's `revenue` field (still read as the fallback
 // above) any more than a revenue save can touch labor. `labor` may be 0;
 // that's a real entered value, distinct from the field being absent.
-export async function setSalesLabor(labor: number, monthKey: string = currentMonthKey()): Promise<void> {
+export async function setSalesLabor(labor: number, monthKey: string = businessMonthKey()): Promise<void> {
   const key = actualsKey(monthKey);
   const existing = await prisma.salesToolData.findUnique({ where: { key } });
   let merged: Record<string, unknown> = {};

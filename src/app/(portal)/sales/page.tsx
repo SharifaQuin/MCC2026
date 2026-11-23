@@ -419,7 +419,7 @@ export default async function SalesPage({
               </form>
             </div>
 
-            <div className="mt-3 grid grid-cols-3 gap-3">
+            <div data-testid="completed-cleaning-stats" className="mt-3 grid gap-3 sm:grid-cols-3">
               <Stat
                 label="Completed Cleaning Charges"
                 value={selectedMonthActuals.entered ? money(selectedMonthActuals.revenue) : "Not yet entered"}
@@ -428,7 +428,12 @@ export default async function SalesPage({
                 <Stat label="Labor" value={money(selectedMonthActuals.labor)} />
               )}
               {selectedMonthActuals.profit !== null && (
-                <Stat label="Revenue less entered labor" value={money(selectedMonthActuals.profit)} accent />
+                <Stat
+                  label="Revenue less entered labor"
+                  value={money(selectedMonthActuals.profit)}
+                  caption="Excludes other expenses — not net profit"
+                  accent
+                />
               )}
             </div>
             {selectedMonthActuals.profit === null && selectedMonthActuals.entered && (

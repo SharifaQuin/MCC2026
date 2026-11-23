@@ -23,13 +23,69 @@ export function isValidMonthKey(key: string): boolean {
 // UTC-midnight-encoded first/last calendar day of an arbitrary YYYY-MM
 // reporting month (not "now" — the owner picks the month explicitly, so
 // this never needs a business-timezone "what day is it" conversion the
-// way e.g. lastDayOfBusinessMonth does).
+// way e.g. lastDayOfBusinessMonth does). monthKey is already validated by
+// isValidMonthKey everywhere this is called from user input, so the month
+// number here is always 01-12.
 export function monthBoundsUtc(monthKey: string): { first: Date; last: Date } {
   const [y, m] = monthKey.split("-").map(Number);
   return {
     first: new Date(Date.UTC(y, m - 1, 1)),
     last: new Date(Date.UTC(y, m, 0)),
   };
+}
+
+// A plain decimal dollar amount: digits, an optional 1-2 decimal places,
+// nothing else — no leading `+`/`-`, no exponent notation ("1e5"), no
+// hex ("0x10"), no thousands separators, no surrounding text. `Number()`
+// alone accepts all of those (and silently trims whitespace), which is
+// exactly the kind of "JavaScript normalizes it into something that looks
+// like a valid number" this guards against. Returns null, never NaN/
+// Infinity/a coerced 0, for anything that isn't a clean match.
+export function parseStrictMoney(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? value : null;
+}
+
+// A calendar date's Y/M/D, rejecting anything JS's Date would otherwise
+// silently roll over into a different, valid-looking date (e.g.
+// "2026-02-30" normalizing into March 2) — the round-trip through
+// Date.UTC must read back the exact same Y/M/D it was given.
+function parseExactCalendarDate(raw: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const date = new Date(Date.UTC(y, mo - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== mo - 1 || date.getUTCDate() !== d) return null;
+  return date;
+}
+
+// "YYYY-MM-DDTHH:mm" with a real calendar date and an in-range 24-hour
+// time (00-23 / 00-59) — a bare date (no "T..:.."), a malformed time, or
+// an out-of-range hour/minute like "25:99" are all rejected outright
+// rather than letting Date.UTC roll an invalid time into a different,
+// valid-looking instant. Returns the exact wall-clock parts, not a Date,
+// so the caller converts them with zonedTimeToUtc only once they're known
+// to be well-formed.
+function parseExactLocalDateTime(
+  raw: string
+): { year: number; month: number; day: number; hour: number; minute: number } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(raw);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const hour = Number(m[4]);
+  const minute = Number(m[5]);
+  if (hour > 23 || minute > 59) return null;
+  const datePart = new Date(Date.UTC(year, month - 1, day));
+  if (datePart.getUTCFullYear() !== year || datePart.getUTCMonth() !== month - 1 || datePart.getUTCDate() !== day) {
+    return null;
+  }
+  return { year, month, day, hour, minute };
 }
 
 const VALID_COVERAGE = new Set(["FULL_MONTH", "MONTH_TO_DATE"]);
@@ -125,9 +181,13 @@ export async function saveRevenueSnapshot(
   if (revenueRaw === "") {
     return { ok: false, code: "VALIDATION", error: "Revenue is required." };
   }
-  const revenue = Number(revenueRaw);
-  if (!Number.isFinite(revenue) || revenue < 0) {
-    return { ok: false, code: "VALIDATION", error: "Revenue must be a non-negative number." };
+  const revenue = parseStrictMoney(revenueRaw);
+  if (revenue === null) {
+    return {
+      ok: false,
+      code: "VALIDATION",
+      error: "Revenue must be a plain non-negative amount like 1234.56 — no hex, scientific notation, or other formats.",
+    };
   }
 
   const source = input.source.trim();
@@ -149,12 +209,16 @@ export async function saveRevenueSnapshot(
   const status = input.status as RevenueSnapshotStatus;
 
   const coverageThroughRaw = input.coverageThrough.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(coverageThroughRaw)) {
+  if (!coverageThroughRaw) {
     return { ok: false, code: "VALIDATION", error: "Coverage-through date is required." };
   }
-  const coverageThrough = new Date(`${coverageThroughRaw}T00:00:00Z`);
-  if (Number.isNaN(coverageThrough.getTime())) {
-    return { ok: false, code: "VALIDATION", error: "Coverage-through date is invalid." };
+  const coverageThrough = parseExactCalendarDate(coverageThroughRaw);
+  if (!coverageThrough) {
+    return {
+      ok: false,
+      code: "VALIDATION",
+      error: "Coverage-through date must be a real calendar date (e.g. not February 30th).",
+    };
   }
 
   const { first, last } = monthBoundsUtc(monthKey);
@@ -184,14 +248,31 @@ export async function saveRevenueSnapshot(
   if (!sourceAsOfRaw) {
     return { ok: false, code: "VALIDATION", error: "Source as-of time is required." };
   }
-  let sourceAsOf: Date;
-  try {
-    sourceAsOf = zonedTimeToUtc(sourceAsOfRaw);
-  } catch {
-    return { ok: false, code: "VALIDATION", error: "Source as-of time is invalid." };
+  // Requires a full "YYYY-MM-DDTHH:mm" — a date-only value (no time at
+  // all) is rejected rather than silently read as midnight, same as an
+  // out-of-range hour/minute (e.g. "25:99") or a nonexistent calendar date.
+  const sourceAsOfParts = parseExactLocalDateTime(sourceAsOfRaw);
+  if (!sourceAsOfParts) {
+    return {
+      ok: false,
+      code: "VALIDATION",
+      error: "Source as-of must include both a real calendar date and a time (HH:mm), not a date alone.",
+    };
   }
+  const sourceAsOf = zonedTimeToUtc(sourceAsOfRaw);
   if (Number.isNaN(sourceAsOf.getTime())) {
     return { ok: false, code: "VALIDATION", error: "Source as-of time is invalid." };
+  }
+
+  // The source can't have been "as of" a moment before the period it's
+  // reporting on even finishes — e.g. coverage through Nov 20 but the
+  // source pulled Nov 18 is internally inconsistent, not just unusual.
+  if (sourceAsOf.getTime() < coverageThrough.getTime()) {
+    return {
+      ok: false,
+      code: "VALIDATION",
+      error: "Source as-of must not be earlier than the coverage-through date.",
+    };
   }
 
   const existing = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey } });
@@ -208,8 +289,26 @@ export async function saveRevenueSnapshot(
     };
   }
 
+  // When there's no new-style snapshot yet, the owner's last-seen figure
+  // for this month may still be a legacy row's revenue (getSalesActuals
+  // falls back to it) — the audit record's "from" should reflect that real
+  // prior value, not read as if nothing had ever been entered. The legacy
+  // row itself is only read here, never written to or migrated.
+  let revenueBefore: number | undefined = existing?.revenue;
+  if (!existing) {
+    const legacyRow = await prisma.salesToolData.findUnique({ where: { key: `sales:actuals:${monthKey}` } });
+    if (legacyRow) {
+      try {
+        const parsed = JSON.parse(legacyRow.value) as { revenue?: number };
+        if (typeof parsed.revenue === "number") revenueBefore = parsed.revenue;
+      } catch {
+        // Malformed legacy row — no prior figure to attribute.
+      }
+    }
+  }
+
   const changedFields: Record<string, { from?: unknown; to?: unknown }> = {
-    revenue: { from: existing?.revenue, to: revenue },
+    revenue: { from: revenueBefore, to: revenue },
     source: { from: existing?.source, to: source },
     coverage: { from: existing?.coverage, to: coverage },
     coverageThrough: { from: existing?.coverageThrough?.toISOString(), to: coverageThrough.toISOString() },
@@ -217,21 +316,29 @@ export async function saveRevenueSnapshot(
     status: { from: existing?.status, to: status },
   };
 
-  await prisma.salesRevenueSnapshot.upsert({
-    where: { monthKey },
-    create: { monthKey, revenue, source, coverage, coverageThrough, sourceAsOf, status, enteredById: actorId },
-    update: { revenue, source, coverage, coverageThrough, sourceAsOf, status, enteredById: actorId },
-  });
+  // The snapshot write and its audit entry are one transaction — a crash
+  // or error between the two must never leave a successful save with no
+  // change record (or an audit row describing a save that didn't happen).
+  await prisma.$transaction(async (tx) => {
+    await tx.salesRevenueSnapshot.upsert({
+      where: { monthKey },
+      create: { monthKey, revenue, source, coverage, coverageThrough, sourceAsOf, status, enteredById: actorId },
+      update: { revenue, source, coverage, coverageThrough, sourceAsOf, status, enteredById: actorId },
+    });
 
-  // Small, owner-only change record — reporting month, old/new revenue and
-  // metadata, actor, and save time. Never customer details or payroll
-  // records, which this snapshot has none of to begin with.
-  await logAudit({
-    actorId,
-    action: existing ? "SALES_REVENUE_SNAPSHOT_UPDATED" : "SALES_REVENUE_SNAPSHOT_CREATED",
-    recordType: "SalesRevenueSnapshot",
-    recordId: monthKey,
-    changedFields,
+    // Small, owner-only change record — reporting month, old/new revenue
+    // and metadata, actor, and save time. Never customer details or
+    // payroll records, which this snapshot has none of to begin with.
+    await logAudit(
+      {
+        actorId,
+        action: existing ? "SALES_REVENUE_SNAPSHOT_UPDATED" : "SALES_REVENUE_SNAPSHOT_CREATED",
+        recordType: "SalesRevenueSnapshot",
+        recordId: monthKey,
+        changedFields,
+      },
+      tx
+    );
   });
 
   return { ok: true };

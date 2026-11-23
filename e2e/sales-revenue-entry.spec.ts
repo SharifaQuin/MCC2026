@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/lib/password";
 import { getSalesActuals, setSalesLabor } from "../src/lib/salesDashboard";
+import { businessMonthKey } from "../src/lib/timezone";
 import {
   saveRevenueSnapshot,
   getRevenueEntryForMonth,
@@ -169,22 +170,119 @@ test.describe("Sales revenue entry: validation and storage (direct lib calls)", 
     expect(rowAfter?.value).toBe(legacyValue);
   });
 
-  test("invalid revenue input is rejected and writes nothing", async () => {
+  test("replacing a legacy month's revenue records its real previous figure in the audit entry, not absent — and leaves the legacy row untouched", async () => {
+    const monthKey = freshMonth();
+    const legacyValue = JSON.stringify({ revenue: 4000, labor: 1500 });
+    await prisma.salesToolData.create({ data: { key: `sales:actuals:${monthKey}`, value: legacyValue } });
+
+    const result = await saveRevenueSnapshot(validInput(monthKey, { revenue: "6000" }), adminId);
+    expect(result.ok).toBe(true);
+
+    const audit = await prisma.auditLogEntry.findFirst({
+      where: { recordType: "SalesRevenueSnapshot", recordId: monthKey },
+      orderBy: { createdAt: "desc" },
+    });
+    const changedFields = audit?.changedFields as { revenue?: { from?: number; to?: number } } | null;
+    expect(changedFields?.revenue?.from).toBe(4000);
+    expect(changedFields?.revenue?.to).toBe(6000);
+
+    // The legacy row itself is still exactly as it was — read, never
+    // migrated or rewritten.
+    const legacyRowAfter = await prisma.salesToolData.findUnique({ where: { key: `sales:actuals:${monthKey}` } });
+    expect(legacyRowAfter?.value).toBe(legacyValue);
+
+    // The new snapshot is now the one source of truth for this month's
+    // revenue going forward — and the legacy labor is still untouched.
+    const actuals = await getSalesActuals(monthKey);
+    expect(actuals.revenue).toBe(6000);
+    expect(actuals.labor).toBe(1500);
+  });
+
+  test("the snapshot write and its audit entry succeed or fail together — a successful save always has exactly one matching audit row", async () => {
+    const monthKey = freshMonth();
+    const result = await saveRevenueSnapshot(validInput(monthKey, { revenue: "250" }), adminId);
+    expect(result.ok).toBe(true);
+
+    const row = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey } });
+    expect(row).not.toBeNull();
+    const auditCount = await prisma.auditLogEntry.count({
+      where: { recordType: "SalesRevenueSnapshot", recordId: monthKey, action: "SALES_REVENUE_SNAPSHOT_CREATED" },
+    });
+    expect(auditCount).toBe(1);
+  });
+
+  test("invalid revenue input, including non-money formats, is rejected and writes neither a snapshot nor an audit entry", async () => {
     const cases: [string, Partial<RawRevenueSnapshotInput>][] = [
       ["blank", { revenue: "" }],
       ["negative", { revenue: "-5" }],
       ["malformed", { revenue: "abc" }],
       ["infinite", { revenue: "Infinity" }],
+      ["hexadecimal", { revenue: "0x10" }],
+      ["scientific notation", { revenue: "1e5" }],
+      ["leading plus sign", { revenue: "+100" }],
+      ["thousands separator", { revenue: "1,000" }],
     ];
-    for (let i = 0; i < cases.length; i++) {
-      const [label, overrides] = cases[i];
+    for (const [label, overrides] of cases) {
       const monthKey = freshMonth();
       const result = await saveRevenueSnapshot(validInput(monthKey, overrides), adminId);
       expect(result.ok, `revenue case: ${label}`).toBe(false);
       if (!result.ok) expect(result.code).toBe("VALIDATION");
       const row = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey } });
-      expect(row, `no row written for revenue case: ${label}`).toBeNull();
+      expect(row, `no snapshot written for revenue case: ${label}`).toBeNull();
+      const auditCount = await prisma.auditLogEntry.count({
+        where: { recordType: "SalesRevenueSnapshot", recordId: monthKey },
+      });
+      expect(auditCount, `no audit entry written for revenue case: ${label}`).toBe(0);
     }
+  });
+
+  test("a nonexistent calendar date or an out-of-range/date-only source-as-of is rejected, writing neither a snapshot nor an audit entry", async () => {
+    const cases: [string, Partial<RawRevenueSnapshotInput>][] = [
+      // Feb 30th doesn't exist in any year — Date.UTC would otherwise
+      // silently roll it into early March, which is exactly the kind of
+      // normalization this must not allow.
+      ["nonexistent calendar date (Feb 30)", { sourceAsOf: "2026-02-30T09:00" }],
+      // Hour 25 / minute 99 would otherwise roll into the next day(s).
+      ["out-of-range time (25:99)", { sourceAsOf: "2026-01-15T25:99" }],
+      // A bare date with no time component — must not be silently read as
+      // midnight.
+      ["date-only, no time", { sourceAsOf: "2026-01-15" }],
+    ];
+    for (const [label, overrides] of cases) {
+      const monthKey = freshMonth();
+      const result = await saveRevenueSnapshot(validInput(monthKey, overrides), adminId);
+      expect(result.ok, `source-as-of case: ${label}`).toBe(false);
+      if (!result.ok) expect(result.code).toBe("VALIDATION");
+      const row = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey } });
+      expect(row, `no snapshot written for source-as-of case: ${label}`).toBeNull();
+      const auditCount = await prisma.auditLogEntry.count({
+        where: { recordType: "SalesRevenueSnapshot", recordId: monthKey },
+      });
+      expect(auditCount, `no audit entry written for source-as-of case: ${label}`).toBe(0);
+    }
+  });
+
+  test("a source-as-of earlier than the coverage-through date is rejected, writing neither a snapshot nor an audit entry", async () => {
+    const monthKey = freshMonth();
+    const { first } = monthBoundsUtc(monthKey);
+    // Day 15 of the month for coverage-through, day 5 for source-as-of —
+    // both safely inside any calendar month, with source-as-of clearly
+    // before the period it's supposedly reporting on even finishes.
+    const coverageThrough = new Date(first.getTime() + 14 * 86400000).toISOString().slice(0, 10);
+    const sourceAsOf = `${new Date(first.getTime() + 4 * 86400000).toISOString().slice(0, 10)}T09:00`;
+
+    const result = await saveRevenueSnapshot(
+      validInput(monthKey, { coverage: "MONTH_TO_DATE", coverageThrough, sourceAsOf }),
+      adminId
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("VALIDATION");
+    const row = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey } });
+    expect(row).toBeNull();
+    const auditCount = await prisma.auditLogEntry.count({
+      where: { recordType: "SalesRevenueSnapshot", recordId: monthKey },
+    });
+    expect(auditCount).toBe(0);
   });
 
   test("a blank source, bad coverage/status enum, and inconsistent coverage dates are all rejected and write nothing", async () => {
@@ -291,6 +389,25 @@ test.describe("Sales revenue entry: validation and storage (direct lib calls)", 
     const afterConfirm = await getSalesActuals(monthKey);
     expect(afterConfirm.revenue).toBe(999);
   });
+
+  test("the reporting-month default, actuals reads, and Home's tracker all key off one America/Los_Angeles business month — proven at the UTC/Pacific boundary", async () => {
+    // Dec 1, 03:00 UTC is still Nov 30 evening in America/Los_Angeles —
+    // the month default must agree it's still November, not silently
+    // read "December" from a naive UTC calendar check.
+    expect(businessMonthKey(new Date("2026-12-01T03:00:00Z"))).toBe("2026-11");
+    // Jan 1, 06:00 UTC is still Dec 31 evening in America/Los_Angeles —
+    // same boundary, crossing a year too.
+    expect(businessMonthKey(new Date("2027-01-01T06:00:00Z"))).toBe("2026-12");
+
+    // getSalesActuals()'s own default (used by loadSalesDashboard, which
+    // backs Home's tracker) must be the exact same key the reporting-month
+    // selector's own default resolves to "right now" — not two
+    // independently-derived "current month"s that could disagree near
+    // this same boundary.
+    const defaultActuals = await getSalesActuals();
+    const explicitActuals = await getSalesActuals(businessMonthKey());
+    expect(defaultActuals).toEqual(explicitActuals);
+  });
 });
 
 test.describe.serial("Sales revenue entry: authorization and Home goal-tracker isolation (browser)", () => {
@@ -381,6 +498,86 @@ test.describe.serial("Sales revenue entry: authorization and Home goal-tracker i
     expect(after?.revenue).toBe(before?.revenue);
   });
 
+  test("A forged saveRevenueSnapshotAction call with a crafted month and a crafted confirmStaleAsOf override is refused for both a signed-out and a non-admin caller", async ({
+    page,
+  }) => {
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto(`/sales?month=${pastMonthKey}`);
+
+    const actionId = await captureActionId(page, async () => {
+      await page.fill("#revenue", "10");
+      await page.fill("#source", "forge-capture-crafted");
+      await page.click('button:has-text("Save Revenue")');
+      await page.waitForTimeout(500);
+    });
+    await logout(page);
+
+    // Targets a month this action id was never shown for, and sets the
+    // stale-as-of override flag that only matters once past the
+    // authorization check — proving the check itself never looks at
+    // either crafted field before refusing.
+    const craftedMonth = "2008-12";
+    const craftedFd = () => {
+      const fd = new FormData();
+      fd.set("monthKey", craftedMonth);
+      fd.set("revenue", "777777");
+      fd.set("source", "forged-crafted-month");
+      fd.set("coverage", "FULL_MONTH");
+      fd.set("confirmStaleAsOf", "on");
+      return fd;
+    };
+
+    // Signed-out.
+    await forgeAction(page, "/sales", actionId, [craftedFd()]);
+    let row = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey: craftedMonth } });
+    expect(row).toBeNull();
+
+    // Non-admin, authenticated.
+    await loginAs(page, salesRepEmail, PASSWORD);
+    await forgeAction(page, "/sales", actionId, [craftedFd()]);
+    await logout(page);
+    row = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey: craftedMonth } });
+    expect(row).toBeNull();
+
+    await prisma.salesRevenueSnapshot.deleteMany({ where: { monthKey: craftedMonth } });
+  });
+
+  test("A forged saveSalesLaborAction call is refused for both a signed-out and a non-admin caller, writing nothing", async ({
+    page,
+  }) => {
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto(`/sales?month=${pastMonthKey}`);
+
+    const actionId = await captureActionId(page, async () => {
+      await page.fill("#labor", "1");
+      await page.click('button:has-text("Save Labor")');
+      await page.waitForTimeout(500);
+    });
+    const before = await prisma.salesToolData.findUnique({ where: { key: `sales:actuals:${pastMonthKey}` } });
+    expect(before?.value).toContain('"labor":1');
+    await logout(page);
+
+    const forgedFd = (labor: string) => {
+      const fd = new FormData();
+      fd.set("monthKey", pastMonthKey);
+      fd.set("labor", labor);
+      return fd;
+    };
+
+    // Signed-out.
+    await forgeAction(page, "/sales", actionId, [forgedFd("999999")]);
+    let after = await prisma.salesToolData.findUnique({ where: { key: `sales:actuals:${pastMonthKey}` } });
+    expect(after?.value).not.toContain("999999");
+
+    // Non-admin, authenticated.
+    await loginAs(page, salesRepEmail, PASSWORD);
+    await forgeAction(page, "/sales", actionId, [forgedFd("888888")]);
+    await logout(page);
+    after = await prisma.salesToolData.findUnique({ where: { key: `sales:actuals:${pastMonthKey}` } });
+    expect(after?.value).not.toContain("888888");
+    expect(after?.value).toContain('"labor":1');
+  });
+
   test("Home's current-month goal tracker is unaffected by entering a past reporting month's revenue", async ({
     page,
   }) => {
@@ -408,5 +605,68 @@ test.describe.serial("Sales revenue entry: authorization and Home goal-tracker i
     await page.waitForLoadState("networkidle");
     const after = await salesSection.innerText();
     expect(after).toBe(before);
+  });
+});
+
+test.describe("Sales revenue entry: Completed Cleaning Revenue card phone layout", () => {
+  const monthKey = "2012-07";
+
+  test.beforeAll(async () => {
+    const admin = await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL } });
+    await saveRevenueSnapshot(
+      validInput(monthKey, { revenue: "1234567.89", source: "phone-layout-check" }),
+      admin.id
+    );
+    await setSalesLabor(234567.89, monthKey);
+  });
+
+  test.afterAll(async () => {
+    await prisma.salesRevenueSnapshot.deleteMany({ where: { monthKey } });
+    await prisma.salesToolData.deleteMany({ where: { key: `sales:actuals:${monthKey}` } });
+    await prisma.auditLogEntry.deleteMany({ where: { recordType: "SalesRevenueSnapshot", recordId: monthKey } });
+    await prisma.$disconnect();
+  });
+
+  test("the card stacks to full-width rows at 390px — no clipped labels or amounts, even for a large dollar figure", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto(`/sales?month=${monthKey}`);
+    await page.waitForLoadState("networkidle");
+
+    const card = page.locator('[data-testid="completed-cleaning-revenue-card"]');
+    await expect(card).toBeVisible();
+    const stats = page.locator('[data-testid="completed-cleaning-stats"]');
+    await expect(stats.getByText("Completed Cleaning Charges", { exact: true })).toBeVisible();
+    await expect(stats.getByText("$1,234,567.89")).toBeVisible();
+    await expect(stats.getByText("Labor", { exact: true })).toBeVisible();
+    await expect(stats.getByText("$234,567.89")).toBeVisible();
+    await expect(stats.getByText("Revenue less entered labor", { exact: true })).toBeVisible();
+    await expect(stats.getByText("$1,000,000.00")).toBeVisible();
+
+    // The whole page, not just the card, must fit the viewport width — the
+    // same horizontal-overflow check used elsewhere in this app (a single
+    // oversized child can force the page to scroll sideways even if it
+    // isn't the element you're looking at).
+    const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+  });
+
+  test("the card still shows all three stat tiles side by side on desktop", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto(`/sales?month=${monthKey}`);
+    await page.waitForLoadState("networkidle");
+
+    const tiles = page.locator('[data-testid="completed-cleaning-stats"] > div');
+    expect(await tiles.count()).toBe(3);
+    const tops = await tiles.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top));
+    // Side by side means all three start at the same vertical position —
+    // stacked (the mobile layout) would show increasing tops instead.
+    expect(new Set(tops).size).toBe(1);
   });
 });
