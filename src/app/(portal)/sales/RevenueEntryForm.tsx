@@ -19,6 +19,7 @@ export interface RevenueEntryDefaults {
   coverageThrough: string; // "YYYY-MM-DD"
   sourceAsOf: string; // "YYYY-MM-DDTHH:mm"
   status: string;
+  completedCleaningCount: string; // blank means unknown, never "0"
 }
 
 export default function RevenueEntryForm({
@@ -35,6 +36,7 @@ export default function RevenueEntryForm({
   const [coverageThrough, setCoverageThrough] = useState(defaults.coverageThrough);
   const [sourceAsOf, setSourceAsOf] = useState(defaults.sourceAsOf);
   const [status, setStatus] = useState(defaults.status);
+  const [completedCleaningCount, setCompletedCleaningCount] = useState(defaults.completedCleaningCount);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [staleWarning, setStaleWarning] = useState<string | null>(null);
@@ -48,6 +50,7 @@ export default function RevenueEntryForm({
     formData.set("coverageThrough", coverageThrough);
     formData.set("sourceAsOf", sourceAsOf);
     formData.set("status", status);
+    formData.set("completedCleaningCount", completedCleaningCount);
     if (confirmStale) formData.set("confirmStaleAsOf", "on");
 
     startTransition(async () => {
@@ -90,6 +93,22 @@ export default function RevenueEntryForm({
             className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
           />
         </div>
+      </div>
+
+      <div>
+        <label htmlFor="completedCleaningCount" className="block text-xs font-medium text-neutral-500">
+          Completed cleanings count
+        </label>
+        <input
+          type="number"
+          id="completedCleaningCount"
+          min={0}
+          step="1"
+          value={completedCleaningCount}
+          onChange={(e) => setCompletedCleaningCount(e.target.value)}
+          placeholder="Leave blank if unknown"
+          className="mt-1 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+        />
       </div>
 
       <div>

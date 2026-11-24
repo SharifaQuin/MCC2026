@@ -399,7 +399,8 @@ export default async function HomePage() {
           <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
             <Stat
               label="Cleanings Needed"
-              value={sales.goal > 0 && sales.revenueTowardGoal < sales.goal ? String(sales.cleaningsNeeded) : "0"}
+              value={sales.cleaningsNeeded === null ? "Not enough data" : String(sales.cleaningsNeeded)}
+              caption="Estimate, not available schedule capacity"
             />
             {isAdmin && (
               <Stat

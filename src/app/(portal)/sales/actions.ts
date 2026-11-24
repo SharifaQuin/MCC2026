@@ -64,6 +64,7 @@ export async function saveRevenueSnapshotAction(formData: FormData): Promise<Sav
       coverageThrough: String(formData.get("coverageThrough") ?? ""),
       sourceAsOf: String(formData.get("sourceAsOf") ?? ""),
       status: String(formData.get("status") ?? ""),
+      completedCleaningCount: String(formData.get("completedCleaningCount") ?? ""),
       confirmStaleAsOf: formData.get("confirmStaleAsOf") === "on",
     },
     session.sub
