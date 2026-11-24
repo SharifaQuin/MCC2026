@@ -283,6 +283,14 @@ model User {
 
   salesRevenueSnapshotsEntered SalesRevenueSnapshot[]
 
+  rescheduleRequestsClaimed          RescheduleRequest[] @relation("RescheduleClaimedBy")
+  rescheduleRequestsMatchedInTcs     RescheduleRequest[] @relation("RescheduleMatchedInTcsBy")
+  rescheduleRequestsTcsUpdated       RescheduleRequest[] @relation("RescheduleTcsUpdatedBy")
+  rescheduleRequestsFirstResponded   RescheduleRequest[] @relation("RescheduleFirstResponseBy")
+  rescheduleRequestsCustomerInformed RescheduleRequest[] @relation("RescheduleCustomerInformedBy")
+  rescheduleMessagesSent             RescheduleMessage[] @relation("RescheduleMessageSender")
+  rescheduleNotesWritten             RescheduleNote[]
+
   promotionAssessments     PromotionAssessment[] @relation("PromotionAssessmentEmployee")
   promotionAssessmentsMade PromotionAssessment[] @relation("PromotionAssessmentAssessedBy")
 
@@ -336,12 +344,12 @@ model User {
   approvalManager   User?   @relation("ApprovalManagerOf", fields: [approvalManagerId], references: [id], onDelete: SetNull)
   officeAssistants  User[]  @relation("ApprovalManagerOf")
 
-  approvalRequestsMade     ApprovalRequest[] @relation("ApprovalRequester")
-  approvalRequestsToDecide ApprovalRequest[] @relation("ApprovalManager")
-  approvalRequestsDecided  ApprovalRequest[] @relation("ApprovalDecidedBy")
-  approvalRequestsExecuted ApprovalRequest[] @relation("ApprovalExecutedBy")
+  approvalRequestsMade     ApprovalRequest[]         @relation("ApprovalRequester")
+  approvalRequestsToDecide ApprovalRequest[]         @relation("ApprovalManager")
+  approvalRequestsDecided  ApprovalRequest[]         @relation("ApprovalDecidedBy")
+  approvalRequestsExecuted ApprovalRequest[]         @relation("ApprovalExecutedBy")
   auditLogEntries          AuditLogEntry[]
-  assignedChecklistTasks   ChecklistTask[]   @relation("ChecklistTaskAssignee")
+  assignedChecklistTasks   ChecklistTask[]           @relation("ChecklistTaskAssignee")
   policyDocumentsAdded     PolicyDocument[]
   problemReportsFiled      ProblemReport[]
   problemReportsResolved   ProblemReportResolution[]
@@ -1007,9 +1015,9 @@ enum InterviewRecommendation {
 // posting — only set it when MCC is running multiple concurrent hiring
 // pushes and needs to keep their slots separate.
 model InterviewAvailabilitySlot {
-  id              String           @id @default(cuid())
-  jobPostingId    String?
-  jobPosting      JobPosting?      @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+  id                   String           @id @default(cuid())
+  jobPostingId         String?
+  jobPosting           JobPosting?      @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
   // Which interviewer this appointment belongs to — null for pre-existing
   // flat admin-created slots that predate per-interviewer availability
   // (see InterviewerAvailability), required for anything generated through
@@ -1017,22 +1025,22 @@ model InterviewAvailabilitySlot {
   // staffer booking on someone else's behalf), this is whose calendar it
   // actually is — see availabilityDateException for why that distinction
   // matters.
-  interviewerId   String?
-  interviewer     User?            @relation("InterviewSlotInterviewer", fields: [interviewerId], references: [id], onDelete: SetNull)
+  interviewerId        String?
+  interviewer          User?            @relation("InterviewSlotInterviewer", fields: [interviewerId], references: [id], onDelete: SetNull)
   // Explicit, never re-derived from ApplicantStage — see InterviewFormat.
-  format          InterviewFormat?
-  startsAt        DateTime
-  durationMins    Int              @default(30)
+  format               InterviewFormat?
+  startsAt             DateTime
+  durationMins         Int              @default(30)
   // Set the moment a candidate claims this slot — the update that sets
   // this is conditioned on it still being null (see bookInterviewSlot in
   // lib/recruiting.ts), which is what actually prevents double-booking;
   // this column being non-null is just the resulting state.
-  bookedById      String?          @unique
-  bookedApplicant Applicant?       @relation(fields: [bookedById], references: [id], onDelete: SetNull)
+  bookedById           String?          @unique
+  bookedApplicant      Applicant?       @relation(fields: [bookedById], references: [id], onDelete: SetNull)
   // The Microsoft Graph calendar event id this appointment created, if any
   // (see src/lib/calendar.ts) — lets a reschedule update the same event in
   // place instead of leaving a stale duplicate on the shared calendar.
-  calendarEventId String?
+  calendarEventId      String?
   // Set the moment updateOrCreateInterviewCalendarEvent's update attempt
   // fails for a reason OTHER than a confirmed 404 (throttling, an
   // authorization error, a thrown network error) — calendarEventId is
@@ -1059,11 +1067,11 @@ model InterviewAvailabilitySlot {
   // shared Zoom room. A same-start unique key alone can't catch either
   // case — two overlapping-but-different-start bookings would both still
   // satisfy it.
-  bufferedStartsAt DateTime?
-  bufferedEndsAt   DateTime?
-  createdById     String
-  createdBy       User             @relation(fields: [createdById], references: [id])
-  createdAt       DateTime         @default(now())
+  bufferedStartsAt     DateTime?
+  bufferedEndsAt       DateTime?
+  createdById          String
+  createdBy            User             @relation(fields: [createdById], references: [id])
+  createdAt            DateTime         @default(now())
 
   @@unique([startsAt, jobPostingId])
   // Hard backstop against the same interviewer ending up double-booked at
@@ -1288,13 +1296,13 @@ enum RevenueSnapshotStatus {
 // requires it fall strictly before that), so only the end needs its own
 // column.
 model SalesRevenueSnapshot {
-  monthKey        String                @id // "2026-11"
-  revenue         Float
-  source          String
-  coverage        RevenueCoverage
-  coverageThrough DateTime
-  sourceAsOf      DateTime
-  status          RevenueSnapshotStatus @default(PROVISIONAL)
+  monthKey               String                @id // "2026-11"
+  revenue                Float
+  source                 String
+  coverage               RevenueCoverage
+  coverageThrough        DateTime
+  sourceAsOf             DateTime
+  status                 RevenueSnapshotStatus @default(PROVISIONAL)
   // How many cleanings this snapshot's revenue figure actually covers —
   // null means unknown (every record before this field existed, and any
   // save that leaves the count blank), never 0. Never backfilled or
@@ -1303,10 +1311,258 @@ model SalesRevenueSnapshot {
   // cleaning price for "Cleanings Needed" (see loadSalesDashboard) — not a
   // real job/booking count from TCS.
   completedCleaningCount Int?
-  enteredById     String
-  enteredBy       User                  @relation(fields: [enteredById], references: [id])
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
+  enteredById            String
+  enteredBy              User                  @relation(fields: [enteredById], references: [id])
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+}
+
+// Customer-requested move or skip of a cleaning, submitted ONLY through the
+// public /reschedule form — never from a call/text/email (pause/end-service
+// requests stay phone/email only and never create one of these rows). Every
+// row is a REQUEST, never an approval or a reservation: the customer's
+// current TCS appointment is untouched until staff act, and there is no TCS
+// integration at all — staff update TCS by hand and record that they did
+// (tcsUpdatedAt/By) as part of completing a request.
+enum RescheduleType {
+  MOVE_KEEP_SCHEDULE
+  MOVE_AND_RESTART
+  SKIP_ONE
+}
+
+enum RescheduleWorkStatus {
+  NEW
+  IN_PROGRESS
+  WAITING_ON_CUSTOMER
+  CLOSED
+}
+
+enum RescheduleDecision {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
+// Only set once workStatus is CLOSED — the specific reason, since "closed"
+// alone doesn't say whether an opening was actually taken (COMPLETED) or
+// freed back up (every other value — see the FIFO comment on
+// RescheduleRequest below for why that distinction matters).
+enum RescheduleCloseOutcome {
+  COMPLETED
+  DECLINED
+  WITHDRAWN
+  DUPLICATE_OR_INVALID
+}
+
+// Staff-only judgment call on whether the published fee/rate terms apply to
+// this specific request — never computed, never a charge or payment action.
+enum RescheduleFeeReview {
+  NOT_DECIDED
+  NO_FEE
+  FEE_APPLIES
+}
+
+// A customer PREFERENCE, never availability — independent of whatever real
+// openings the "nearest five" options feature happens to show. Staff are
+// never required to honor it and it plays no part in option matching.
+enum RescheduleArrivalWindow {
+  WINDOW_830_930
+  WINDOW_800_1130
+  WINDOW_1030_130
+  WINDOW_1200_230
+  FLEXIBLE
+}
+
+// Only collected for MOVE_AND_RESTART — a declared, as-told-to-us frequency,
+// never computed or verified against TCS.
+enum RescheduleFrequency {
+  WEEKLY
+  EVERY_2_WEEKS
+  EVERY_4_WEEKS
+  MONTHLY
+  NOT_SURE
+  OTHER
+}
+
+enum RescheduleOfferOutcome {
+  OPEN
+  DECLINED
+  WITHDRAWN
+}
+
+enum RescheduleMessageStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// One customer-visible message attempt (the automatic receipt, or a
+// staff-composed message) — never an internal note (see RescheduleNote).
+// PENDING is the claim a send attempt takes before calling the real email/
+// SMS provider; a row left at PENDING with no later SENT/FAILED is "send
+// uncertain" (the process could have crashed either side of the actual
+// provider call) and is never auto-resent — see
+// src/lib/rescheduleRequests.ts for the exact semantics, mirroring
+// ScheduledMessage's own SENDING-interrupted handling.
+model RescheduleMessage {
+  id           String                  @id @default(cuid())
+  requestId    String
+  request      RescheduleRequest       @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  channel      CommChannel
+  // "RECEIPT" (the one automatic post-submit email) or "STAFF" (a
+  // staff-composed message) — distinguishes the one-per-request automatic
+  // receipt from everything else without a separate boolean.
+  kind         String
+  status       RescheduleMessageStatus @default(PENDING)
+  body         String                  @db.Text
+  errorMessage String?                 @db.Text
+  senderById   String?
+  senderBy     User?                   @relation("RescheduleMessageSender", fields: [senderById], references: [id])
+  sentAt       DateTime?
+  createdAt    DateTime                @default(now())
+
+  @@index([requestId, createdAt])
+}
+
+// Staff-only internal note — never shown on the public status page, same
+// shape/visibility convention as LeadNote.
+model RescheduleNote {
+  id        String            @id @default(cuid())
+  requestId String
+  request   RescheduleRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  authorId  String?
+  author    User?             @relation(fields: [authorId], references: [id])
+  body      String            @db.Text
+  createdAt DateTime          @default(now())
+
+  @@index([requestId, createdAt])
+}
+
+model RescheduleRequest {
+  id      String  @id @default(cuid())
+  name    String
+  email   String
+  phone   String?
+  // Collected on the public form purely to help staff tell apart two
+  // same-name clients — staff-only: never echoed on the confirmation page,
+  // the status page, a receipt, or an alert email.
+  address String?
+  note    String? @db.Text
+
+  // UTC-midnight-encoded pure calendar date, same date-only convention used
+  // elsewhere in this app (see checklistDisplay.ts) — a past or otherwise
+  // odd date is accepted, never rejected, and only flagged for staff.
+  currentAppointmentDate DateTime       @db.Date
+  type                   RescheduleType
+
+  // The customer's chosen opening, if they picked one of the "nearest five"
+  // options shown on the form — a reference (exact date/block/window) PLUS
+  // which feed month it came from, so a later recheck can tell a now-booked
+  // opening (NO_LONGER_OPEN) apart from one that no longer exists at all
+  // because the whole month's feed was re-uploaded (FEED_REPLACED;
+  // SlotFeedMonth rows are deleted and recreated on re-import, never
+  // updated in place — see slotFeedImport.ts — so the id itself is the
+  // reliable replaced-feed signal). teamsOpen is a snapshot for display
+  // only, never re-used as a decision input. Null/null/null (block/window)
+  // with only chosenOptionDate set, or neither set at all with only
+  // preferredDateText, means a date-only or free-text preference — these
+  // never block another request's specific opening (see FIFO note below)
+  // and are flagged for staff review instead.
+  chosenOptionDate              DateTime? @db.Date
+  chosenOptionBlock             String?
+  chosenOptionWindow            String?
+  chosenOptionFeedMonthId       String?
+  chosenOptionSnapshotTeamsOpen Int?
+  preferredDateText             String?   @db.Text
+
+  // Null for SKIP_ONE (no new time at all, so no arrival preference makes
+  // sense) — required only for the two MOVE types.
+  arrivalWindow RescheduleArrivalWindow?
+  frequency     RescheduleFrequency?
+
+  workStatus   RescheduleWorkStatus    @default(NEW)
+  decision     RescheduleDecision      @default(PENDING)
+  closeOutcome RescheduleCloseOutcome?
+  closeNote    String?                 @db.Text
+
+  claimedById String?
+  claimedBy   User?     @relation("RescheduleClaimedBy", fields: [claimedById], references: [id])
+  claimedAt   DateTime?
+
+  // "Client AND appointment matched in TCS" — a single staff confirmation
+  // that both are correct, required before APPROVED.
+  matchedInTcsAt   DateTime?
+  matchedInTcsById String?
+  matchedInTcsBy   User?     @relation("RescheduleMatchedInTcsBy", fields: [matchedInTcsById], references: [id])
+
+  // Staff hand-updated TCS itself (no integration exists) — required before
+  // COMPLETED.
+  tcsUpdatedAt   DateTime?
+  tcsUpdatedById String?
+  tcsUpdatedBy   User?     @relation("RescheduleTcsUpdatedBy", fields: [tcsUpdatedById], references: [id])
+
+  // Literal elapsed-time tracking for the 48h-response badge — cleared only
+  // by this field or a close, never by the automatic receipt.
+  firstStaffResponseAt   DateTime?
+  firstStaffResponseById String?
+  firstStaffResponseBy   User?     @relation("RescheduleFirstResponseBy", fields: [firstStaffResponseById], references: [id])
+
+  // Set ONLY by an explicit staff action — never implied by a message
+  // merely showing SENT (a provider accepting a send is not the same as the
+  // customer actually having been told; see src/lib/rescheduleRequests.ts).
+  customerInformedAt   DateTime?
+  customerInformedById String?
+  customerInformedBy   User?     @relation("RescheduleCustomerInformedBy", fields: [customerInformedById], references: [id])
+
+  feeReview     RescheduleFeeReview @default(NOT_DECIDED)
+  feeReviewNote String?             @db.Text
+
+  // Staff-typed confirmed result — prefills the final, staff-edited
+  // confirmation message.
+  confirmedDate            DateTime? @db.Date
+  confirmedWindow          String?
+  confirmedOriginalOutcome String?   @db.Text
+  confirmedRecurrenceText  String?   @db.Text
+  confirmedFeeNotice       String?   @db.Text
+
+  // The specific opening staff are offering back to the customer — usually
+  // (not always) the same as chosenOption* above; this is what FIFO
+  // blocking across different requests actually compares.
+  offerOptionDate   DateTime?               @db.Date
+  offerOptionBlock  String?
+  offerOptionWindow String?
+  offerAt           DateTime?
+  offerText         String?                 @db.Text
+  offerOutcome      RescheduleOfferOutcome?
+
+  // 128-bit random token, hashed at rest (sha256) — never stored or looked
+  // up in plaintext. Generic not-found for anything that doesn't resolve;
+  // see src/app/reschedule/status/[token]/page.tsx.
+  statusTokenHash      String    @unique
+  statusTokenExpiresAt DateTime?
+  statusTokenRevokedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages RescheduleMessage[]
+  notes    RescheduleNote[]
+
+  // FIFO note (also see RescheduleMessage/RescheduleNote above): two
+  // different requests can name the SAME exact opening via chosenOption*/
+  // offerOption* — staff may offer it only to the oldest (by createdAt)
+  // still-open request wanting it. "Still open" here means this request's
+  // own decision/closeOutcome hasn't released the hold: a request that is
+  // PENDING, APPROVED, or CLOSED+COMPLETED still holds its opening; only
+  // CLOSED+DECLINED, CLOSED+WITHDRAWN, or CLOSED+DUPLICATE_OR_INVALID
+  // releases it. This is pure application logic (src/lib/
+  // rescheduleRequests.ts) — nothing about it is enforced by the schema
+  // itself, since "the same opening" is a derived match across rows, not a
+  // database constraint.
+  @@index([createdAt])
+  @@index([workStatus])
+  @@index([decision])
+  @@index([claimedById])
 }
 
 // A policy/paperwork document new employees must read and sign before they
@@ -2893,7 +3149,7 @@ model ApprovalRequest {
   // the three manual-only action types (always), and for either new kind
   // before its approval has actually been decided.
   executionStatus ApprovalExecutionStatus?
-  executionError  String?                   @db.Text
+  executionError  String?                  @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

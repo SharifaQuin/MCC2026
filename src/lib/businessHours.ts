@@ -54,3 +54,25 @@ export function isWithinBusinessHours(date: Date, config: BusinessHoursConfig): 
   const end = config.endHour * 60 + config.endMinute;
   return minutesOfDay >= start && minutesOfDay < end;
 }
+
+// Minutes between `from` and `to` that fall within business hours — e.g. a
+// "10 minutes unclaimed" badge means 10 business-hours minutes, not 10
+// wall-clock minutes (so it doesn't fire overnight or over a weekend). `cap`
+// stops counting early once reached (the common case only needs to know
+// "has at least N business minutes passed", not the exact total), so a
+// request that's clearly well past a small threshold doesn't walk its
+// entire — potentially long — age minute by minute.
+export function businessMinutesElapsed(from: Date, to: Date, config: BusinessHoursConfig, cap?: number): number {
+  if (to <= from) return 0;
+  let count = 0;
+  const cursor = new Date(from);
+  cursor.setSeconds(0, 0);
+  while (cursor < to) {
+    if (isWithinBusinessHours(cursor, config)) {
+      count++;
+      if (cap !== undefined && count >= cap) return count;
+    }
+    cursor.setMinutes(cursor.getMinutes() + 1);
+  }
+  return count;
+}

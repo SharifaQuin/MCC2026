@@ -14,6 +14,16 @@ import LaborEntryForm from "./LaborEntryForm";
 import { PeopleIcon, DollarIcon, ClipboardListIcon, CalendarIcon } from "@/components/icons";
 import { businessMonthKey, businessDateTimeInputValue } from "@/lib/timezone";
 import { isValidMonthKey, monthBoundsUtc, getRevenueEntryForMonth } from "@/lib/salesRevenueSnapshot";
+import { getOpenRequestsSummary } from "@/lib/rescheduleRequests";
+
+function formatAge(createdAt: Date | null): string | undefined {
+  if (!createdAt) return undefined;
+  const ms = Date.now() - createdAt.getTime();
+  const days = Math.floor(ms / 86400000);
+  if (days >= 1) return `Oldest: ${days} day${days === 1 ? "" : "s"} old`;
+  const hours = Math.floor(ms / 3600000);
+  return `Oldest: ${hours} hour${hours === 1 ? "" : "s"} old`;
+}
 
 function Stat({
   label,
@@ -104,7 +114,7 @@ export default async function SalesPage({
   const requestedMonth = searchParams?.month ?? "";
   const selectedMonth = isValidMonthKey(requestedMonth) ? requestedMonth : businessMonthKey();
 
-  const [dash, leadKpis, monthlyLeadOutcomes, overdueSalesTasks, assignedTasks, selectedMonthActuals, revenueEntry] =
+  const [dash, leadKpis, monthlyLeadOutcomes, overdueSalesTasks, assignedTasks, selectedMonthActuals, revenueEntry, openRequests] =
     await Promise.all([
       loadSalesDashboard(isAdmin),
       loadLeadKpis(),
@@ -120,6 +130,7 @@ export default async function SalesPage({
       isSalesRep ? getChecklistTasksForRole(session.role, session.sub) : Promise.resolve([]),
       isAdmin ? getSalesActuals(selectedMonth) : Promise.resolve(null),
       isAdmin ? getRevenueEntryForMonth(selectedMonth) : Promise.resolve(null),
+      getOpenRequestsSummary(),
     ]);
 
   const assignedTaskRows = assignedTasks.map((t) => ({
@@ -289,6 +300,12 @@ export default async function SalesPage({
             caption="Book from a lead"
             icon={<CalendarIcon className="h-4 w-4" />}
           />
+          <ShortcutCard
+            href="/sales/reschedules"
+            label="Reschedule Requests"
+            caption="Customer move/skip requests"
+            icon={<ClipboardListIcon className="h-4 w-4" />}
+          />
         </div>
       )}
 
@@ -321,6 +338,9 @@ export default async function SalesPage({
               value={dash.winRate === null ? "—" : `${Math.round(dash.winRate * 100)}%`}
             />
             <Stat label="Avg. Job Value" value={dash.averageJobValue ? money(dash.averageJobValue) : "—"} />
+            <Link href="/sales/reschedules" data-testid="open-requests-card" className="block">
+              <Stat label="Open Requests" value={String(openRequests.count)} caption={formatAge(openRequests.oldestCreatedAt)} />
+            </Link>
             <Stat label="Won (all-time)" value={String(dash.wonCount)} />
             <Stat label="Lost (all-time)" value={String(dash.lostCount)} />
           </div>
@@ -356,6 +376,9 @@ export default async function SalesPage({
               label="Avg. Job Value"
               value={dash.averageJobValue ? money(dash.averageJobValue) : "—"}
             />
+            <Link href="/sales/reschedules" data-testid="open-requests-card" className="block">
+              <Stat label="Open Requests" value={String(openRequests.count)} caption={formatAge(openRequests.oldestCreatedAt)} />
+            </Link>
             <Stat label="Won (all-time)" value={String(dash.wonCount)} />
             <Stat label="Lost (all-time)" value={String(dash.lostCount)} />
           </div>

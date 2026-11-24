@@ -6,6 +6,7 @@ import { hasDepartmentAccess, resolveUserDepartments, DEPARTMENT_INFO } from "@/
 import { loadAdminDashboard } from "@/lib/dashboard";
 import { loadRecruitingDashboard } from "@/lib/recruiting";
 import { loadSalesDashboard } from "@/lib/salesDashboard";
+import { getOpenRequestsSummary } from "@/lib/rescheduleRequests";
 import { getPendingOnboardingCount } from "@/lib/onboarding";
 import { getLatestMonthlyFinancials, getTeamGoals, getChecklistTasksForRole, getOpenLoans } from "@/lib/financials";
 import { reachedGrowthStages } from "@/lib/checklistDisplay";
@@ -202,7 +203,7 @@ export default async function HomePage() {
       ).filter((link) => officeAssistantAreas?.[link.area]?.canView)
     : [];
 
-  const [training, recruiting, sales, latestFinancials, teamGoals, checklistTasks, openLoans, todayCard] =
+  const [training, recruiting, sales, latestFinancials, teamGoals, checklistTasks, openLoans, todayCard, openRequests] =
     await Promise.all([
       isSalesRep ? Promise.resolve(null) : loadAdminDashboard(),
       isSalesRep ? Promise.resolve(null) : loadRecruitingDashboard(),
@@ -217,6 +218,7 @@ export default async function HomePage() {
         : Promise.resolve([]),
       isAdmin ? getOpenLoans() : Promise.resolve([]),
       getTodayCardData({ isAdmin, hasSalesAccess, canViewPayroll, isSalesRep }),
+      hasSalesAccess ? getOpenRequestsSummary() : Promise.resolve(null),
     ]);
 
   const growthStaircase = (teamGoals.growth_staircase_monthly_revenue as number[] | undefined) ?? [];
@@ -233,6 +235,15 @@ export default async function HomePage() {
   // Shared between the Sales section's header badge (unchanged) and the
   // Monthly Goal Stat tile's new caption — same data already computed here,
   // no new computation.
+  const openRequestsAgeLabel = (() => {
+    if (!openRequests?.oldestCreatedAt) return undefined;
+    const ms = Date.now() - openRequests.oldestCreatedAt.getTime();
+    const days = Math.floor(ms / 86400000);
+    if (days >= 1) return `Oldest: ${days} day${days === 1 ? "" : "s"} old`;
+    const hours = Math.floor(ms / 3600000);
+    return `Oldest: ${hours} hour${hours === 1 ? "" : "s"} old`;
+  })();
+
   const salesGoalHit = !!sales && sales.goal > 0 && sales.revenueTowardGoal >= sales.goal;
   const salesGoalProgressText = sales
     ? salesGoalHit
@@ -411,6 +422,9 @@ export default async function HomePage() {
             )}
             <Stat label="Pending Quotes" value={sales.pendingCount} href="/sales/quotes?status=pending" />
             <Stat label="Win Rate" value={sales.winRate === null ? "—" : `${Math.round(sales.winRate * 100)}%`} />
+            {openRequests && (
+              <Stat label="Open Requests" value={openRequests.count} caption={openRequestsAgeLabel} href="/sales/reschedules" />
+            )}
           </div>
           <Link href="/sales" className="mt-5 inline-block text-sm font-medium text-brand-700 hover:underline">
             View full Sales dashboard →

@@ -267,6 +267,114 @@ export async function listLoadedSlotMonths(): Promise<string[]> {
   return rows.map((r) => r.month);
 }
 
+// ---------------------------------------------------------------------------
+// Public-facing wrapper for the /reschedule form's "open options" — built
+// server-side each load from the exact same logic as getNextOpenSlots
+// above, across every loaded month (earliest first), never just one month.
+// Whitelisted to weekday/date/block ONLY — never teamsOpen (a real-time
+// operational headcount) or windowValuePerHour (owner-only earnings data).
+// A request is still only a REQUEST: this never creates a SlotBooking, a
+// hold, or any feed change, and limits are known to understate true
+// capacity (see PublicOpenOption's own field comments).
+// Whitelisted to weekday/date/block/window only — teamsOpen (an
+// operational headcount) is deliberately never put on this type at all, so
+// it can never reach the public client, not even silently through an RSC
+// prop nobody renders. feedMonthId is just an opaque reference (like any
+// other hidden form id elsewhere in this app, e.g. NextOpenSlotsCard's
+// hidden month/date/block/window inputs) — never a number a customer could
+// read anything operational from.
+export interface PublicOpenOption {
+  date: string;
+  weekday: string;
+  block: string;
+  window: string;
+  feedMonthId: string;
+}
+
+export async function getPublicOpenOptions(limit = 5, now: Date = new Date()): Promise<PublicOpenOption[]> {
+  const months = await listLoadedSlotMonths();
+  const results: PublicOpenOption[] = [];
+  for (const month of months) {
+    if (results.length >= limit) break;
+    const feedMonth = await prisma.slotFeedMonth.findUnique({ where: { month } });
+    if (!feedMonth) continue;
+    const slots = await getNextOpenSlots(month, limit - results.length, now, false);
+    for (const s of slots) {
+      results.push({ date: s.date, weekday: s.weekday, block: s.block, window: s.window, feedMonthId: feedMonth.id });
+      if (results.length >= limit) break;
+    }
+  }
+  return results;
+}
+
+// The current, live teamsOpen count for one specific (feedMonthId, date,
+// block) — used ONLY server-side, to capture an honest snapshot at the
+// moment of submission (never trusting a client-supplied number, and never
+// sent to the public client in the first place — see PublicOpenOption
+// above). Returns null when the feed/date/block no longer resolve (the
+// same FEED_REPLACED/NO_LONGER_OPEN situations recheckOpenOption detects).
+export async function getCurrentTeamsOpen(feedMonthId: string, date: string, block: string, now: Date = new Date()): Promise<number | null> {
+  const feedMonth = await prisma.slotFeedMonth.findUnique({ where: { id: feedMonthId } });
+  if (!feedMonth) return null;
+
+  const dateRow = await prisma.slotFeedDate.findUnique({
+    where: { feedMonthId_date: { feedMonthId, date: new Date(`${date}T00:00:00Z`) } },
+  });
+  if (!dateRow) return null;
+
+  const blocks = dateRow.blocks as Record<string, { open: number; windows: string[] }>;
+  const blockDef = blocks[block];
+  if (!blockDef) return null;
+
+  const booked = await prisma.slotBooking.count({
+    where: {
+      month: feedMonth.month,
+      date: dateRow.date,
+      block,
+      OR: [{ status: "CONFIRMED" }, { status: "HOLD", holdExpiresAt: { gt: now } }],
+    },
+  });
+  return blockDef.open - booked;
+}
+
+export type OpenOptionRecheckStatus = "STILL_OPEN" | "NO_LONGER_OPEN" | "FEED_REPLACED";
+
+// Re-verifies one specific (date, block, window) opening, identified by the
+// feedMonthId snapshotted when the customer first picked it. SlotFeedMonth
+// rows are deleted and recreated wholesale on every re-import (never
+// updated in place — see slotFeedImport.ts), so a feedMonthId that no
+// longer resolves to a row means the whole month's feed was replaced since
+// the customer chose this option, not merely that it filled up.
+export async function recheckOpenOption(
+  feedMonthId: string,
+  date: string,
+  block: string,
+  window: string,
+  now: Date = new Date()
+): Promise<OpenOptionRecheckStatus> {
+  const feedMonth = await prisma.slotFeedMonth.findUnique({ where: { id: feedMonthId } });
+  if (!feedMonth) return "FEED_REPLACED";
+
+  const dateRow = await prisma.slotFeedDate.findUnique({
+    where: { feedMonthId_date: { feedMonthId, date: new Date(`${date}T00:00:00Z`) } },
+  });
+  if (!dateRow) return "NO_LONGER_OPEN";
+
+  const blocks = dateRow.blocks as Record<string, { open: number; windows: string[] }>;
+  const blockDef = blocks[block];
+  if (!blockDef || !blockDef.windows.includes(window)) return "NO_LONGER_OPEN";
+
+  const booked = await prisma.slotBooking.count({
+    where: {
+      month: feedMonth.month,
+      date: dateRow.date,
+      block,
+      OR: [{ status: "CONFIRMED" }, { status: "HOLD", holdExpiresAt: { gt: now } }],
+    },
+  });
+  return blockDef.open - booked > 0 ? "STILL_OPEN" : "NO_LONGER_OPEN";
+}
+
 export async function resolveActiveSlotMonth(now: Date = new Date()): Promise<string | null> {
   const todayIso = businessDateKey(now);
   const thisMonth = todayIso.slice(0, 7);

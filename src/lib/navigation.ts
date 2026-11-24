@@ -148,6 +148,7 @@ export function buildNavGroups({
         { href: "/sales/pricing-tool", label: "Pricing Calculator" },
         { href: "/sales/quotes", label: "Quotes" },
         { href: "/sales/open-slots", label: "Open Slots" },
+        { href: "/sales/reschedules", label: "Reschedule Requests" },
         { href: "/todo", label: labels.todo },
       ],
     });
