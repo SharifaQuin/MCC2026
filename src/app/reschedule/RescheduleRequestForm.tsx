@@ -88,7 +88,6 @@ export default function RescheduleRequestForm({
       if (chosen) {
         formData.set("chosenOptionDate", chosen.date);
         formData.set("chosenOptionBlock", chosen.block);
-        formData.set("chosenOptionWindow", chosen.window);
         formData.set("chosenOptionFeedMonthId", chosen.feedMonthId);
       } else {
         formData.set("preferredDateText", preferredDateText);
@@ -238,7 +237,7 @@ export default function RescheduleRequestForm({
               {options.length > 0 && (
                 <div className="mt-2 space-y-2">
                   {options.map((o, i) => (
-                    <label key={`${o.date}-${o.block}-${o.window}`} className="flex items-center gap-2 text-sm text-neutral-800">
+                    <label key={`${o.date}-${o.block}`} className="flex items-center gap-2 text-sm text-neutral-800">
                       <input
                         type="radio"
                         name="option-choice"

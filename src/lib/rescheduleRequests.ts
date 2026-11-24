@@ -24,27 +24,39 @@ import type {
 
 // ---------------------------------------------------------------------------
 // Published fee/rate terms — shown identically to every customer, before
-// submit, exactly as required by the brief: copied verbatim from
+// submit, copied verbatim from
 // https://mamascleaningcrew.com/policies-guidelines/'s "Cancellation &
 // Schedule Changes" and "Skip Service Policy" sections, with ONLY the
-// sentence about reaching the office by reply/text/call/email replaced.
-//
-// THIS BUILD COULD NOT FETCH THAT PAGE: this sandboxed environment's network
-// policy blocks mamascleaningcrew.com (DNS resolution failed — the host is
-// outside the session's allowed network domains). Per the brief's own "no
-// fee computed, no invented terms" rule, the text below is a clearly-marked
-// placeholder, NOT real policy text — it must be replaced with the exact
-// verbatim wording from that page (and TERMS_DATE_READ updated) before this
-// feature is merged or deployed. Nothing in this file infers, computes, or
-// guesses at a fee, a notice period, or a rate change from this placeholder.
+// sentence about reaching the office by reply/text/call/email replaced by
+// TERMS_CONTACT_SENTENCE below. Nothing in this file infers, computes, or
+// guesses at a fee, a notice period, or a rate change — every figure here is
+// the source's own published text, not derived.
 export const TERMS_SOURCE_URL = "https://mamascleaningcrew.com/policies-guidelines/";
-export const TERMS_DATE_READ = "NOT YET READ — source page fetch blocked in this build, see comment above";
+export const TERMS_DATE_READ = "2026-11-24";
 export const TERMS_CONTACT_SENTENCE =
   "Moves and skips are requested through this form. To pause or end service, please call or email us.";
-export const TERMS_TEXT =
-  `[PLACEHOLDER — replace with the exact, verbatim text of the "Cancellation & Schedule Changes" and ` +
-  `"Skip Service Policy" sections from ${TERMS_SOURCE_URL}, with only the office-contact sentence swapped ` +
-  `for: "${TERMS_CONTACT_SENTENCE}" — do not paraphrase, summarize, or invent fee/notice/rate wording here.]`;
+export const TERMS_TEXT = `Cancellation & Schedule Changes
+
+Life happens, and we know plans can change! Here’s what you need to know about canceling or changing your appointment:
+
+Notify us at least 2 business days (48 hours) before your cleaning to avoid a fee. Moves and skips are requested through this form. To pause or end service, please call or email us.
+If you cancel or reschedule 1 business day before: a $50 fee will apply.
+If you cancel the same day: you’ll be charged 100% of your cleaning fee. This is because we won’t have time to fill your spot, and it affects our employees’ income.
+For Friday or weekend cancellations: If you cancel on Friday for a Monday cleaning, a $50 fee applies because our office is closed over the weekend. If you cancel after hours on Friday or over the weekend, the same-day cancellation fee (50%) will apply.
+Skips : If you skip a reoccurring appointment a $50 dollar fee will be added to your next cleaning.
+Reschedules : If you reschedule an appointment less than 48 hours before your appointment a $50 dollar fee will apply. If you reschedule less than 24 hours this will be considered a cancelation and all same day cancelation fees will apply.
+
+(We don’t love collecting extra fees, but they help ensure our hardworking technicians get paid for lost hours when appointments are missed or changed. We appreciate your understanding and support in keeping their income reliable!)
+
+Skip Service Policy: Keeping It Consistent
+
+If you’re a routine customer and need to reschedule, your next cleaning will be charged at the appropriate frequency rate:
+
+Example: If you’re on a bi-weekly plan but skip a cleaning, your next service will be charged at the monthly rate to account for extra buildup.
+
+Our discounted routine rates are based on regular maintenance. If your service is paused for more than six weeks, the discounted rate no longer applies. You’ll need to book a one-time deep clean before resuming routine service.
+
+For monthly customers: We recommend rescheduling within two weeks of your original date to avoid requiring another deep clean. If we’re unavailable within that timeframe, we’ll handle it case by case.`;
 
 // ---------------------------------------------------------------------------
 // Labels — plain display strings, never used for any computation.
@@ -140,7 +152,6 @@ export interface RawRescheduleInput {
   frequency: string; // required only for MOVE_AND_RESTART
   chosenOptionDate: string; // "" if choosing a preferred date/free text instead
   chosenOptionBlock: string;
-  chosenOptionWindow: string;
   chosenOptionFeedMonthId: string;
   preferredDateText: string;
 }
@@ -216,13 +227,16 @@ export async function createRescheduleRequest(
       chosenOptionDate = parseExactCalendarDate(chosenDateRaw);
       if (!chosenOptionDate) return { ok: false, error: "The selected option's date is invalid." };
       chosenOptionBlock = input.chosenOptionBlock.trim() || null;
-      chosenOptionWindow = input.chosenOptionWindow.trim() || null;
       chosenOptionFeedMonthId = input.chosenOptionFeedMonthId.trim() || null;
-      // Derived server-side, never trusted from client input — see
-      // getCurrentTeamsOpen's own comment.
+      // Both derived server-side, never trusted from (or sent to) the
+      // public client — see getCurrentTeamsOpen's and
+      // getBlockWindowsSnapshot's own comments. The customer only ever
+      // chose a (date, block); any underlying feed window is staff-only
+      // context captured here, never shown back to them.
       if (chosenOptionFeedMonthId && chosenOptionBlock) {
-        const { getCurrentTeamsOpen } = await import("@/lib/slotCapacitySummary");
+        const { getCurrentTeamsOpen, getBlockWindowsSnapshot } = await import("@/lib/slotCapacitySummary");
         chosenOptionSnapshotTeamsOpen = await getCurrentTeamsOpen(chosenOptionFeedMonthId, chosenDateRaw, chosenOptionBlock, now);
+        chosenOptionWindow = await getBlockWindowsSnapshot(chosenOptionFeedMonthId, chosenDateRaw, chosenOptionBlock);
       }
     } else if (preferredTextRaw) {
       preferredDateText = preferredTextRaw;
@@ -320,18 +334,18 @@ export interface RescheduleBadges {
 
 // Whether `candidate`'s chosen/offered opening (if any) is the SAME exact
 // listed option as `other`'s — the only thing FIFO blocking and duplicate-
-// opening detection ever compare.
+// opening detection ever compare. Keyed on (date, block) only, the exact
+// granularity shown to the public (see PublicOpenOption) — a feed window
+// is staff-only context, never part of what the customer actually picked,
+// so two customers who picked the same shown (date, block) choice are the
+// same candidate opening even if they'd map to different feed windows.
 function sameOpening(
-  a: { chosenOptionDate: Date | null; chosenOptionBlock: string | null; chosenOptionWindow: string | null },
-  b: { chosenOptionDate: Date | null; chosenOptionBlock: string | null; chosenOptionWindow: string | null }
+  a: { chosenOptionDate: Date | null; chosenOptionBlock: string | null },
+  b: { chosenOptionDate: Date | null; chosenOptionBlock: string | null }
 ): boolean {
-  if (!a.chosenOptionDate || !a.chosenOptionBlock || !a.chosenOptionWindow) return false;
-  if (!b.chosenOptionDate || !b.chosenOptionBlock || !b.chosenOptionWindow) return false;
-  return (
-    a.chosenOptionDate.getTime() === b.chosenOptionDate.getTime() &&
-    a.chosenOptionBlock === b.chosenOptionBlock &&
-    a.chosenOptionWindow === b.chosenOptionWindow
-  );
+  if (!a.chosenOptionDate || !a.chosenOptionBlock) return false;
+  if (!b.chosenOptionDate || !b.chosenOptionBlock) return false;
+  return a.chosenOptionDate.getTime() === b.chosenOptionDate.getTime() && a.chosenOptionBlock === b.chosenOptionBlock;
 }
 
 // Still holds its opening — COMPLETED keeps the hold (the opening really
@@ -350,12 +364,9 @@ function stillHoldsOpening(r: Pick<RescheduleRequest, "workStatus" | "closeOutco
 // earlier request blocks staff from offering this opening to `request`.
 // Returns null when nothing blocks it.
 export function findBlockingEarlierRequest<
-  T extends Pick<
-    RescheduleRequest,
-    "id" | "createdAt" | "chosenOptionDate" | "chosenOptionBlock" | "chosenOptionWindow" | "workStatus" | "closeOutcome"
-  >
+  T extends Pick<RescheduleRequest, "id" | "createdAt" | "chosenOptionDate" | "chosenOptionBlock" | "workStatus" | "closeOutcome">
 >(request: T, allOpenRequests: T[]): T | null {
-  if (!request.chosenOptionDate || !request.chosenOptionBlock || !request.chosenOptionWindow) return null;
+  if (!request.chosenOptionDate || !request.chosenOptionBlock) return null;
   const candidates = allOpenRequests
     .filter((other) => other.id !== request.id)
     .filter((other) => sameOpening(request, other))
@@ -377,15 +388,11 @@ export async function computeBadges(
     | "closeOutcome"
     | "chosenOptionDate"
     | "chosenOptionBlock"
-    | "chosenOptionWindow"
     | "preferredDateText"
     | "type"
     | "email"
   >,
-  openRequestsForFifo: Pick<
-    RescheduleRequest,
-    "id" | "createdAt" | "chosenOptionDate" | "chosenOptionBlock" | "chosenOptionWindow" | "workStatus" | "closeOutcome"
-  >[],
+  openRequestsForFifo: Pick<RescheduleRequest, "id" | "createdAt" | "chosenOptionDate" | "chosenOptionBlock" | "workStatus" | "closeOutcome">[],
   hasFailedMessage: boolean,
   isPossibleDuplicate: boolean,
   now: Date = new Date()
@@ -850,14 +857,17 @@ export async function addStaffNote(id: string, body: string, actorId: string): P
   return { ok: true };
 }
 
-// FIFO-checked offer — blocks offering a specific (date, block, window) to
-// `id` when an older, still-open request for that SAME exact opening
-// exists. Never rejects outright for a date-only/free-text request (no
+// FIFO-checked offer — blocks offering a specific (date, block) to `id`
+// when an older, still-open request for that SAME exact opening exists.
+// Keyed on (date, block) only — the granularity the customer actually saw
+// and picked from (see PublicOpenOption) — never a feed window, which is
+// staff-only context and was never part of what either customer chose.
+// Never rejects outright for a date-only/free-text request (no
 // chosenOption on file at all) making the offer — only two requests both
 // naming the identical listed option can conflict.
 export async function offerOption(
   id: string,
-  option: { date: string; block: string; window: string },
+  option: { date: string; block: string; window?: string },
   text: string,
   actorId: string
 ): Promise<{ ok: boolean; error?: string }> {
@@ -867,27 +877,20 @@ export async function offerOption(
   const offerDate = parseExactCalendarDate(option.date.trim());
   if (!offerDate) return { ok: false, error: "Enter a real date for this opening." };
   const block = option.block.trim();
-  const window = option.window.trim();
-  if (!block || !window) return { ok: false, error: "Block and window are required." };
+  if (!block) return { ok: false, error: "Block is required." };
+  // A feed window, if staff note one, is purely their own informational
+  // record of which window they're offering — never part of FIFO matching.
+  const window = option.window?.trim() || null;
 
   const candidates = await prisma.rescheduleRequest.findMany({
-    where: { id: { not: id }, chosenOptionDate: offerDate, chosenOptionBlock: block, chosenOptionWindow: window },
-    select: {
-      id: true,
-      createdAt: true,
-      chosenOptionDate: true,
-      chosenOptionBlock: true,
-      chosenOptionWindow: true,
-      workStatus: true,
-      closeOutcome: true,
-    },
+    where: { id: { not: id }, chosenOptionDate: offerDate, chosenOptionBlock: block },
+    select: { id: true, createdAt: true, chosenOptionDate: true, chosenOptionBlock: true, workStatus: true, closeOutcome: true },
   });
   const virtualSelf = {
     id: request.id,
     createdAt: request.createdAt,
     chosenOptionDate: offerDate,
     chosenOptionBlock: block,
-    chosenOptionWindow: window,
     workStatus: request.workStatus,
     closeOutcome: request.closeOutcome,
   };

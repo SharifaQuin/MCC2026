@@ -72,7 +72,6 @@ export async function submitRescheduleRequestAction(formData: FormData): Promise
     frequency: String(formData.get("frequency") ?? ""),
     chosenOptionDate: String(formData.get("chosenOptionDate") ?? ""),
     chosenOptionBlock: String(formData.get("chosenOptionBlock") ?? ""),
-    chosenOptionWindow: String(formData.get("chosenOptionWindow") ?? ""),
     chosenOptionFeedMonthId: String(formData.get("chosenOptionFeedMonthId") ?? ""),
     preferredDateText: String(formData.get("preferredDateText") ?? ""),
   };
@@ -80,17 +79,12 @@ export async function submitRescheduleRequestAction(formData: FormData): Promise
   const result = await createRescheduleRequest(raw);
   if (!result.ok) return result;
 
-  // Recheck the specific chosen option, if any — purely informational,
-  // shown back to the customer; this never rejects or blocks the
-  // submission, which has already been saved.
+  // Recheck the specific chosen (date, block) opening, if any — purely
+  // informational, shown back to the customer; this never rejects or
+  // blocks the submission, which has already been saved.
   let optionRecheck: OpenOptionRecheckStatus | undefined;
-  if (raw.chosenOptionFeedMonthId.trim() && raw.chosenOptionDate.trim() && raw.chosenOptionBlock.trim() && raw.chosenOptionWindow.trim()) {
-    optionRecheck = await recheckOpenOption(
-      raw.chosenOptionFeedMonthId.trim(),
-      raw.chosenOptionDate.trim(),
-      raw.chosenOptionBlock.trim(),
-      raw.chosenOptionWindow.trim()
-    );
+  if (raw.chosenOptionFeedMonthId.trim() && raw.chosenOptionDate.trim() && raw.chosenOptionBlock.trim()) {
+    optionRecheck = await recheckOpenOption(raw.chosenOptionFeedMonthId.trim(), raw.chosenOptionDate.trim(), raw.chosenOptionBlock.trim());
   }
 
   const statusUrl = `/reschedule/status/${result.statusToken}`;

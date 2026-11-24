@@ -37,9 +37,10 @@ import {
   getOpenRequestsSummary,
   buildReceiptBody,
   TERMS_TEXT,
+  TERMS_DATE_READ,
   type RawRescheduleInput,
 } from "../src/lib/rescheduleRequests";
-import { getPublicOpenOptions, recheckOpenOption, getCurrentTeamsOpen } from "../src/lib/slotCapacitySummary";
+import { getPublicOpenOptions, recheckOpenOption, getCurrentTeamsOpen, getBlockWindowsSnapshot } from "../src/lib/slotCapacitySummary";
 import { checkRateLimit, resetRateLimit } from "../src/lib/rateLimit";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "shar@mamascleaningcrew.com";
@@ -107,7 +108,6 @@ function validInput(overrides: Partial<RawRescheduleInput> = {}): RawRescheduleI
     frequency: "",
     chosenOptionDate: "",
     chosenOptionBlock: "",
-    chosenOptionWindow: "",
     chosenOptionFeedMonthId: "",
     preferredDateText: "No preference, any weekday morning",
     ...overrides,
@@ -219,9 +219,34 @@ test.describe("Reschedule requests: terms constant, no fee computed", () => {
     expect(b).toContain(TERMS_TEXT);
   });
 
-  test("the terms constant never contains a computed dollar figure or percentage — it's static text, not a fee calculation", () => {
-    expect(TERMS_TEXT).not.toMatch(/\$\d/);
-    expect(TERMS_TEXT).not.toMatch(/\d+%/);
+  test("the dollar figures and percentages in the terms are the source's own static published text, never computed or interpolated per request", () => {
+    // The published text does name its own fixed figures (e.g. "$50 fee",
+    // "100% of your cleaning fee") — this app never calculates a fee itself,
+    // it only ever displays this one unchanging constant. Proof: no leftover
+    // template-interpolation artifact, and the exact published figures.
+    expect(TERMS_TEXT).not.toMatch(/\$\{/);
+    expect(TERMS_TEXT).toContain("a $50 fee will apply");
+    expect(TERMS_TEXT).toContain("100% of your cleaning fee");
+  });
+
+  test("the published text replaced the placeholder: no PLACEHOLDER wording remains, and the date read is set", () => {
+    expect(TERMS_TEXT).not.toMatch(/PLACEHOLDER/i);
+    expect(TERMS_DATE_READ).not.toMatch(/PLACEHOLDER|NOT YET READ/i);
+    expect(TERMS_DATE_READ).toBe("2026-11-24");
+    expect(TERMS_TEXT).toContain("Cancellation & Schedule Changes");
+    expect(TERMS_TEXT).toContain("Skip Service Policy: Keeping It Consistent");
+    expect(TERMS_TEXT).toContain(
+      "Moves and skips are requested through this form. To pause or end service, please call or email us."
+    );
+  });
+
+  test("the receipt body contains the terms text exactly, with no PLACEHOLDER wording", () => {
+    const receipt = buildReceiptBody(
+      { name: "Receipt Checker", type: "MOVE_KEEP_SCHEDULE", currentAppointmentDate: new Date("2026-12-01T00:00:00Z") },
+      "/reschedule/status/ccc"
+    );
+    expect(receipt).toContain(TERMS_TEXT);
+    expect(receipt).not.toMatch(/PLACEHOLDER/i);
   });
 });
 
@@ -275,13 +300,18 @@ interface FifoTestRow {
   createdAt: Date;
   chosenOptionDate: Date | null;
   chosenOptionBlock: string | null;
-  chosenOptionWindow: string | null;
   workStatus: "NEW" | "IN_PROGRESS" | "WAITING_ON_CUSTOMER" | "CLOSED";
   closeOutcome: "COMPLETED" | "DECLINED" | "WITHDRAWN" | "DUPLICATE_OR_INVALID" | null;
 }
 
 test.describe("Reschedule requests: FIFO blocking (direct lib calls)", () => {
-  const sameOpening = { chosenOptionDate: new Date("2026-08-10T00:00:00Z"), chosenOptionBlock: "Midday", chosenOptionWindow: "10am-1pm" };
+  // The FIFO key is the (date, block) opening the customer saw — never the
+  // underlying feed window, which is never shown to them in the first
+  // place. Two requests picking the same (date, block) are the same
+  // candidate opening even if the server captured a different feed window
+  // snapshot for each (e.g. the feed changed which window(s) a block lists
+  // between the two submissions).
+  const sameOpening = { chosenOptionDate: new Date("2026-08-10T00:00:00Z"), chosenOptionBlock: "Midday" };
 
   test("an older still-open request for the exact same opening blocks a newer one", () => {
     const older: FifoTestRow = { id: "r1", createdAt: new Date("2026-01-01T00:00:00Z"), workStatus: "NEW", closeOutcome: null, ...sameOpening };
@@ -305,24 +335,47 @@ test.describe("Reschedule requests: FIFO blocking (direct lib calls)", () => {
   });
 
   test("a date-only preference (no chosen option at all) never blocks, and is never blocked", () => {
-    const dateOnly: FifoTestRow = { id: "r1", createdAt: new Date("2026-01-01T00:00:00Z"), workStatus: "NEW", closeOutcome: null, chosenOptionDate: null, chosenOptionBlock: null, chosenOptionWindow: null };
+    const dateOnly: FifoTestRow = { id: "r1", createdAt: new Date("2026-01-01T00:00:00Z"), workStatus: "NEW", closeOutcome: null, chosenOptionDate: null, chosenOptionBlock: null };
     const specific: FifoTestRow = { id: "r2", createdAt: new Date("2026-01-02T00:00:00Z"), workStatus: "NEW", closeOutcome: null, ...sameOpening };
     expect(findBlockingEarlierRequest(dateOnly, [specific])).toBeNull();
     expect(findBlockingEarlierRequest(specific, [dateOnly])).toBeNull();
   });
 
-  test("a DIFFERENT opening (different date/block/window) never blocks", () => {
+  test("a DIFFERENT date never blocks", () => {
     const older: FifoTestRow = { id: "r1", createdAt: new Date("2026-01-01T00:00:00Z"), workStatus: "NEW", closeOutcome: null, ...sameOpening };
-    const differentWindow: FifoTestRow = {
+    const differentDate: FifoTestRow = {
+      id: "r2",
+      createdAt: new Date("2026-01-02T00:00:00Z"),
+      workStatus: "NEW",
+      closeOutcome: null,
+      chosenOptionDate: new Date("2026-08-11T00:00:00Z"),
+      chosenOptionBlock: sameOpening.chosenOptionBlock,
+    };
+    expect(findBlockingEarlierRequest(differentDate, [older])).toBeNull();
+  });
+
+  test("two requests for the same (date, block) block the later one; a DIFFERENT block on the same date never blocks, even though the feed window is no longer part of the key", () => {
+    const older: FifoTestRow = { id: "r1", createdAt: new Date("2026-01-01T00:00:00Z"), workStatus: "NEW", closeOutcome: null, ...sameOpening };
+
+    const sameDateAndBlock: FifoTestRow = {
       id: "r2",
       createdAt: new Date("2026-01-02T00:00:00Z"),
       workStatus: "NEW",
       closeOutcome: null,
       chosenOptionDate: sameOpening.chosenOptionDate,
       chosenOptionBlock: sameOpening.chosenOptionBlock,
-      chosenOptionWindow: "2pm-5pm",
     };
-    expect(findBlockingEarlierRequest(differentWindow, [older])).toBeNull();
+    expect(findBlockingEarlierRequest(sameDateAndBlock, [older])?.id).toBe("r1");
+
+    const differentBlock: FifoTestRow = {
+      id: "r3",
+      createdAt: new Date("2026-01-02T00:00:00Z"),
+      workStatus: "NEW",
+      closeOutcome: null,
+      chosenOptionDate: sameOpening.chosenOptionDate,
+      chosenOptionBlock: "Afternoon",
+    };
+    expect(findBlockingEarlierRequest(differentBlock, [older])).toBeNull();
   });
 });
 
@@ -697,16 +750,29 @@ test.describe("Reschedule requests: alert recipients (direct lib calls)", () => 
 });
 
 test.describe("Reschedule requests: open options — order, projection, and recheck (direct lib calls)", () => {
-  const testMonth = `2099-0${(Number(RUN_ID.slice(-1)) % 9) + 1}`;
+  const monthDigit = (Number(RUN_ID.slice(-1)) % 9) + 1;
+  const testMonth = `2099-0${monthDigit}`;
+  const testMonth2 = `2100-0${monthDigit}`;
+  const testMonth3 = `2101-0${monthDigit}`;
   const WINDOW_A = "9:00am-12:00pm";
   const WINDOW_B = "1:00pm-4:00pm";
   let feedMonthId: string;
+  let feedMonthId2: string;
+  let feedMonthId3: string;
+  // dateA's one Midday block lists TWO windows sharing a single team count —
+  // it must still collapse to exactly one public option.
   const dateA = "2099-03-10";
   const dateB = "2099-03-11";
+  const dateC = "2100-03-05";
+  const dateD = "2100-03-06";
+  const dateE = "2100-03-07";
+  const dateF = "2101-03-05";
+  const allTestMonths = [testMonth, testMonth2, testMonth3];
 
   test.beforeAll(async () => {
-    await prisma.slotBooking.deleteMany({ where: { month: testMonth } });
-    await prisma.slotFeedMonth.deleteMany({ where: { month: testMonth } });
+    await prisma.slotBooking.deleteMany({ where: { month: { in: allTestMonths } } });
+    await prisma.slotFeedMonth.deleteMany({ where: { month: { in: allTestMonths } } });
+
     const feedMonth = await prisma.slotFeedMonth.create({
       data: {
         month: testMonth,
@@ -717,21 +783,57 @@ test.describe("Reschedule requests: open options — order, projection, and rech
         routeBoard: {},
         dates: {
           create: [
-            { date: new Date(dateA + "T00:00:00Z"), weekday: "Tuesday", status: "Open", openPersonHours: 20, openDollars: 2000, blocks: { Midday: { open: 1, windows: [WINDOW_A] } }, bookedJobs: [] },
+            { date: new Date(dateA + "T00:00:00Z"), weekday: "Tuesday", status: "Open", openPersonHours: 20, openDollars: 2000, blocks: { Midday: { open: 1, windows: [WINDOW_A, WINDOW_B] } }, bookedJobs: [] },
             { date: new Date(dateB + "T00:00:00Z"), weekday: "Wednesday", status: "Open", openPersonHours: 20, openDollars: 2000, blocks: { Afternoon: { open: 2, windows: [WINDOW_B] } }, bookedJobs: [] },
           ],
         },
       },
     });
     feedMonthId = feedMonth.id;
+
+    const feedMonth2 = await prisma.slotFeedMonth.create({
+      data: {
+        month: testMonth2,
+        schema: "mcc-open-slots/v1",
+        generatedAt: new Date(),
+        settings: { min_lead_days: 1 },
+        windowValuePerHour: { [WINDOW_A]: 90, [WINDOW_B]: 90 },
+        routeBoard: {},
+        dates: {
+          create: [
+            { date: new Date(dateC + "T00:00:00Z"), weekday: "Thursday", status: "Open", openPersonHours: 20, openDollars: 2000, blocks: { Morning: { open: 1, windows: [WINDOW_A] } }, bookedJobs: [] },
+            { date: new Date(dateD + "T00:00:00Z"), weekday: "Friday", status: "Open", openPersonHours: 20, openDollars: 2000, blocks: { Midday: { open: 1, windows: [WINDOW_B] } }, bookedJobs: [] },
+            { date: new Date(dateE + "T00:00:00Z"), weekday: "Saturday", status: "Open", openPersonHours: 20, openDollars: 2000, blocks: { Afternoon: { open: 1, windows: [WINDOW_A, WINDOW_B] } }, bookedJobs: [] },
+          ],
+        },
+      },
+    });
+    feedMonthId2 = feedMonth2.id;
+
+    const feedMonth3 = await prisma.slotFeedMonth.create({
+      data: {
+        month: testMonth3,
+        schema: "mcc-open-slots/v1",
+        generatedAt: new Date(),
+        settings: { min_lead_days: 1 },
+        windowValuePerHour: { [WINDOW_A]: 90 },
+        routeBoard: {},
+        dates: {
+          create: [
+            { date: new Date(dateF + "T00:00:00Z"), weekday: "Tuesday", status: "Open", openPersonHours: 20, openDollars: 2000, blocks: { Morning: { open: 1, windows: [WINDOW_A] } }, bookedJobs: [] },
+          ],
+        },
+      },
+    });
+    feedMonthId3 = feedMonth3.id;
   });
 
   test.afterAll(async () => {
-    await prisma.slotBooking.deleteMany({ where: { month: testMonth } });
-    await prisma.slotFeedMonth.deleteMany({ where: { month: testMonth } });
+    await prisma.slotBooking.deleteMany({ where: { month: { in: allTestMonths } } });
+    await prisma.slotFeedMonth.deleteMany({ where: { month: { in: allTestMonths } } });
   });
 
-  test("options are returned earliest-first, whitelisted to weekday/date/block/window/feedMonthId only — never teamsOpen or $/hr", async () => {
+  test("options are returned earliest-first, whitelisted to exactly {date, weekday, block, feedMonthId} — never window, teamsOpen, or $/hr", async () => {
     const options = await getPublicOpenOptions(5, new Date("2099-01-01T00:00:00Z"));
     const thisMonthOptions = options.filter((o) => o.date === dateA || o.date === dateB);
     expect(thisMonthOptions.length).toBeGreaterThanOrEqual(2);
@@ -740,8 +842,33 @@ test.describe("Reschedule requests: open options — order, projection, and rech
     expect(aIdx).toBeLessThan(bIdx);
 
     for (const o of thisMonthOptions) {
-      expect(Object.keys(o).sort()).toEqual(["block", "date", "feedMonthId", "weekday", "window"].sort());
+      expect(Object.keys(o).sort()).toEqual(["block", "date", "feedMonthId", "weekday"].sort());
     }
+  });
+
+  test("a feed date whose one block lists two windows produces exactly one option, not two", async () => {
+    const options = await getPublicOpenOptions(20, new Date("2099-01-01T00:00:00Z"));
+    const forDateA = options.filter((o) => o.date === dateA);
+    expect(forDateA).toHaveLength(1);
+    expect(forDateA[0].block).toBe("Midday");
+  });
+
+  test("five distinct (date, block) openings are returned across a month boundary, earliest first", async () => {
+    const options = await getPublicOpenOptions(20, new Date("2099-01-01T00:00:00Z"));
+    const ours = options.filter((o) => [dateA, dateB, dateC, dateD, dateE].includes(o.date));
+    expect(ours.map((o) => `${o.date}|${o.block}`)).toEqual([
+      `${dateA}|Midday`,
+      `${dateB}|Afternoon`,
+      `${dateC}|Morning`,
+      `${dateD}|Midday`,
+      `${dateE}|Afternoon`,
+    ]);
+  });
+
+  test("fewer than the limit are returned when fewer distinct openings exist", async () => {
+    const options = await getPublicOpenOptions(20, new Date("2099-01-01T00:00:00Z"));
+    const ours = options.filter((o) => o.date === dateF);
+    expect(ours).toHaveLength(1);
   });
 
   test("getCurrentTeamsOpen reflects live bookings, server-side only", async () => {
@@ -752,8 +879,14 @@ test.describe("Reschedule requests: open options — order, projection, and rech
     expect(await getCurrentTeamsOpen(feedMonthId, dateA, "Midday")).toBe(0);
   });
 
-  test("recheckOpenOption: STILL_OPEN, NO_LONGER_OPEN (booked out), and FEED_REPLACED (feed re-imported under a new id)", async () => {
-    expect(await recheckOpenOption(feedMonthId, dateB, "Afternoon", WINDOW_B)).toBe("STILL_OPEN");
+  test("getBlockWindowsSnapshot joins every window a block lists, for staff-only context — never shown to the public", async () => {
+    expect(await getBlockWindowsSnapshot(feedMonthId, dateA, "Midday")).toBe(`${WINDOW_A}, ${WINDOW_B}`);
+    expect(await getBlockWindowsSnapshot(feedMonthId, dateB, "Afternoon")).toBe(WINDOW_B);
+    expect(await getBlockWindowsSnapshot(feedMonthId, dateA, "Afternoon")).toBeNull();
+  });
+
+  test("recheckOpenOption: STILL_OPEN, NO_LONGER_OPEN (booked out), and FEED_REPLACED (feed re-imported under a new id) — keyed by (feedMonthId, date, block) only, no window input", async () => {
+    expect(await recheckOpenOption(feedMonthId, dateB, "Afternoon")).toBe("STILL_OPEN");
 
     const adminId = (await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL } })).id;
     await prisma.slotBooking.createMany({
@@ -762,9 +895,61 @@ test.describe("Reschedule requests: open options — order, projection, and rech
         { month: testMonth, date: new Date(dateB + "T00:00:00Z"), block: "Afternoon", window: WINDOW_B, city: "Irvine", address: "3 Test St", repId: adminId, personHours: 4, status: "CONFIRMED" },
       ],
     });
-    expect(await recheckOpenOption(feedMonthId, dateB, "Afternoon", WINDOW_B)).toBe("NO_LONGER_OPEN");
+    expect(await recheckOpenOption(feedMonthId, dateB, "Afternoon")).toBe("NO_LONGER_OPEN");
 
-    expect(await recheckOpenOption("not-a-real-feed-month-id", dateB, "Afternoon", WINDOW_B)).toBe("FEED_REPLACED");
+    expect(await recheckOpenOption("not-a-real-feed-month-id", dateB, "Afternoon")).toBe("FEED_REPLACED");
+  });
+
+  test("submitting a chosen option stores it by (feedMonthId, date, block); the feed window is captured server-side only, never from client input", async () => {
+    const result = await createRescheduleRequest(
+      validInput({
+        chosenOptionDate: dateA,
+        chosenOptionBlock: "Midday",
+        chosenOptionFeedMonthId: feedMonthId,
+        preferredDateText: "",
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const row = await prisma.rescheduleRequest.findUniqueOrThrow({ where: { id: result.id } });
+    expect(row.chosenOptionDate?.toISOString().slice(0, 10)).toBe(dateA);
+    expect(row.chosenOptionBlock).toBe("Midday");
+    expect(row.chosenOptionFeedMonthId).toBe(feedMonthId);
+    // Derived server-side from the feed itself, never sent by the client —
+    // RawRescheduleInput has no window field at all.
+    expect(row.chosenOptionWindow).toBe(`${WINDOW_A}, ${WINDOW_B}`);
+
+    await prisma.rescheduleRequest.delete({ where: { id: result.id } });
+    await prisma.auditLogEntry.deleteMany({ where: { recordType: "RescheduleRequest", recordId: result.id } });
+  });
+
+  test("two open requests for the same (date, block) block the later offer; different blocks on the same date do not", async () => {
+    const holder = await createRescheduleRequest(
+      validInput({ chosenOptionDate: dateC, chosenOptionBlock: "Morning", chosenOptionFeedMonthId: feedMonthId2, preferredDateText: "" })
+    );
+    expect(holder.ok).toBe(true);
+    if (!holder.ok) return;
+    await new Promise((r) => setTimeout(r, 10));
+
+    const other = await createRescheduleRequest(validInput({ name: `Offer Target ${RUN_ID}` }));
+    expect(other.ok).toBe(true);
+    if (!other.ok) return;
+
+    try {
+      const adminId = (await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL } })).id;
+
+      // The older holder's (date, block) — blocked.
+      const blockedOffer = await offerOption(other.id, { date: dateC, block: "Morning" }, "Proposing the same Morning opening", adminId);
+      expect(blockedOffer.ok).toBe(false);
+
+      // Same date, a DIFFERENT block — never blocked by the holder.
+      const differentBlockOffer = await offerOption(other.id, { date: dateC, block: "Afternoon" }, "Proposing a different block", adminId);
+      expect(differentBlockOffer.ok).toBe(true);
+    } finally {
+      await prisma.rescheduleRequest.deleteMany({ where: { id: { in: [holder.id, other.id] } } });
+      await prisma.auditLogEntry.deleteMany({ where: { recordType: "RescheduleRequest", recordId: { in: [holder.id, other.id] } } });
+    }
   });
 });
 
@@ -815,6 +1000,40 @@ test.describe.serial("Reschedule requests: public form, honeypot, rate limit (br
     await page.goto("/reschedule");
     await expect(page.getByText("Fee, skip, and frequency-rate terms")).toBeVisible();
     await expect(page.locator('a[href="https://mamascleaningcrew.com/policies-guidelines/"]')).toBeVisible();
+  });
+
+  test("the page shows the terms text exactly, with no PLACEHOLDER wording and the correct read date", async ({ page }) => {
+    await page.goto("/reschedule");
+    await expect(page.getByText("Cancellation & Schedule Changes")).toBeVisible();
+    await expect(page.getByText("Skip Service Policy: Keeping It Consistent")).toBeVisible();
+    // Case-sensitive: the page's own form inputs legitimately use the
+    // lowercase HTML `placeholder` attribute — only the all-caps marker left
+    // over from the terms placeholder would be a real leak.
+    const html = await page.content();
+    expect(html).not.toContain("PLACEHOLDER");
+    await expect(page.getByText(`(read ${TERMS_DATE_READ})`)).toBeVisible();
+  });
+
+  test("the rendered page and its serialized props for the options contain no window range text, teamsOpen, or dollar-per-hour fields", async ({ page }) => {
+    await page.goto("/reschedule");
+
+    // The full page HTML includes the RSC flight payload embedded for
+    // hydration — these internal field/value names must never appear in it
+    // at all, not even unrendered.
+    const html = await page.content();
+    expect(html).not.toMatch(/teamsOpen/);
+    expect(html).not.toMatch(/windowValuePerHour/);
+    expect(html).not.toMatch(/chosenOptionWindow/);
+
+    // Each rendered option's visible label is only "{weekday}, {date} ·
+    // {block}" — never a feed time-range (always h:mm am/pm-h:mm am/pm) or a
+    // dollar figure.
+    const optionLabels = await page.locator('label:has(input[name="option-choice"])').allTextContents();
+    const realOptionLabels = optionLabels.filter((t) => !t.includes("None of these work"));
+    for (const label of realOptionLabels) {
+      expect(label).not.toMatch(/\d{1,2}(:\d{2})?\s?(am|pm)/i);
+      expect(label).not.toMatch(/\$/);
+    }
   });
 
   test("a MOVE_KEEP_SCHEDULE submission with a preferred date succeeds and shows a status link, never auto-approved", async ({ page }) => {

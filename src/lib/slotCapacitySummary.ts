@@ -269,42 +269,94 @@ export async function listLoadedSlotMonths(): Promise<string[]> {
 
 // ---------------------------------------------------------------------------
 // Public-facing wrapper for the /reschedule form's "open options" — built
-// server-side each load from the exact same logic as getNextOpenSlots
-// above, across every loaded month (earliest first), never just one month.
-// Whitelisted to weekday/date/block ONLY — never teamsOpen (a real-time
-// operational headcount) or windowValuePerHour (owner-only earnings data).
-// A request is still only a REQUEST: this never creates a SlotBooking, a
-// hold, or any feed change, and limits are known to understate true
-// capacity (see PublicOpenOption's own field comments).
-// Whitelisted to weekday/date/block/window only — teamsOpen (an
-// operational headcount) is deliberately never put on this type at all, so
-// it can never reach the public client, not even silently through an RSC
-// prop nobody renders. feedMonthId is just an opaque reference (like any
-// other hidden form id elsewhere in this app, e.g. NextOpenSlotsCard's
-// hidden month/date/block/window inputs) — never a number a customer could
-// read anything operational from.
+// server-side each load, across every loaded month (earliest first), never
+// just one month. Deliberately does NOT reuse getNextOpenSlots: that
+// function emits one row per feed WINDOW, but windows within a block share
+// one team count and are not separate openings — two windows in the same
+// open block must read as a single option, not two identical-looking ones.
+// This walks the same (date, block) subtraction logic directly instead,
+// keeping at most one row per (date, block).
+//
+// Whitelisted to weekday/date/block/feedMonthId only. teamsOpen (a
+// real-time operational headcount), windowValuePerHour (owner-only
+// earnings data), and the feed's own window/time-range strings are all
+// deliberately never put on this type at all, so none of them can reach
+// the public client, not even silently through an RSC prop nobody renders.
+// feedMonthId is just an opaque reference (like any other hidden form id
+// elsewhere in this app, e.g. NextOpenSlotsCard's hidden month/date/block/
+// window inputs) — never a number a customer could read anything
+// operational from. A request is still only a REQUEST: this never creates
+// a SlotBooking, a hold, or any feed change.
 export interface PublicOpenOption {
   date: string;
   weekday: string;
   block: string;
-  window: string;
   feedMonthId: string;
 }
 
 export async function getPublicOpenOptions(limit = 5, now: Date = new Date()): Promise<PublicOpenOption[]> {
   const months = await listLoadedSlotMonths();
   const results: PublicOpenOption[] = [];
+  const todayIso = businessDateKey(now);
+
   for (const month of months) {
     if (results.length >= limit) break;
     const feedMonth = await prisma.slotFeedMonth.findUnique({ where: { month } });
     if (!feedMonth) continue;
-    const slots = await getNextOpenSlots(month, limit - results.length, now, false);
-    for (const s of slots) {
-      results.push({ date: s.date, weekday: s.weekday, block: s.block, window: s.window, feedMonthId: feedMonth.id });
+
+    const minLeadDays = (feedMonth.settings as { min_lead_days?: number })?.min_lead_days ?? 1;
+    const earliest = addDaysIso(todayIso, minLeadDays);
+
+    const dates = await prisma.slotFeedDate.findMany({
+      where: { feedMonthId: feedMonth.id, date: { gte: new Date(earliest + "T00:00:00Z") } },
+      orderBy: { date: "asc" },
+    });
+    if (!dates.length) continue;
+
+    const active = await prisma.slotBooking.findMany({
+      where: {
+        month,
+        date: { gte: new Date(earliest + "T00:00:00Z") },
+        OR: [{ status: "CONFIRMED" }, { status: "HOLD", holdExpiresAt: { gt: now } }],
+      },
+    });
+    const bookedByDateBlock = new Map<string, number>();
+    for (const b of active) {
+      const key = `${b.date.toISOString()}|${b.block}`;
+      bookedByDateBlock.set(key, (bookedByDateBlock.get(key) || 0) + 1);
+    }
+
+    for (const d of dates) {
       if (results.length >= limit) break;
+      const blocks = d.blocks as Record<string, { open: number; windows: string[] }>;
+      for (const block of BLOCK_ORDER) {
+        if (results.length >= limit) break;
+        const blockDef = blocks[block];
+        if (!blockDef) continue;
+        const booked = bookedByDateBlock.get(`${d.date.toISOString()}|${block}`) || 0;
+        if (blockDef.open - booked <= 0) continue;
+        results.push({ date: d.date.toISOString().slice(0, 10), weekday: d.weekday, block, feedMonthId: feedMonth.id });
+      }
     }
   }
   return results;
+}
+
+// The feed's own window/time-range string(s) for one (feedMonthId, date,
+// block) — staff-only context captured server-side at submission time,
+// never accepted from or shown to the public client (see PublicOpenOption
+// above, which has no window field at all). Joins every window the block
+// lists (there can be more than one sharing the block's one team count)
+// into a single display string; null when the block no longer resolves.
+export async function getBlockWindowsSnapshot(feedMonthId: string, date: string, block: string): Promise<string | null> {
+  const dateRow = await prisma.slotFeedDate.findUnique({
+    where: { feedMonthId_date: { feedMonthId, date: new Date(`${date}T00:00:00Z`) } },
+  });
+  if (!dateRow) return null;
+  const blocks = dateRow.blocks as Record<string, { open: number; windows: string[] }>;
+  const blockDef = blocks[block];
+  if (!blockDef || !blockDef.windows.length) return null;
+  return blockDef.windows.join(", ");
 }
 
 // The current, live teamsOpen count for one specific (feedMonthId, date,
@@ -339,17 +391,19 @@ export async function getCurrentTeamsOpen(feedMonthId: string, date: string, blo
 
 export type OpenOptionRecheckStatus = "STILL_OPEN" | "NO_LONGER_OPEN" | "FEED_REPLACED";
 
-// Re-verifies one specific (date, block, window) opening, identified by the
-// feedMonthId snapshotted when the customer first picked it. SlotFeedMonth
-// rows are deleted and recreated wholesale on every re-import (never
-// updated in place — see slotFeedImport.ts), so a feedMonthId that no
-// longer resolves to a row means the whole month's feed was replaced since
-// the customer chose this option, not merely that it filled up.
+// Re-verifies one specific (date, block) opening — the exact granularity
+// shown to the public (see PublicOpenOption above; no window is involved,
+// since windows within a block were never separate openings) — identified
+// by the feedMonthId snapshotted when the customer first picked it.
+// SlotFeedMonth rows are deleted and recreated wholesale on every
+// re-import (never updated in place — see slotFeedImport.ts), so a
+// feedMonthId that no longer resolves to a row means the whole month's
+// feed was replaced since the customer chose this option, not merely that
+// it filled up.
 export async function recheckOpenOption(
   feedMonthId: string,
   date: string,
   block: string,
-  window: string,
   now: Date = new Date()
 ): Promise<OpenOptionRecheckStatus> {
   const feedMonth = await prisma.slotFeedMonth.findUnique({ where: { id: feedMonthId } });
@@ -362,7 +416,7 @@ export async function recheckOpenOption(
 
   const blocks = dateRow.blocks as Record<string, { open: number; windows: string[] }>;
   const blockDef = blocks[block];
-  if (!blockDef || !blockDef.windows.includes(window)) return "NO_LONGER_OPEN";
+  if (!blockDef) return "NO_LONGER_OPEN";
 
   const booked = await prisma.slotBooking.count({
     where: {

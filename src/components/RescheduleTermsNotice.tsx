@@ -3,7 +3,7 @@ import { TERMS_TEXT, TERMS_SOURCE_URL, TERMS_DATE_READ } from "@/lib/rescheduleR
 // The published fee/skip/frequency-rate terms, shown identically to every
 // customer regardless of request type or date — never computed, never
 // claims a fee definitely applies. See rescheduleRequests.ts's own comment
-// on TERMS_TEXT for why this is currently a placeholder, not live copy.
+// on TERMS_TEXT for its source and the one sentence replaced.
 export default function RescheduleTermsNotice() {
   return (
     <div className="rounded-md border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-700">
