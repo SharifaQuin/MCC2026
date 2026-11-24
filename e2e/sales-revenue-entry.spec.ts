@@ -36,25 +36,73 @@ async function logout(page: Page) {
   await page.evaluate(() => fetch("/logout", { method: "POST" }));
 }
 
-async function captureActionId(page: Page, trigger: () => Promise<void>): Promise<string> {
-  let captured: string | null = null;
+// Captures a real Server Action request's exact wire bytes (action id,
+// raw POST body, and content-type) as the browser actually sent them —
+// NOT a hand-reconstructed JSON.stringify of the call's arguments. When an
+// action's argument is a FormData (every action in this file), the real
+// request body is multipart/form-data, not JSON; JSON.stringify(FormData)
+// serializes to "{}" (FormData has no enumerable own properties), so a
+// forged call built that way sends an empty, malformed payload — any
+// rejection it gets could be the server refusing bad input, not enforcing
+// authorization. Capturing and replaying the genuine bytes verbatim (under
+// a different session's cookies) keeps the payload exactly as
+// well-formed as the original authorized call, so a rejection can only be
+// about who's asking, never what was asked.
+interface CapturedAction {
+  actionId: string;
+  body: Buffer;
+  contentType: string;
+}
+
+async function captureAction(page: Page, trigger: () => Promise<void>): Promise<CapturedAction> {
+  let captured: CapturedAction | null = null;
   const listener = (req: import("@playwright/test").Request) => {
     const header = req.headers()["next-action"];
-    if (header && !captured) captured = header;
+    if (header && !captured) {
+      captured = {
+        actionId: header,
+        body: req.postDataBuffer() ?? Buffer.alloc(0),
+        contentType: req.headers()["content-type"] ?? "text/plain;charset=UTF-8",
+      };
+    }
   };
   page.on("request", listener);
   await trigger();
   await page.waitForTimeout(800);
   page.off("request", listener);
-  if (!captured) throw new Error("Failed to capture a Server Action id — trigger() didn't fire one.");
+  if (!captured) throw new Error("Failed to capture a Server Action request — trigger() didn't fire one.");
   return captured;
 }
 
-async function forgeAction(page: Page, path: string, actionId: string, args: unknown[]) {
+async function replayAction(page: Page, path: string, captured: CapturedAction) {
   return page.request.post(path, {
-    headers: { "next-action": actionId, "content-type": "text/plain;charset=UTF-8" },
-    data: JSON.stringify(args),
+    headers: { "next-action": captured.actionId, "content-type": captured.contentType },
+    data: captured.body,
   });
+}
+
+// What "refused" actually looks like on the wire, confirmed empirically
+// (not guessed) for this app's two distinct unauthorized shapes — Next.js
+// server actions don't use HTTP error status codes the way a REST API
+// would, so a bare status check can't tell a refusal from a success:
+//  - Signed-out: the portal layout's own getSession()-redirect fires
+//    before the action ever runs, so the response is a 200 carrying the
+//    rendered /login page's HTML (never the action's own result) — the
+//    reliable tell is the login form's password field.
+//  - Authenticated non-admin: the request reaches saveRevenueSnapshotAction/
+//    saveSalesLaborAction, whose requireAdmin() throws — Next.js reports
+//    that as a 500 with an RSC error payload carrying a "digest".
+async function expectRefusedResponse(res: Awaited<ReturnType<typeof replayAction>>, as: "signed-out" | "non-admin") {
+  if (as === "signed-out") {
+    const text = await res.text();
+    expect(text, "signed-out replay must render the login page, not the action's own result").toContain(
+      'name="password"'
+    );
+  } else {
+    expect(res.status(), "non-admin replay must surface the thrown Not-authorized error").toBe(500);
+    const text = await res.text();
+    expect(text).toContain('"digest"');
+  }
 }
 
 // A valid baseline input, overridden per test case. Tolerates a
@@ -285,6 +333,41 @@ test.describe("Sales revenue entry: validation and storage (direct lib calls)", 
     expect(auditCount).toBe(0);
   });
 
+  test("a source-as-of that's still the evening before in America/Los_Angeles is rejected, even though its UTC instant already falls on the coverage-through day", async () => {
+    // Feb 1, 8pm Pacific (PST, UTC-8 — February is never DST) converts to
+    // Feb 2, 4am UTC — on or after coverage-through's UTC midnight, which
+    // is exactly what a raw-instant comparison would wrongly accept. Its
+    // own Pacific calendar date is still Feb 1, a day before Feb 2, which
+    // is what must be compared.
+    const monthKey = "2014-02";
+    testMonths.push(monthKey);
+    const coverageThrough = "2014-02-02";
+    const sourceAsOf = "2014-02-01T20:00";
+    expect(new Date(`${coverageThrough}T00:00:00Z`).getTime()).toBeLessThan(
+      new Date(`${sourceAsOf}:00-08:00`).getTime()
+    );
+
+    await setSalesLabor(500, monthKey);
+
+    const result = await saveRevenueSnapshot(
+      validInput(monthKey, { coverage: "MONTH_TO_DATE", coverageThrough, sourceAsOf }),
+      adminId
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("VALIDATION");
+
+    const row = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey } });
+    expect(row, "no snapshot written").toBeNull();
+    const auditCount = await prisma.auditLogEntry.count({
+      where: { recordType: "SalesRevenueSnapshot", recordId: monthKey },
+    });
+    expect(auditCount, "no audit entry written").toBe(0);
+    const actuals = await getSalesActuals(monthKey);
+    expect(actuals.labor, "the unrelated labor figure already on file is untouched").toBe(500);
+    expect(actuals.revenue, "no revenue was ever entered for this month").toBe(0);
+    expect(actuals.entered).toBe(false);
+  });
+
   test("a blank source, bad coverage/status enum, and inconsistent coverage dates are all rejected and write nothing", async () => {
     const probeMonth = freshMonth();
     const { last } = monthBoundsUtc(probeMonth);
@@ -439,143 +522,132 @@ test.describe.serial("Sales revenue entry: authorization and Home goal-tracker i
     await prisma.$disconnect();
   });
 
-  test("An unauthenticated forged saveRevenueSnapshotAction call is refused, writes nothing", async ({ page }) => {
+  test("A correctly-encoded saveRevenueSnapshotAction request succeeds for the owner, and an explicit-unauthorized response with no write results when the exact same bytes are replayed by a signed-out or non-admin caller", async ({
+    page,
+  }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
     await page.goto(`/sales?month=${pastMonthKey}`);
 
-    const actionId = await captureActionId(page, async () => {
+    // The capture itself is a real, legitimate, well-formed owner
+    // submission — control: it must actually have written, so a later
+    // "no write" result for the replay can only mean authorization
+    // refused it, not that the payload was bad.
+    const captured = await captureAction(page, async () => {
       await page.fill("#revenue", "42");
-      await page.fill("#source", "forge-capture");
+      await page.fill("#source", "replay-capture");
       await page.click('button:has-text("Save Revenue")');
       await page.waitForTimeout(500);
     });
+    const afterOwnerSave = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey: pastMonthKey } });
+    expect(afterOwnerSave?.revenue, "control: the owner's own real submission must have written").toBe(42);
+    expect(afterOwnerSave?.source).toBe("replay-capture");
+    const auditCountAfterOwnerSave = await prisma.auditLogEntry.count({
+      where: { recordType: "SalesRevenueSnapshot", recordId: pastMonthKey },
+    });
     await logout(page);
 
-    // A brand-new, never-logged-in context (Playwright gives each test its
-    // own context by default) forges the exact same action id.
-    const forgedFd = new FormData();
-    forgedFd.set("monthKey", pastMonthKey);
-    forgedFd.set("revenue", "999999");
-    forgedFd.set("source", "forged-unauthenticated");
-    forgedFd.set("coverage", "FULL_MONTH");
-    await forgeAction(page, "/sales", actionId, [forgedFd]);
+    // Signed-out replay of the exact same well-formed bytes.
+    const unauthRes = await replayAction(page, "/sales", captured);
+    await expectRefusedResponse(unauthRes, "signed-out");
+    const afterUnauth = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey: pastMonthKey } });
+    expect(afterUnauth?.revenue).toBe(42);
+    expect(afterUnauth?.source).toBe("replay-capture");
+    const auditCountAfterUnauth = await prisma.auditLogEntry.count({
+      where: { recordType: "SalesRevenueSnapshot", recordId: pastMonthKey },
+    });
+    expect(auditCountAfterUnauth).toBe(auditCountAfterOwnerSave);
 
-    const row = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey: pastMonthKey } });
-    expect(row?.source).not.toBe("forged-unauthenticated");
+    // Non-admin (Sales Rep, with real Sales canEdit) replay of the same bytes.
+    await loginAs(page, salesRepEmail, PASSWORD);
+    const nonAdminRes = await replayAction(page, "/sales", captured);
+    await expectRefusedResponse(nonAdminRes, "non-admin");
+    await logout(page);
+    const afterNonAdmin = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey: pastMonthKey } });
+    expect(afterNonAdmin?.revenue).toBe(42);
+    expect(afterNonAdmin?.source).toBe("replay-capture");
+    const auditCountAfterNonAdmin = await prisma.auditLogEntry.count({
+      where: { recordType: "SalesRevenueSnapshot", recordId: pastMonthKey },
+    });
+    expect(auditCountAfterNonAdmin).toBe(auditCountAfterOwnerSave);
   });
 
-  test("A forged saveRevenueSnapshotAction call from a Sales Rep with canEdit is refused, writes nothing", async ({
+  test("A correctly-encoded, confirmed-override saveRevenueSnapshotAction request succeeds for the owner, and is refused with no write when replayed by a signed-out or non-admin caller", async ({
     page,
   }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
     await page.goto(`/sales?month=${pastMonthKey}`);
 
-    const actionId = await captureActionId(page, async () => {
-      await page.fill("#revenue", "55");
-      await page.fill("#source", "forge-capture-2");
-      await page.click('button:has-text("Save Revenue")');
+    // Engineer a real stale-as-of conflict first (a later source-as-of
+    // already on file from the previous test), then submit an older one
+    // and actually click "Confirm and save anyway" — so the captured
+    // request's own bytes genuinely carry confirmStaleAsOf=on, not a
+    // hand-added field. Must still be on/after coverage-through (this
+    // month's default prefill is its last day, 2019-03-31) — "stale
+    // relative to what's on file" and "internally consistent with its own
+    // coverage-through" are independent checks, both have to hold here.
+    await page.fill("#revenue", "77");
+    await page.fill("#source", "replay-capture-override");
+    await page.fill("#sourceAsOf", "2020-06-01T09:00");
+    await page.click('button:has-text("Save Revenue")');
+    await expect(page.getByText(/Confirm to replace it anyway/)).toBeVisible();
+
+    const captured = await captureAction(page, async () => {
+      await page.click('button:has-text("Confirm and save anyway")');
       await page.waitForTimeout(500);
     });
-    // The legitimate admin save above must have gone through — captured
-    // AFTER it, so the forgery check below compares against the real
-    // current state, not whatever an earlier test in this serial file left.
-    const before = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey: pastMonthKey } });
-    expect(before?.revenue).toBe(55);
-    expect(before?.source).toBe("forge-capture-2");
+    const afterOwnerSave = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey: pastMonthKey } });
+    expect(afterOwnerSave?.revenue, "control: the owner's confirmed override must have written").toBe(77);
+    expect(afterOwnerSave?.source).toBe("replay-capture-override");
+    const auditCountAfterOwnerSave = await prisma.auditLogEntry.count({
+      where: { recordType: "SalesRevenueSnapshot", recordId: pastMonthKey },
+    });
     await logout(page);
+
+    const unauthRes = await replayAction(page, "/sales", captured);
+    await expectRefusedResponse(unauthRes, "signed-out");
+    const afterUnauth = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey: pastMonthKey } });
+    expect(afterUnauth?.revenue).toBe(77);
+    expect(afterUnauth?.source).toBe("replay-capture-override");
 
     await loginAs(page, salesRepEmail, PASSWORD);
-    const fd = new FormData();
-    fd.set("monthKey", pastMonthKey);
-    fd.set("revenue", "888888");
-    fd.set("source", "forged-sales-rep");
-    fd.set("coverage", "FULL_MONTH");
-    await forgeAction(page, "/sales", actionId, [fd]);
+    const nonAdminRes = await replayAction(page, "/sales", captured);
+    await expectRefusedResponse(nonAdminRes, "non-admin");
     await logout(page);
-
-    const after = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey: pastMonthKey } });
-    expect(after?.source).not.toBe("forged-sales-rep");
-    expect(after?.revenue).toBe(before?.revenue);
-  });
-
-  test("A forged saveRevenueSnapshotAction call with a crafted month and a crafted confirmStaleAsOf override is refused for both a signed-out and a non-admin caller", async ({
-    page,
-  }) => {
-    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto(`/sales?month=${pastMonthKey}`);
-
-    const actionId = await captureActionId(page, async () => {
-      await page.fill("#revenue", "10");
-      await page.fill("#source", "forge-capture-crafted");
-      await page.click('button:has-text("Save Revenue")');
-      await page.waitForTimeout(500);
+    const afterNonAdmin = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey: pastMonthKey } });
+    expect(afterNonAdmin?.revenue).toBe(77);
+    expect(afterNonAdmin?.source).toBe("replay-capture-override");
+    const auditCountAfterNonAdmin = await prisma.auditLogEntry.count({
+      where: { recordType: "SalesRevenueSnapshot", recordId: pastMonthKey },
     });
-    await logout(page);
-
-    // Targets a month this action id was never shown for, and sets the
-    // stale-as-of override flag that only matters once past the
-    // authorization check — proving the check itself never looks at
-    // either crafted field before refusing.
-    const craftedMonth = "2008-12";
-    const craftedFd = () => {
-      const fd = new FormData();
-      fd.set("monthKey", craftedMonth);
-      fd.set("revenue", "777777");
-      fd.set("source", "forged-crafted-month");
-      fd.set("coverage", "FULL_MONTH");
-      fd.set("confirmStaleAsOf", "on");
-      return fd;
-    };
-
-    // Signed-out.
-    await forgeAction(page, "/sales", actionId, [craftedFd()]);
-    let row = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey: craftedMonth } });
-    expect(row).toBeNull();
-
-    // Non-admin, authenticated.
-    await loginAs(page, salesRepEmail, PASSWORD);
-    await forgeAction(page, "/sales", actionId, [craftedFd()]);
-    await logout(page);
-    row = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey: craftedMonth } });
-    expect(row).toBeNull();
-
-    await prisma.salesRevenueSnapshot.deleteMany({ where: { monthKey: craftedMonth } });
+    expect(auditCountAfterNonAdmin).toBe(auditCountAfterOwnerSave);
   });
 
-  test("A forged saveSalesLaborAction call is refused for both a signed-out and a non-admin caller, writing nothing", async ({
+  test("A correctly-encoded saveSalesLaborAction request succeeds for the owner, and is refused with no write when replayed by a signed-out or non-admin caller", async ({
     page,
   }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
     await page.goto(`/sales?month=${pastMonthKey}`);
 
-    const actionId = await captureActionId(page, async () => {
+    const captured = await captureAction(page, async () => {
       await page.fill("#labor", "1");
       await page.click('button:has-text("Save Labor")');
       await page.waitForTimeout(500);
     });
-    const before = await prisma.salesToolData.findUnique({ where: { key: `sales:actuals:${pastMonthKey}` } });
-    expect(before?.value).toContain('"labor":1');
+    const afterOwnerSave = await prisma.salesToolData.findUnique({ where: { key: `sales:actuals:${pastMonthKey}` } });
+    expect(afterOwnerSave?.value, "control: the owner's own real submission must have written").toContain('"labor":1');
     await logout(page);
 
-    const forgedFd = (labor: string) => {
-      const fd = new FormData();
-      fd.set("monthKey", pastMonthKey);
-      fd.set("labor", labor);
-      return fd;
-    };
+    const unauthRes = await replayAction(page, "/sales", captured);
+    await expectRefusedResponse(unauthRes, "signed-out");
+    const afterUnauth = await prisma.salesToolData.findUnique({ where: { key: `sales:actuals:${pastMonthKey}` } });
+    expect(afterUnauth?.value).toBe(afterOwnerSave?.value);
 
-    // Signed-out.
-    await forgeAction(page, "/sales", actionId, [forgedFd("999999")]);
-    let after = await prisma.salesToolData.findUnique({ where: { key: `sales:actuals:${pastMonthKey}` } });
-    expect(after?.value).not.toContain("999999");
-
-    // Non-admin, authenticated.
     await loginAs(page, salesRepEmail, PASSWORD);
-    await forgeAction(page, "/sales", actionId, [forgedFd("888888")]);
+    const nonAdminRes = await replayAction(page, "/sales", captured);
+    await expectRefusedResponse(nonAdminRes, "non-admin");
     await logout(page);
-    after = await prisma.salesToolData.findUnique({ where: { key: `sales:actuals:${pastMonthKey}` } });
-    expect(after?.value).not.toContain("888888");
-    expect(after?.value).toContain('"labor":1');
+    const afterNonAdmin = await prisma.salesToolData.findUnique({ where: { key: `sales:actuals:${pastMonthKey}` } });
+    expect(afterNonAdmin?.value).toBe(afterOwnerSave?.value);
   });
 
   test("Home's current-month goal tracker is unaffected by entering a past reporting month's revenue", async ({

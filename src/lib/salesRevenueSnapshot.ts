@@ -267,11 +267,23 @@ export async function saveRevenueSnapshot(
   // The source can't have been "as of" a moment before the period it's
   // reporting on even finishes — e.g. coverage through Nov 20 but the
   // source pulled Nov 18 is internally inconsistent, not just unusual.
-  if (sourceAsOf.getTime() < coverageThrough.getTime()) {
+  //
+  // Compared as calendar dates in the business timezone (America/
+  // Los_Angeles), not as raw UTC instants: source-as-of's Y/M/D is exactly
+  // what the owner typed (already business-timezone wall clock, per this
+  // field's own convention — see parseExactLocalDateTime above), while
+  // coverage-through is itself a pure calendar date. Comparing UTC
+  // instants instead would accept a source-as-of evening that hasn't
+  // actually reached the next calendar day in Pacific time at all — e.g.
+  // "Feb 1, 8pm Pacific" converts to "Feb 2, 4am UTC", which would wrongly
+  // read as covering through Feb 2 even though its own Pacific calendar
+  // date is still Feb 1.
+  const sourceAsOfDateKey = `${sourceAsOfParts.year}-${String(sourceAsOfParts.month).padStart(2, "0")}-${String(sourceAsOfParts.day).padStart(2, "0")}`;
+  if (sourceAsOfDateKey < coverageThroughRaw) {
     return {
       ok: false,
       code: "VALIDATION",
-      error: "Source as-of must not be earlier than the coverage-through date.",
+      error: "Source as-of's calendar date (America/Los_Angeles) must not be earlier than the coverage-through date.",
     };
   }
 
