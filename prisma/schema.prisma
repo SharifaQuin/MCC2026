@@ -281,6 +281,8 @@ model User {
 
   quickBooksConnectionsMade QuickBooksConnection[]
 
+  salesRevenueSnapshotsEntered SalesRevenueSnapshot[]
+
   promotionAssessments     PromotionAssessment[] @relation("PromotionAssessmentEmployee")
   promotionAssessmentsMade PromotionAssessment[] @relation("PromotionAssessmentAssessedBy")
 
@@ -1262,6 +1264,41 @@ model SalesToolData {
   key       String   @id
   value     String   @db.Text
   updatedAt DateTime @updatedAt
+}
+
+enum RevenueCoverage {
+  FULL_MONTH
+  MONTH_TO_DATE
+}
+
+enum RevenueSnapshotStatus {
+  PROVISIONAL
+  RECONCILED
+}
+
+// Owner-entered total of "Completed cleaning charges" for one reporting
+// month — explicitly NOT cash collected (see the caption wherever this is
+// rendered, and src/lib/salesRevenueSnapshot.ts for the full boundary this
+// enforces). Wholesale-replaced on every save, never additive, so a
+// repeated import of the same source data can never double count — one
+// row per reporting month. Labor stays in the separate, pre-existing
+// SalesToolData "sales:actuals:<monthKey>" key on purpose, so a revenue
+// save can never touch it. coverageThrough's start is always the 1st of
+// monthKey (FULL_MONTH requires it equal the month's last day; MONTH_TO_DATE
+// requires it fall strictly before that), so only the end needs its own
+// column.
+model SalesRevenueSnapshot {
+  monthKey        String                @id // "2026-11"
+  revenue         Float
+  source          String
+  coverage        RevenueCoverage
+  coverageThrough DateTime
+  sourceAsOf      DateTime
+  status          RevenueSnapshotStatus @default(PROVISIONAL)
+  enteredById     String
+  enteredBy       User                  @relation(fields: [enteredById], references: [id])
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 }
 
 // A policy/paperwork document new employees must read and sign before they

@@ -1,15 +1,19 @@
 import Link from "next/link";
 import { requireDepartmentAccess } from "@/lib/requireDepartmentAccess";
-import { loadSalesDashboard } from "@/lib/salesDashboard";
+import { loadSalesDashboard, getSalesActuals } from "@/lib/salesDashboard";
 import { loadLeadKpis, getMonthlyLeadOutcomeCounts } from "@/lib/leads";
 import { resolveActiveSlotMonth, getNextOpenSlots } from "@/lib/slotCapacitySummary";
-import { setSalesGoalAction, setSalesActualsAction } from "@/app/(portal)/sales/actions";
+import { setSalesGoalAction } from "@/app/(portal)/sales/actions";
 import { getOverdueSalesChecklistTasks } from "@/lib/hrToday";
 import { getChecklistTasksForRole } from "@/lib/financials";
 import AssignedChecklist from "@/components/AssignedChecklist";
 import AdSpendForm from "./AdSpendForm";
 import NextOpenSlotsCard from "./NextOpenSlotsCard";
+import RevenueEntryForm from "./RevenueEntryForm";
+import LaborEntryForm from "./LaborEntryForm";
 import { PeopleIcon, DollarIcon, ClipboardListIcon, CalendarIcon } from "@/components/icons";
+import { businessMonthKey, businessDateTimeInputValue } from "@/lib/timezone";
+import { isValidMonthKey, monthBoundsUtc, getRevenueEntryForMonth } from "@/lib/salesRevenueSnapshot";
 
 function Stat({
   label,
@@ -78,7 +82,11 @@ function ShortcutCard({
 
 const money = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export default async function SalesPage() {
+export default async function SalesPage({
+  searchParams,
+}: {
+  searchParams?: { month?: string };
+}) {
   const { session } = await requireDepartmentAccess("SALES");
   // Goals, actuals, and ad spend are owner-only to set — see
   // src/app/(portal)/sales/actions.ts. A Sales canEdit grant still governs
@@ -86,20 +94,33 @@ export default async function SalesPage() {
   // not these three financial inputs.
   const isAdmin = session.role === "ADMIN";
   const isSalesRep = session.role === "SALES_REP";
-  const [dash, leadKpis, monthlyLeadOutcomes, overdueSalesTasks, assignedTasks] = await Promise.all([
-    loadSalesDashboard(isAdmin),
-    loadLeadKpis(),
-    getMonthlyLeadOutcomeCounts(),
-    // Her sales-only equivalent of the general Today card — see
-    // getOverdueSalesChecklistTasks' own comment for why she doesn't see
-    // the general one at all (it's HR/recruiting/staffing content).
-    isSalesRep ? getOverdueSalesChecklistTasks() : Promise.resolve([]),
-    // Her general assigned/shared checklist — the same query /todo's
-    // non-admin branch already runs. She lands here, not on Home (see
-    // src/app/(portal)/page.tsx's SALES_REP redirect), so this is the only
-    // place she'd otherwise ever see these.
-    isSalesRep ? getChecklistTasksForRole(session.role, session.sub) : Promise.resolve([]),
-  ]);
+
+  // The revenue/labor entry section below is independent of `dash` and of
+  // the goal tracker: `loadSalesDashboard` always reads the CURRENT month
+  // (it's never passed a monthKey), so viewing or saving a past reporting
+  // month here can never change what Home or the goal tracker show. Only
+  // ever computed for an admin — a non-admin render never even queries
+  // this data, not just hides it client-side.
+  const requestedMonth = searchParams?.month ?? "";
+  const selectedMonth = isValidMonthKey(requestedMonth) ? requestedMonth : businessMonthKey();
+
+  const [dash, leadKpis, monthlyLeadOutcomes, overdueSalesTasks, assignedTasks, selectedMonthActuals, revenueEntry] =
+    await Promise.all([
+      loadSalesDashboard(isAdmin),
+      loadLeadKpis(),
+      getMonthlyLeadOutcomeCounts(),
+      // Her sales-only equivalent of the general Today card — see
+      // getOverdueSalesChecklistTasks' own comment for why she doesn't see
+      // the general one at all (it's HR/recruiting/staffing content).
+      isSalesRep ? getOverdueSalesChecklistTasks() : Promise.resolve([]),
+      // Her general assigned/shared checklist — the same query /todo's
+      // non-admin branch already runs. She lands here, not on Home (see
+      // src/app/(portal)/page.tsx's SALES_REP redirect), so this is the only
+      // place she'd otherwise ever see these.
+      isSalesRep ? getChecklistTasksForRole(session.role, session.sub) : Promise.resolve([]),
+      isAdmin ? getSalesActuals(selectedMonth) : Promise.resolve(null),
+      isAdmin ? getRevenueEntryForMonth(selectedMonth) : Promise.resolve(null),
+    ]);
 
   const assignedTaskRows = assignedTasks.map((t) => ({
     id: t.id,
@@ -120,6 +141,31 @@ export default async function SalesPage() {
   const goalProgressText = goalHit ? "Goal hit! 🎉" : `${money(dash.revenueRemaining)} to go`;
 
   const salesProgressPct = dash.goal > 0 ? Math.min(100, (dash.revenueTowardGoal / dash.goal) * 100) : 0;
+
+  const toDateInputValue = (d: Date) => d.toISOString().slice(0, 10);
+  const { last: selectedMonthLastDay } = monthBoundsUtc(selectedMonth);
+
+  const revenueDefaults =
+    revenueEntry?.kind === "snapshot"
+      ? {
+          revenue: String(revenueEntry.revenue),
+          source: revenueEntry.source,
+          coverage: revenueEntry.coverage,
+          coverageThrough: toDateInputValue(revenueEntry.coverageThrough),
+          sourceAsOf: businessDateTimeInputValue(revenueEntry.sourceAsOf),
+          status: revenueEntry.status,
+        }
+      : {
+          revenue: revenueEntry?.kind === "legacy" ? String(revenueEntry.revenue) : "",
+          source: "",
+          coverage: "FULL_MONTH",
+          coverageThrough: toDateInputValue(selectedMonthLastDay),
+          sourceAsOf: businessDateTimeInputValue(new Date()),
+          status: "PROVISIONAL",
+        };
+
+  const laborDefaultValue =
+    selectedMonthActuals && selectedMonthActuals.labor !== null ? String(selectedMonthActuals.labor) : "";
 
   return (
     <div>
@@ -339,68 +385,88 @@ export default async function SalesPage() {
           </form>
         )}
 
-        {isAdmin && (
-          <div className="mt-6 rounded-md border border-neutral-200 bg-neutral-50 p-4">
-            <p className="text-sm font-medium text-neutral-900">Actuals This Month</p>
-            <p className="mt-1 text-xs text-neutral-500">
-              Enter your real revenue and labor cost so far this month — once entered, this
-              replaces the quote-based estimate above for goal tracking.
-            </p>
-
-            <div className="mt-3 grid grid-cols-3 gap-3">
-              <Stat label="Actual Revenue" value={money(dash.actuals.revenue)} />
-              {dash.actuals.labor !== null && (
-                <Stat label="Actual Labor" value={money(dash.actuals.labor)} />
-              )}
-              {dash.actuals.profit !== null && (
-                <Stat label="Profit So Far" value={money(dash.actuals.profit)} accent />
-              )}
+        {isAdmin && selectedMonthActuals && (
+          <div data-testid="completed-cleaning-revenue-card" className="mt-6 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-neutral-900">Completed Cleaning Revenue</p>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Completed cleaning charges for a reporting month — not cash collected. Once
+                  entered for the current month, this replaces the quote-based estimate above for
+                  goal tracking; a past month here never changes what Home or this month&rsquo;s
+                  goal tracker show.
+                </p>
+              </div>
+              <form method="GET" className="flex items-end gap-2">
+                <div>
+                  <label htmlFor="month" className="block text-xs font-medium text-neutral-500">
+                    Reporting month
+                  </label>
+                  <input
+                    type="month"
+                    id="month"
+                    name="month"
+                    defaultValue={selectedMonth}
+                    className="mt-1 rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
+                >
+                  View month
+                </button>
+              </form>
             </div>
 
-            <form action={setSalesActualsAction} className="mt-4 flex flex-wrap items-end gap-3">
-              <div>
-                <label htmlFor="actualRevenue" className="block text-xs font-medium text-neutral-500">
-                  Revenue so far
-                </label>
-                <div className="mt-1 flex items-center gap-1">
-                  <span className="text-neutral-500">$</span>
-                  <input
-                    type="number"
-                    id="actualRevenue"
-                    name="actualRevenue"
-                    min={0}
-                    step="0.01"
-                    defaultValue={dash.actuals.revenue || ""}
-                    placeholder="0"
-                    className="w-28 rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                </div>
-              </div>
-              <div>
-                <label htmlFor="actualLabor" className="block text-xs font-medium text-neutral-500">
-                  Labor cost so far
-                </label>
-                <div className="mt-1 flex items-center gap-1">
-                  <span className="text-neutral-500">$</span>
-                  <input
-                    type="number"
-                    id="actualLabor"
-                    name="actualLabor"
-                    min={0}
-                    step="0.01"
-                    defaultValue={dash.actuals.labor || ""}
-                    placeholder="0"
-                    className="w-28 rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                </div>
-              </div>
-              <button
-                type="submit"
-                className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-              >
-                Save Actuals
-              </button>
-            </form>
+            <div data-testid="completed-cleaning-stats" className="mt-3 grid gap-3 sm:grid-cols-3">
+              <Stat
+                label="Completed Cleaning Charges"
+                value={selectedMonthActuals.entered ? money(selectedMonthActuals.revenue) : "Not yet entered"}
+              />
+              {selectedMonthActuals.labor !== null && (
+                <Stat label="Labor" value={money(selectedMonthActuals.labor)} />
+              )}
+              {selectedMonthActuals.profit !== null && (
+                <Stat
+                  label="Revenue less entered labor"
+                  value={money(selectedMonthActuals.profit)}
+                  caption="Excludes other expenses — not net profit"
+                  accent
+                />
+              )}
+            </div>
+            {selectedMonthActuals.profit === null && selectedMonthActuals.entered && (
+              <p className="mt-1 text-xs text-neutral-400">
+                Labor hasn&rsquo;t been entered for this month yet, so a revenue-less-labor figure
+                isn&rsquo;t shown. This never includes other expenses.
+              </p>
+            )}
+
+            {revenueEntry?.kind === "snapshot" && (
+              <p className="mt-3 text-xs text-neutral-500">
+                {revenueEntry.coverage === "FULL_MONTH" ? "Full month" : "Month to date"}, as of{" "}
+                {revenueEntry.sourceAsOf.toLocaleString()}, from {revenueEntry.source} —{" "}
+                {revenueEntry.status === "RECONCILED" ? "Reconciled" : "Provisional"}. Entered by{" "}
+                {revenueEntry.enteredByName}.
+              </p>
+            )}
+            {revenueEntry?.kind === "legacy" && (
+              <p className="mt-3 text-xs text-neutral-500">
+                Entered before source/coverage tracking existed — no metadata available for this
+                month. Saving below starts a new, fully-tracked entry without altering this history.
+              </p>
+            )}
+
+            <div className="mt-4 border-t border-neutral-200 pt-4">
+              <p className="text-xs font-medium text-neutral-500">Enter completed cleaning charges</p>
+              <RevenueEntryForm monthKey={selectedMonth} defaults={revenueDefaults} />
+            </div>
+
+            <div className="mt-4 border-t border-neutral-200 pt-4">
+              <p className="text-xs font-medium text-neutral-500">Enter labor</p>
+              <LaborEntryForm monthKey={selectedMonth} defaultValue={laborDefaultValue} />
+            </div>
           </div>
         )}
 
