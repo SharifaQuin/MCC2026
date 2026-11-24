@@ -1,8 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/lib/password";
-import { formatDueDate } from "../src/lib/checklistDisplay";
-import { fridayOfBusinessWeek, lastDayOfBusinessMonth } from "../src/lib/timezone";
+import { formatDueDate, getDueSortPriority, getDueStatus } from "../src/lib/checklistDisplay";
+import { businessDateKey, fridayOfBusinessWeek, lastDayOfBusinessMonth } from "../src/lib/timezone";
 
 // Coverage for the MCC Team Portal visual/navigation refresh: the mobile
 // bottom-tab bar for the plain employee (Trainee) experience, the new
@@ -147,10 +147,18 @@ test.describe.serial("MCC Team Portal redesign", () => {
     });
     salesRepId = salesRep.id;
 
-    const now = new Date();
-    const overdueDate = new Date(now.getTime() - 3 * 86400000);
-    const todayDate = now;
-    const futureDate = new Date(now.getTime() + 10 * 86400000);
+    // Derived from ONE America/Los_Angeles calendar date, then encoded as
+    // pure UTC-midnight calendar dates — the same date-only contract
+    // getDaysUntilDue relies on (it reads a stored targetDate's Y/M/D
+    // directly as UTC, never reinterpreted through the business timezone).
+    // Using a real "now" timestamp here instead (as this fixture used to)
+    // ties "due today" to whatever UTC calendar day the test happens to
+    // run on, which drifts a day ahead of the Pacific calendar day for
+    // several hours after every UTC midnight.
+    const [todayYear, todayMonth, todayDay] = businessDateKey(new Date()).split("-").map(Number);
+    const overdueDate = new Date(Date.UTC(todayYear, todayMonth - 1, todayDay - 3));
+    const todayDate = new Date(Date.UTC(todayYear, todayMonth - 1, todayDay));
+    const futureDate = new Date(Date.UTC(todayYear, todayMonth - 1, todayDay + 10));
     const future = await prisma.checklistTask.create({
       data: {
         task: `Redesign future task ${RUN_ID}`,
@@ -446,6 +454,33 @@ test.describe.serial("MCC Team Portal redesign", () => {
     expect(overdueIdx).toBeGreaterThanOrEqual(0);
     expect(dueTodayIdx).toBeGreaterThan(overdueIdx);
     expect(futureIdx).toBeGreaterThan(dueTodayIdx);
+  });
+
+  test("Review fix #4 regression: a due-today task's classification is stable across UTC midnight as long as the America/Los_Angeles calendar date hasn't changed", () => {
+    // Two real instants that straddle a UTC-midnight boundary but are both
+    // "Nov 23" in America/Los_Angeles (PST, UTC-8): 11:30pm Pacific on the
+    // 23rd is 7:30am UTC on the 24th; 1am Pacific on the 23rd is 9am UTC on
+    // the 23rd. This is exactly the window where the old fixture — which
+    // stored a raw `now` timestamp as `targetDate` instead of a UTC-midnight
+    // calendar date — read "today" as tomorrow for several hours after every
+    // UTC midnight, tying the "due today" task's sort priority with "future".
+    const justAfterUtcMidnight = new Date("2026-11-24T07:30:00Z");
+    const justBeforeUtcMidnight = new Date("2026-11-23T09:00:00Z");
+    const pacificDate = "2026-11-23";
+    expect(businessDateKey(justAfterUtcMidnight)).toBe(pacificDate);
+    expect(businessDateKey(justBeforeUtcMidnight)).toBe(pacificDate);
+
+    const [y, m, d] = pacificDate.split("-").map(Number);
+    const dueToday = {
+      frequency: "ONE_TIME" as const,
+      targetDate: new Date(Date.UTC(y, m - 1, d)).toISOString(),
+      effectiveStatus: "NOT_STARTED" as const,
+    };
+
+    for (const now of [justAfterUtcMidnight, justBeforeUtcMidnight]) {
+      expect(getDueStatus(dueToday, now)).toBe("DUE_SOON");
+      expect(getDueSortPriority(dueToday, now)).toBe(1);
+    }
   });
 
   test("Review fix #5: Sales Rep's Won tile says '(from quotes)' so a quote total can't be mistaken for collected revenue", async ({
