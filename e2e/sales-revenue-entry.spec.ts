@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/lib/password";
-import { getSalesActuals, setSalesLabor } from "../src/lib/salesDashboard";
+import { getSalesActuals, setSalesLabor, setSalesGoal, computeCleaningsNeeded } from "../src/lib/salesDashboard";
 import { businessMonthKey } from "../src/lib/timezone";
 import {
   saveRevenueSnapshot,
@@ -127,6 +127,7 @@ function validInput(monthKey: string, overrides: Partial<RawRevenueSnapshotInput
     coverageThrough,
     sourceAsOf: "2026-01-15T09:00",
     status: "PROVISIONAL",
+    completedCleaningCount: "",
     confirmStaleAsOf: false,
     ...overrides,
   };
@@ -165,15 +166,19 @@ test.describe("Sales revenue entry: validation and storage (direct lib calls)", 
     return key;
   }
 
-  test("a revenue-only save preserves an existing labor value exactly", async () => {
+  test("a revenue-and-count save preserves an existing labor value exactly — the count never touches labor", async () => {
     const monthKey = freshMonth();
     await setSalesLabor(4321, monthKey);
 
-    const result = await saveRevenueSnapshot(validInput(monthKey, { revenue: "9000" }), adminId);
+    const result = await saveRevenueSnapshot(
+      validInput(monthKey, { revenue: "9000", completedCleaningCount: "45" }),
+      adminId
+    );
     expect(result.ok).toBe(true);
 
     const actuals = await getSalesActuals(monthKey);
     expect(actuals.revenue).toBe(9000);
+    expect(actuals.completedCleaningCount).toBe(45);
     expect(actuals.labor).toBe(4321);
   });
 
@@ -282,6 +287,106 @@ test.describe("Sales revenue entry: validation and storage (direct lib calls)", 
       });
       expect(auditCount, `no audit entry written for revenue case: ${label}`).toBe(0);
     }
+  });
+
+  test("completed cleanings count: blank saves as unknown (null), never zero; an explicit value — including zero — round-trips exactly", async () => {
+    const blankMonth = freshMonth();
+    const countedMonth = freshMonth();
+    const zeroMonth = freshMonth();
+
+    await saveRevenueSnapshot(validInput(blankMonth, { revenue: "5000" }), adminId);
+    await saveRevenueSnapshot(validInput(countedMonth, { revenue: "5000", completedCleaningCount: "25" }), adminId);
+    await saveRevenueSnapshot(validInput(zeroMonth, { revenue: "5000", completedCleaningCount: "0" }), adminId);
+
+    const blankActuals = await getSalesActuals(blankMonth);
+    const countedActuals = await getSalesActuals(countedMonth);
+    const zeroActuals = await getSalesActuals(zeroMonth);
+    expect(blankActuals.completedCleaningCount).toBeNull();
+    expect(countedActuals.completedCleaningCount).toBe(25);
+    expect(zeroActuals.completedCleaningCount).toBe(0);
+    expect(zeroActuals.completedCleaningCount).not.toBeNull();
+
+    const entry = await getRevenueEntryForMonth(countedMonth);
+    expect(entry.kind).toBe("snapshot");
+    if (entry.kind === "snapshot") expect(entry.completedCleaningCount).toBe(25);
+  });
+
+  test("invalid completed cleanings count input is rejected and writes neither a snapshot nor an audit entry", async () => {
+    const cases: [string, Partial<RawRevenueSnapshotInput>][] = [
+      ["negative", { completedCleaningCount: "-5" }],
+      ["decimal", { completedCleaningCount: "4.5" }],
+      ["non-numeric", { completedCleaningCount: "abc" }],
+      ["leading plus sign", { completedCleaningCount: "+10" }],
+      ["scientific notation", { completedCleaningCount: "1e2" }],
+      ["thousands separator", { completedCleaningCount: "1,000" }],
+    ];
+    for (const [label, overrides] of cases) {
+      const monthKey = freshMonth();
+      const result = await saveRevenueSnapshot(validInput(monthKey, overrides), adminId);
+      expect(result.ok, `count case: ${label}`).toBe(false);
+      if (!result.ok) expect(result.code).toBe("VALIDATION");
+      const row = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey } });
+      expect(row, `no snapshot written for count case: ${label}`).toBeNull();
+      const auditCount = await prisma.auditLogEntry.count({
+        where: { recordType: "SalesRevenueSnapshot", recordId: monthKey },
+      });
+      expect(auditCount, `no audit entry written for count case: ${label}`).toBe(0);
+    }
+  });
+
+  test("completed cleanings count is saved atomically with revenue for the same reporting month, and never leaks into a different month", async () => {
+    const monthA = freshMonth();
+    const monthB = freshMonth();
+    await saveRevenueSnapshot(validInput(monthA, { revenue: "1000", completedCleaningCount: "10" }), adminId);
+    await saveRevenueSnapshot(validInput(monthB, { revenue: "2000", completedCleaningCount: "20" }), adminId);
+
+    const actualsA = await getSalesActuals(monthA);
+    const actualsB = await getSalesActuals(monthB);
+    expect(actualsA.completedCleaningCount).toBe(10);
+    expect(actualsB.completedCleaningCount).toBe(20);
+
+    // Re-saving month B with a different count must never touch month A's.
+    await saveRevenueSnapshot(
+      validInput(monthB, { revenue: "2500", completedCleaningCount: "30", sourceAsOf: "2026-03-01T09:00" }),
+      adminId
+    );
+    const actualsAAfter = await getSalesActuals(monthA);
+    expect(actualsAAfter.completedCleaningCount).toBe(10);
+  });
+
+  test("a legacy-only month (no new-style snapshot) has no completed-cleaning count, so Cleanings Needed reads 'not enough data' unless the goal's already met", async () => {
+    const monthKey = freshMonth();
+    await prisma.salesToolData.create({
+      data: { key: `sales:actuals:${monthKey}`, value: JSON.stringify({ revenue: 4000 }) },
+    });
+    const actuals = await getSalesActuals(monthKey);
+    expect(actuals.completedCleaningCount).toBeNull();
+    expect(actuals.entered).toBe(true);
+
+    expect(computeCleaningsNeeded(10000, actuals)).toBeNull();
+    expect(computeCleaningsNeeded(4000, actuals)).toBe(0);
+  });
+
+  test("Cleanings Needed: $19,025.05 completed revenue, 86 cleanings and a $30,000 goal needs 50 more, at roughly $221.22 average — full precision kept until rounding the final count", () => {
+    const actuals = { revenue: 19025.05, entered: true, completedCleaningCount: 86 };
+    const averagePrice = actuals.revenue / actuals.completedCleaningCount;
+    expect(averagePrice).toBeCloseTo(221.22, 2);
+    expect(computeCleaningsNeeded(30000, actuals)).toBe(50);
+  });
+
+  test("Cleanings Needed reads 'not enough data' (null) for a missing/zero count, zero revenue, a missing/invalid goal, or nothing entered", () => {
+    const base = { revenue: 1000, entered: true, completedCleaningCount: 10 };
+    expect(computeCleaningsNeeded(5000, { ...base, completedCleaningCount: null })).toBeNull();
+    expect(computeCleaningsNeeded(5000, { ...base, completedCleaningCount: 0 })).toBeNull();
+    expect(computeCleaningsNeeded(5000, { ...base, revenue: 0 })).toBeNull();
+    expect(computeCleaningsNeeded(0, base)).toBeNull();
+    expect(computeCleaningsNeeded(-100, base)).toBeNull();
+    expect(computeCleaningsNeeded(5000, { ...base, entered: false })).toBeNull();
+  });
+
+  test("Cleanings Needed reads exactly 0 once the goal is already met or exceeded, even with no count known at all", () => {
+    expect(computeCleaningsNeeded(5000, { revenue: 5000, entered: true, completedCleaningCount: null })).toBe(0);
+    expect(computeCleaningsNeeded(5000, { revenue: 7000, entered: true, completedCleaningCount: null })).toBe(0);
   });
 
   test("a nonexistent calendar date or an out-of-range/date-only source-as-of is rejected, writing neither a snapshot nor an audit entry", async () => {
@@ -535,12 +640,14 @@ test.describe.serial("Sales revenue entry: authorization and Home goal-tracker i
     const captured = await captureAction(page, async () => {
       await page.fill("#revenue", "42");
       await page.fill("#source", "replay-capture");
+      await page.fill("#completedCleaningCount", "7");
       await page.click('button:has-text("Save Revenue")');
       await page.waitForTimeout(500);
     });
     const afterOwnerSave = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey: pastMonthKey } });
     expect(afterOwnerSave?.revenue, "control: the owner's own real submission must have written").toBe(42);
     expect(afterOwnerSave?.source).toBe("replay-capture");
+    expect(afterOwnerSave?.completedCleaningCount, "control: the count must have been saved too").toBe(7);
     const auditCountAfterOwnerSave = await prisma.auditLogEntry.count({
       where: { recordType: "SalesRevenueSnapshot", recordId: pastMonthKey },
     });
@@ -552,6 +659,7 @@ test.describe.serial("Sales revenue entry: authorization and Home goal-tracker i
     const afterUnauth = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey: pastMonthKey } });
     expect(afterUnauth?.revenue).toBe(42);
     expect(afterUnauth?.source).toBe("replay-capture");
+    expect(afterUnauth?.completedCleaningCount).toBe(7);
     const auditCountAfterUnauth = await prisma.auditLogEntry.count({
       where: { recordType: "SalesRevenueSnapshot", recordId: pastMonthKey },
     });
@@ -565,6 +673,7 @@ test.describe.serial("Sales revenue entry: authorization and Home goal-tracker i
     const afterNonAdmin = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey: pastMonthKey } });
     expect(afterNonAdmin?.revenue).toBe(42);
     expect(afterNonAdmin?.source).toBe("replay-capture");
+    expect(afterNonAdmin?.completedCleaningCount).toBe(7);
     const auditCountAfterNonAdmin = await prisma.auditLogEntry.count({
       where: { recordType: "SalesRevenueSnapshot", recordId: pastMonthKey },
     });
@@ -740,5 +849,113 @@ test.describe("Sales revenue entry: Completed Cleaning Revenue card phone layout
     // Side by side means all three start at the same vertical position —
     // stacked (the mobile layout) would show increasing tops instead.
     expect(new Set(tops).size).toBe(1);
+  });
+});
+
+// "Cleanings Needed" on /sales is driven by loadSalesDashboard, which always
+// reads the CURRENT reporting month (never a selected past month) — unlike
+// the Completed Cleaning Revenue card above. This describe block therefore
+// has to touch the real current month's own goal/snapshot/legacy-actuals
+// rows (the same shared, global keys other suites — e.g.
+// goal-box-progress-text.spec.ts — also touch), so it snapshots whatever
+// was already on file in beforeAll and restores it byte-for-byte in
+// afterAll, the same convention that file already established.
+test.describe.serial("Cleanings Needed rendering on /sales (current month, desktop + phone)", () => {
+  const monthKey = businessMonthKey();
+  let adminId: string;
+  let originalGoalRow: { value: string } | null;
+  let originalSnapshot: Awaited<ReturnType<typeof prisma.salesRevenueSnapshot.findUnique>>;
+  let originalActualsRow: { value: string } | null;
+
+  function cleaningsNeededTile(page: Page) {
+    return page.getByText("Cleanings Needed", { exact: true }).locator("xpath=..");
+  }
+
+  test.beforeAll(async () => {
+    const admin = await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL } });
+    adminId = admin.id;
+    originalGoalRow = await prisma.salesToolData.findUnique({ where: { key: "sales:goal" } });
+    originalSnapshot = await prisma.salesRevenueSnapshot.findUnique({ where: { monthKey } });
+    originalActualsRow = await prisma.salesToolData.findUnique({ where: { key: `sales:actuals:${monthKey}` } });
+  });
+
+  test.afterAll(async () => {
+    if (originalGoalRow) {
+      await prisma.salesToolData.upsert({
+        where: { key: "sales:goal" },
+        create: { key: "sales:goal", value: originalGoalRow.value },
+        update: { value: originalGoalRow.value },
+      });
+    } else {
+      await prisma.salesToolData.deleteMany({ where: { key: "sales:goal" } });
+    }
+    if (originalSnapshot) {
+      const { monthKey: _mk, ...rest } = originalSnapshot;
+      await prisma.salesRevenueSnapshot.upsert({ where: { monthKey }, create: originalSnapshot, update: rest });
+    } else {
+      await prisma.salesRevenueSnapshot.deleteMany({ where: { monthKey } });
+    }
+    if (originalActualsRow) {
+      await prisma.salesToolData.upsert({
+        where: { key: `sales:actuals:${monthKey}` },
+        create: { key: `sales:actuals:${monthKey}`, value: originalActualsRow.value },
+        update: { value: originalActualsRow.value },
+      });
+    } else {
+      await prisma.salesToolData.deleteMany({ where: { key: `sales:actuals:${monthKey}` } });
+    }
+    await prisma.$disconnect();
+  });
+
+  test("shows the computed figure on both desktop and phone, then 'Not enough data' once the count is cleared — test data only, nothing production-edited outside this suite's own cleanup", async ({
+    page,
+  }) => {
+    await setSalesGoal(30000);
+    const { last } = monthBoundsUtc(monthKey);
+    const coverageThrough = last.toISOString().slice(0, 10);
+    await saveRevenueSnapshot(
+      validInput(monthKey, {
+        revenue: "19025.05",
+        completedCleaningCount: "86",
+        coverage: "FULL_MONTH",
+        coverageThrough,
+        sourceAsOf: `${coverageThrough}T23:59`,
+        confirmStaleAsOf: true,
+      }),
+      adminId
+    );
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto("/sales");
+    await page.waitForLoadState("networkidle");
+    await expect(cleaningsNeededTile(page)).toContainText("50");
+    await expect(cleaningsNeededTile(page)).toContainText("Estimate, not available schedule capacity");
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/sales");
+    await page.waitForLoadState("networkidle");
+    await expect(cleaningsNeededTile(page)).toContainText("50");
+
+    // Clear the count (blank, not zero) — the goal isn't met, so this must
+    // read as "not enough data", never fall back to a quote-based guess.
+    await saveRevenueSnapshot(
+      validInput(monthKey, {
+        revenue: "19025.05",
+        coverage: "FULL_MONTH",
+        coverageThrough,
+        sourceAsOf: `${coverageThrough}T23:59`,
+        confirmStaleAsOf: true,
+      }),
+      adminId
+    );
+    await page.goto("/sales");
+    await page.waitForLoadState("networkidle");
+    await expect(cleaningsNeededTile(page)).toContainText("Not enough data");
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/sales");
+    await page.waitForLoadState("networkidle");
+    await expect(cleaningsNeededTile(page)).toContainText("Not enough data");
   });
 });

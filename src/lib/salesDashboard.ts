@@ -35,6 +35,12 @@ export interface SalesActuals {
   labor: number | null; // null for a non-admin caller — owner-only, never computed for them
   profit: number | null; // null for a non-admin caller — derived from labor, same boundary
   entered: boolean; // false until she's actually entered a figure this month
+  // How many cleanings this month's revenue figure covers — only ever
+  // known from a new-style SalesRevenueSnapshot that was saved with a
+  // count; null for a legacy-only month, a month with nothing entered, or
+  // any snapshot saved without one. Null for a non-admin caller, same
+  // boundary as labor/profit. Never inferred or backfilled.
+  completedCleaningCount: number | null;
 }
 
 export interface SalesDashboard {
@@ -53,7 +59,10 @@ export interface SalesDashboard {
   // estimate (wonRevenueThisMonth) so the tracker isn't blank early on.
   revenueTowardGoal: number;
   revenueRemaining: number;
-  cleaningsNeeded: number;
+  // null ("not enough data") whenever it can't be honestly computed — see
+  // computeCleaningsNeeded below. Never substitutes won-quote pricing or
+  // any other assumed cleaning price.
+  cleaningsNeeded: number | null;
   topOpportunities: SalesOpportunity[];
 }
 
@@ -104,9 +113,11 @@ export async function getSalesActuals(monthKey: string = businessMonthKey()): Pr
 
   let revenue = 0;
   let entered = false;
+  let completedCleaningCount: number | null = null;
   if (snapshot) {
     revenue = snapshot.revenue;
     entered = true;
+    completedCleaningCount = snapshot.completedCleaningCount;
   } else if (legacyRow) {
     try {
       const parsed = JSON.parse(legacyRow.value) as { revenue?: number };
@@ -130,7 +141,35 @@ export async function getSalesActuals(monthKey: string = businessMonthKey()): Pr
   }
 
   const profit = labor !== null ? revenue - labor : null;
-  return { revenue, labor, profit, entered };
+  return { revenue, labor, profit, entered, completedCleaningCount };
+}
+
+// "Cleanings Needed" is strictly derived from THIS month's own entered
+// Completed Cleaning Charges figure and its own completed-cleaning count
+// — never from won-quote pricing (that's the separate, unrelated "Avg.
+// Job Value" tile). Returns null ("not enough data") rather than guessing
+// whenever an honest estimate isn't possible: no goal set, nothing
+// entered this month, or no positive average cleaning price can be
+// derived (count missing/zero, or revenue not positive) — EXCEPT that an
+// already-met-or-exceeded goal reads as exactly 0 regardless, since no
+// average is needed to know zero more cleanings are required. Full
+// precision is kept throughout; only the final count is rounded (up).
+export function computeCleaningsNeeded(
+  goal: number,
+  actuals: Pick<SalesActuals, "revenue" | "entered" | "completedCleaningCount">
+): number | null {
+  if (!(goal > 0)) return null;
+  if (!actuals.entered) return null;
+
+  const remaining = Math.max(goal - actuals.revenue, 0);
+  if (remaining === 0) return 0;
+
+  const count = actuals.completedCleaningCount;
+  if (count === null || count <= 0 || actuals.revenue <= 0) return null;
+  const averagePrice = actuals.revenue / count;
+  if (!Number.isFinite(averagePrice) || averagePrice <= 0) return null;
+
+  return Math.ceil(remaining / averagePrice);
 }
 
 // Merges `labor` into whatever's already stored under this month's legacy
@@ -212,8 +251,7 @@ export async function loadSalesDashboard(isAdmin: boolean = false): Promise<Sale
 
   const revenueTowardGoal = actuals.entered ? actuals.revenue : wonRevenueThisMonth;
   const revenueRemaining = Math.max(goal - revenueTowardGoal, 0);
-  const cleaningsNeeded =
-    revenueRemaining > 0 && averageJobValue ? Math.ceil(revenueRemaining / averageJobValue) : 0;
+  const cleaningsNeeded = computeCleaningsNeeded(goal, actuals);
 
   const topOpportunities: SalesOpportunity[] = pending
     .map((q) => ({
@@ -233,7 +271,13 @@ export async function loadSalesDashboard(isAdmin: boolean = false): Promise<Sale
   // the RSC payload for a non-admin viewer must never carry these numbers.
   const scopedActuals: SalesActuals = isAdmin
     ? actuals
-    : { revenue: actuals.revenue, labor: null, profit: null, entered: actuals.entered };
+    : {
+        revenue: actuals.revenue,
+        labor: null,
+        profit: null,
+        entered: actuals.entered,
+        completedCleaningCount: null,
+      };
 
   return {
     goal,

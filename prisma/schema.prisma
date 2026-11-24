@@ -1295,6 +1295,14 @@ model SalesRevenueSnapshot {
   coverageThrough DateTime
   sourceAsOf      DateTime
   status          RevenueSnapshotStatus @default(PROVISIONAL)
+  // How many cleanings this snapshot's revenue figure actually covers —
+  // null means unknown (every record before this field existed, and any
+  // save that leaves the count blank), never 0. Never backfilled or
+  // inferred from `source`'s free text; only ever set by an explicit save
+  // that includes it. Used only to derive this reporting month's average
+  // cleaning price for "Cleanings Needed" (see loadSalesDashboard) — not a
+  // real job/booking count from TCS.
+  completedCleaningCount Int?
   enteredById     String
   enteredBy       User                  @relation(fields: [enteredById], references: [id])
   createdAt       DateTime              @default(now())

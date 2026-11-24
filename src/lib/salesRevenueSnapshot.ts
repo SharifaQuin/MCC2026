@@ -48,6 +48,19 @@ export function parseStrictMoney(raw: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
+// A plain non-negative whole number: digits only — no sign, no decimal
+// point, no exponent/hex/thousands-separators, same guard against silent
+// JS coercion as parseStrictMoney. Returns null for anything that isn't a
+// clean match, including a value too large to be a safe integer; the
+// caller treats a genuinely blank field as "unknown" rather than routing
+// it through this at all (blank must never read as 0).
+export function parseStrictWholeNumber(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  return Number.isSafeInteger(value) ? value : null;
+}
+
 // A calendar date's Y/M/D, rejecting anything JS's Date would otherwise
 // silently roll over into a different, valid-looking date (e.g.
 // "2026-02-30" normalizing into March 2) — the round-trip through
@@ -99,6 +112,10 @@ export interface RevenueSnapshotMeta {
   coverageThrough: Date;
   sourceAsOf: Date;
   status: RevenueSnapshotStatus;
+  // How many cleanings this revenue figure covers — null for every record
+  // saved before this field existed, and for any save that left it blank.
+  // Never inferred from `source`'s free text, never backfilled.
+  completedCleaningCount: number | null;
   enteredByName: string;
   updatedAt: Date;
 }
@@ -126,6 +143,7 @@ export async function getRevenueEntryForMonth(monthKey: string): Promise<Revenue
       coverageThrough: snapshot.coverageThrough,
       sourceAsOf: snapshot.sourceAsOf,
       status: snapshot.status,
+      completedCleaningCount: snapshot.completedCleaningCount,
       enteredByName: snapshot.enteredBy.name,
       updatedAt: snapshot.updatedAt,
     };
@@ -153,6 +171,11 @@ export interface RawRevenueSnapshotInput {
   coverageThrough: string; // "YYYY-MM-DD"
   sourceAsOf: string; // "YYYY-MM-DDTHH:mm" (business timezone, no offset)
   status: string;
+  // Blank means "unknown" (stored as null), never 0 — same never-coerced
+  // convention as labor's own blank-vs-zero distinction. Saved in the same
+  // transaction as revenue, for the same reporting month, so the two can
+  // never drift onto different months.
+  completedCleaningCount: string;
   confirmStaleAsOf: boolean;
 }
 
@@ -188,6 +211,22 @@ export async function saveRevenueSnapshot(
       code: "VALIDATION",
       error: "Revenue must be a plain non-negative amount like 1234.56 — no hex, scientific notation, or other formats.",
     };
+  }
+
+  // Blank is valid (unknown, stored as null) — only a non-blank value gets
+  // run through the strict whole-number parser, so a blank field is never
+  // mistaken for "0 cleanings" or rejected as malformed.
+  const completedCleaningCountRaw = input.completedCleaningCount.trim();
+  let completedCleaningCount: number | null = null;
+  if (completedCleaningCountRaw !== "") {
+    completedCleaningCount = parseStrictWholeNumber(completedCleaningCountRaw);
+    if (completedCleaningCount === null) {
+      return {
+        ok: false,
+        code: "VALIDATION",
+        error: "Completed cleanings count must be a whole, non-negative number, or left blank if unknown.",
+      };
+    }
   }
 
   const source = input.source.trim();
@@ -326,6 +365,7 @@ export async function saveRevenueSnapshot(
     coverageThrough: { from: existing?.coverageThrough?.toISOString(), to: coverageThrough.toISOString() },
     sourceAsOf: { from: existing?.sourceAsOf?.toISOString(), to: sourceAsOf.toISOString() },
     status: { from: existing?.status, to: status },
+    completedCleaningCount: { from: existing?.completedCleaningCount, to: completedCleaningCount },
   };
 
   // The snapshot write and its audit entry are one transaction — a crash
@@ -334,8 +374,18 @@ export async function saveRevenueSnapshot(
   await prisma.$transaction(async (tx) => {
     await tx.salesRevenueSnapshot.upsert({
       where: { monthKey },
-      create: { monthKey, revenue, source, coverage, coverageThrough, sourceAsOf, status, enteredById: actorId },
-      update: { revenue, source, coverage, coverageThrough, sourceAsOf, status, enteredById: actorId },
+      create: {
+        monthKey,
+        revenue,
+        source,
+        coverage,
+        coverageThrough,
+        sourceAsOf,
+        status,
+        completedCleaningCount,
+        enteredById: actorId,
+      },
+      update: { revenue, source, coverage, coverageThrough, sourceAsOf, status, completedCleaningCount, enteredById: actorId },
     });
 
     // Small, owner-only change record — reporting month, old/new revenue

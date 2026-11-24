@@ -154,6 +154,8 @@ export default async function SalesPage({
           coverageThrough: toDateInputValue(revenueEntry.coverageThrough),
           sourceAsOf: businessDateTimeInputValue(revenueEntry.sourceAsOf),
           status: revenueEntry.status,
+          completedCleaningCount:
+            revenueEntry.completedCleaningCount === null ? "" : String(revenueEntry.completedCleaningCount),
         }
       : {
           revenue: revenueEntry?.kind === "legacy" ? String(revenueEntry.revenue) : "",
@@ -162,6 +164,7 @@ export default async function SalesPage({
           coverageThrough: toDateInputValue(selectedMonthLastDay),
           sourceAsOf: businessDateTimeInputValue(new Date()),
           status: "PROVISIONAL",
+          completedCleaningCount: "",
         };
 
   const laborDefaultValue =
@@ -309,7 +312,8 @@ export default async function SalesPage({
             <Stat label="Leads Lost This Month" value={String(monthlyLeadOutcomes.lostThisMonth)} />
             <Stat
               label="Cleanings Needed"
-              value={goalHit ? "0" : dash.goal > 0 ? String(dash.cleaningsNeeded) : "—"}
+              value={dash.cleaningsNeeded === null ? "Not enough data" : String(dash.cleaningsNeeded)}
+              caption="Estimate, not available schedule capacity"
             />
             <Stat label="Pending Quotes" value={String(dash.pendingCount)} />
             <Stat
@@ -340,7 +344,8 @@ export default async function SalesPage({
             />
             <Stat
               label="Cleanings Needed"
-              value={goalHit ? "0" : dash.goal > 0 ? String(dash.cleaningsNeeded) : "—"}
+              value={dash.cleaningsNeeded === null ? "Not enough data" : String(dash.cleaningsNeeded)}
+              caption="Estimate, not available schedule capacity"
             />
             <Stat label="Pending Quotes" value={String(dash.pendingCount)} />
             <Stat
