@@ -247,7 +247,7 @@ export default function RescheduleRequestForm({
                           setSelectedOptionIndex(i);
                         }}
                       />
-                      {o.weekday}, {formatOptionDate(o.date)} · {o.block}
+                      {formatOptionDate(o.date)} · {o.block}
                     </label>
                   ))}
                   <label className="flex items-center gap-2 text-sm text-neutral-800">

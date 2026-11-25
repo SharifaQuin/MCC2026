@@ -50,6 +50,12 @@ const PASSWORD = "Test-Password-123!";
 
 const prisma = new PrismaClient();
 
+function addDaysIso(days: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 async function loginAs(page: Page, email: string, password: string) {
   await page.goto("/login");
   await page.fill('input[name="email"]', email);
@@ -1025,14 +1031,63 @@ test.describe.serial("Reschedule requests: public form, honeypot, rate limit (br
     expect(html).not.toMatch(/windowValuePerHour/);
     expect(html).not.toMatch(/chosenOptionWindow/);
 
-    // Each rendered option's visible label is only "{weekday}, {date} ·
-    // {block}" — never a feed time-range (always h:mm am/pm-h:mm am/pm) or a
-    // dollar figure.
+    // Each rendered option's visible label is only "{date} · {block}" (the
+    // date itself already includes a short weekday, e.g. "Tue, Dec 15") —
+    // never a feed time-range (always h:mm am/pm-h:mm am/pm) or a dollar
+    // figure.
     const optionLabels = await page.locator('label:has(input[name="option-choice"])').allTextContents();
     const realOptionLabels = optionLabels.filter((t) => !t.includes("None of these work"));
     for (const label of realOptionLabels) {
       expect(label).not.toMatch(/\d{1,2}(:\d{2})?\s?(am|pm)/i);
       expect(label).not.toMatch(/\$/);
+    }
+  });
+
+  test("each option's rendered label names the weekday exactly once — formatOptionDate already includes it", async ({ page }) => {
+    // The dev DB may have no real near-term feed loaded at all (an empty
+    // options list would make this assertion vacuous), so this test seeds
+    // its own real, near-term SlotFeedMonth — same pattern book-slot-from-
+    // lead.spec.ts and others use — to guarantee at least one visible option.
+    const testDate = addDaysIso(6);
+    const testMonth = testDate.slice(0, 7);
+    await prisma.slotFeedMonth.deleteMany({ where: { month: testMonth } });
+    const feedMonth = await prisma.slotFeedMonth.create({
+      data: {
+        month: testMonth,
+        schema: "mcc-open-slots/v1",
+        generatedAt: new Date(),
+        settings: { min_lead_days: 1 },
+        windowValuePerHour: { "9:00am-12:00pm": 90 },
+        routeBoard: {},
+        dates: {
+          create: [
+            {
+              date: new Date(testDate + "T00:00:00Z"),
+              weekday: new Date(testDate + "T00:00:00Z").toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" }),
+              status: "Open",
+              openPersonHours: 20,
+              openDollars: 2000,
+              blocks: { Midday: { open: 1, windows: ["9:00am-12:00pm"] } },
+              bookedJobs: [],
+            },
+          ],
+        },
+      },
+    });
+
+    try {
+      await page.goto("/reschedule");
+      const optionLabels = await page.locator('label:has(input[name="option-choice"])').allTextContents();
+      const realOptionLabels = optionLabels.filter((t) => !t.includes("None of these work"));
+      expect(realOptionLabels.length).toBeGreaterThan(0);
+      const weekdayPattern = /\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*\b/g;
+      for (const label of realOptionLabels) {
+        const matches = label.match(weekdayPattern) ?? [];
+        expect(matches, `label: "${label}"`).toHaveLength(1);
+      }
+    } finally {
+      await prisma.slotBooking.deleteMany({ where: { month: testMonth } });
+      await prisma.slotFeedMonth.delete({ where: { id: feedMonth.id } });
     }
   });
 
