@@ -18,6 +18,10 @@ const PUBLIC_PATHS = [
   "/interview-confirm",
   "/interview-book",
   "/interview-reschedule",
+  // Covers both the public form (/reschedule) and its status page
+  // (/reschedule/status/[token]) — a single prefix entry, same as
+  // /interview-reschedule already covers its own token sub-route above.
+  "/reschedule",
   "/legal",
   "/manifest.webmanifest",
   "/icon.svg",
