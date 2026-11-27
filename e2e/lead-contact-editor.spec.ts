@@ -163,7 +163,7 @@ test.describe.serial("Lead contact editor: access, validation, dedup, history, q
     // Not redirected — their real SALES department grant still works for
     // everything it always has (this page's other existing edit controls).
     await expect(page).toHaveURL(`/sales/leads/${lead.id}`);
-    await expect(page.getByText(lead.email)).toBeVisible();
+    await expect(page.getByText(lead.email!)).toBeVisible();
 
     await page.click("text=Edit contact info");
     const newEmail = `sm-corrected-${RUN_ID}@example.com`;
@@ -198,7 +198,7 @@ test.describe.serial("Lead contact editor: access, validation, dedup, history, q
     await page.goto(`/sales/leads/${lead.id}`);
     // Their real SALES grant lets them view/edit the lead generally...
     await expect(page).toHaveURL(`/sales/leads/${lead.id}`);
-    await expect(page.getByText(lead.email)).toBeVisible();
+    await expect(page.getByText(lead.email!)).toBeVisible();
     // ...but never the contact-correction control — TRAINEE is excluded by
     // role name in assertLeadContactEditAccess regardless of access.
     await expect(page.getByText("Edit contact info")).toHaveCount(0);
@@ -255,7 +255,7 @@ test.describe.serial("Lead contact editor: access, validation, dedup, history, q
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
     await page.goto(`/sales/leads/${lead.id}`);
     await page.click("text=Edit contact info");
-    await contactForm(page).locator('input[name="email"]').fill(lead.email.toUpperCase());
+    await contactForm(page).locator('input[name="email"]').fill(lead.email!.toUpperCase());
     await contactForm(page).locator('input[name="phone"]').fill("1 (555) 556-4000"); // same number, country code + formatting
     await contactForm(page).locator('button:has-text("Save")').click();
     await page.waitForTimeout(800);

@@ -9,7 +9,7 @@ export interface OfficeAssistantLeadDetailData {
   id: string;
   firstName: string;
   lastName: string;
-  email: string;
+  email: string | null;
   phone: string;
   address: string | null;
   serviceInterest: string | null;
@@ -67,14 +67,14 @@ export default function OfficeAssistantLeadDetail({
         <dl className="grid grid-cols-2 gap-3 text-sm">
           <div>
             <dt className="text-neutral-400">Email</dt>
-            <dd>{lead.email}</dd>
+            <dd>{lead.email || "—"}</dd>
           </div>
           <div>
             <dt className="text-neutral-400">Phone</dt>
             <dd>{formatPhone(lead.phone)}</dd>
           </div>
           <div className="col-span-2">
-            <LeadContactEditor leadId={lead.id} email={lead.email} phone={lead.phone} hasQuote={lead.hasQuote} />
+            <LeadContactEditor leadId={lead.id} email={lead.email ?? ""} phone={lead.phone} hasQuote={lead.hasQuote} />
           </div>
           {lead.address && (
             <div>

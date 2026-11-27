@@ -83,7 +83,7 @@ export async function processScheduledMessage(id: string, now: Date, senders: Me
     const msg = await prisma.scheduledMessage.findUniqueOrThrow({
       where: { id },
       include: {
-        lead: { select: { email: true, phone: true, stage: true } },
+        lead: { select: { email: true, phone: true, stage: true, quarantined: true, isTest: true } },
         applicant: { select: { email: true, phone: true } },
       },
     });
@@ -117,11 +117,34 @@ export async function processScheduledMessage(id: string, now: Date, senders: Me
       return;
     }
 
+    // Same idea, for a lead quarantined (or confirmed as Thumbtack's own
+    // test) any time between scheduling and this tick — no customer
+    // contact of any kind reaches a lead still held, Admin-scheduled or
+    // not.
+    if (msg.leadId && (msg.lead?.quarantined || msg.lead?.isTest)) {
+      await prisma.scheduledMessage.update({
+        where: { id },
+        data: { status: "CANCELLED", cancelReason: "Lead is held in Thumbtack quarantine" },
+      });
+      return;
+    }
+
+    // A Lead recipient may have no email on file (e.g. a Thumbtack lead) —
+    // never crash or send to a null address; terminal FAILED, same as any
+    // other send failure, with a clear reason.
+    if (msg.channel === "EMAIL" && !recipient.email) {
+      await prisma.scheduledMessage.update({
+        where: { id },
+        data: { status: "FAILED", errorMessage: "Recipient has no email on file." },
+      });
+      return;
+    }
+
     let result: { ok: true } | { ok: false; error: string };
     try {
       result =
         msg.channel === "EMAIL"
-          ? await senders.sendEmail({ to: recipient.email, subject: msg.subject ?? "", body: msg.body })
+          ? await senders.sendEmail({ to: recipient.email!, subject: msg.subject ?? "", body: msg.body })
           : await senders.sendSms({ to: recipient.phone, text: msg.body });
     } catch (err) {
       // sendEmail/sendSms threw instead of returning { ok: false } (e.g. an

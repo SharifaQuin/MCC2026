@@ -2094,6 +2094,8 @@ enum LeadSource {
   CURRENT_CLIENT
   // A physical marketing card/flyer left at a property by a technician.
   LEAVE_BEHIND_CARD
+  // Inbound from Thumbtack's Lead webhook — see src/lib/thumbtackWebhook.ts.
+  THUMBTACK
   OTHER
 }
 
@@ -2122,11 +2124,42 @@ model Lead {
   id               String     @id @default(cuid())
   firstName        String
   lastName         String
-  email            String
+  // Nullable since Thumbtack's Lead webhook payload never includes an email
+  // address (only first/last name and phone) — every pre-Thumbtack source
+  // still always has one in practice, nothing here makes it optional for
+  // them, this just stops the column itself from rejecting a real inbound
+  // lead that genuinely has none.
+  email            String?
   phone            String
   address          String?
   source           LeadSource @default(OTHER)
   sourceDetail     String?
+  // Thumbtack's own negotiationID (or any future external platform's own
+  // lead id) — the identity a duplicate webhook delivery is recognized by,
+  // instead of email/phone (which Thumbtack leads may lack or share with an
+  // unrelated inquiry). Null for every non-externally-sourced lead.
+  externalId       String?    @unique
+  // Set only when the owner has confirmed (manually, or from an explicit
+  // platform-provided test marker — see thumbtackWebhook.ts) that a
+  // specific delivery was a connection test, never real customer data.
+  // Excluded from every total/KPI/queue forever, independent of
+  // `quarantined` below.
+  isTest           Boolean    @default(false)
+  // True while an externally-sourced lead (e.g. a Thumbtack delivery) is
+  // held for owner review before it reaches the normal pipeline — visible
+  // only to ADMIN, excluded from every rep-facing list/alert/KPI/export.
+  // Cleared by releasing the lead to the normal pipeline.
+  quarantined      Boolean    @default(false)
+  // Set when an inbound lead's phone matches an already-open lead (a
+  // different identity than this one, e.g. a different externalId) —
+  // surfaced to staff for a human look, never used to merge, skip, or drop
+  // the new lead.
+  possibleDuplicate Boolean   @default(false)
+  // What Thumbtack charged for this lead, and the link back to the same
+  // request on Thumbtack's own site — kept separate from `estimatedValue`
+  // (the job's own worth to us), which this must never be written into.
+  thumbtackLeadPrice Float?
+  thumbtackRequestUrl String?
   // Standard click-through attribution, captured from the lead form URL's
   // query string when a visitor arrives (e.g. from a Facebook/Instagram ad)
   // — nullable since most leads (organic, referral, walk-in) will never
@@ -2176,6 +2209,7 @@ model Lead {
   @@index([stage])
   @@index([source])
   @@index([assignedToId])
+  @@index([quarantined])
 }
 
 // Append-only activity log for internal notes — replaces a single

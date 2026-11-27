@@ -17,9 +17,11 @@ import LeadActivityFeed from "./LeadActivityFeed";
 import AssignLeadForm from "./AssignLeadForm";
 import OfficeAssistantLeadDetail from "../OfficeAssistantLeadDetail";
 import LeadContactEditor from "../LeadContactEditor";
+import { markThumbtackLeadAsTestAction, releaseThumbtackLeadToPipelineAction } from "../actions";
 
 export default async function LeadDetailPage({ params }: { params: { id: string } }) {
   const { session, canEdit } = await requireSalesLeadsAccess();
+  const isAdmin = session.role === "ADMIN";
 
   if (session.role === "OFFICE_ASSISTANT") {
     const lead = await prisma.lead.findUnique({
@@ -30,7 +32,14 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
         assignedTo: { select: { name: true } },
       },
     });
-    if (!lead) return <p className="text-neutral-500">Lead not found.</p>;
+    // Office Assistant can never be Admin, so a quarantined OR isTest
+    // Thumbtack lead (visible only to Admin — see this PR's own
+    // description) reads as not-found here, same as a genuinely missing
+    // lead, never revealing that it exists at all. isTest is checked
+    // separately from quarantined because a lead can be released
+    // (quarantined: false) and only later confirmed as Thumbtack's own
+    // test — it must stay hidden from non-Admin either way.
+    if (!lead || lead.quarantined || lead.isTest) return <p className="text-neutral-500">Lead not found.</p>;
     return (
       <OfficeAssistantLeadDetail
         lead={{
@@ -87,6 +96,13 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
   ]);
 
   if (!lead) {
+    return <p className="text-neutral-500">Lead not found.</p>;
+  }
+  // Visible to Admin only — every other role (Sales Rep, Service Manager)
+  // reads a quarantined OR isTest Thumbtack lead as not-found, same as
+  // genuinely missing, never revealing that a delivery is being held or
+  // was confirmed as Thumbtack's own test.
+  if ((lead.quarantined || lead.isTest) && !isAdmin) {
     return <p className="text-neutral-500">Lead not found.</p>;
   }
 
@@ -163,11 +179,79 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
         </div>
       )}
 
+      {isAdmin && lead.quarantined && (
+        <div className="mb-6 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="font-medium">Held for review — not yet visible to the sales team.</p>
+          <p className="mt-1">
+            This Thumbtack delivery is quarantined. Release it to send the normal new-lead alert and put it on
+            the pipeline, or mark it as a test if this was Thumbtack&rsquo;s own webhook test.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <form action={releaseThumbtackLeadToPipelineAction.bind(null, lead.id)}>
+              <button
+                type="submit"
+                className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
+              >
+                Release to pipeline
+              </button>
+            </form>
+            {!lead.isTest && (
+              <form action={markThumbtackLeadAsTestAction.bind(null, lead.id)}>
+                <button
+                  type="submit"
+                  className="rounded-md border border-amber-400 px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+                >
+                  Mark as test
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isAdmin && !lead.quarantined && lead.source === "THUMBTACK" && !lead.isTest && (
+        <div className="mb-6 rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-700">
+          <form action={markThumbtackLeadAsTestAction.bind(null, lead.id)} className="flex items-center gap-2">
+            <span>Turned out this was Thumbtack&rsquo;s own test delivery?</span>
+            <button
+              type="submit"
+              className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
+            >
+              Mark as test
+            </button>
+          </form>
+        </div>
+      )}
+
+      {lead.source === "THUMBTACK" && (lead.thumbtackLeadPrice != null || lead.thumbtackRequestUrl) && (
+        <div className="mb-6 rounded-lg border border-neutral-200 bg-white p-4 text-sm">
+          <p className="font-medium text-neutral-900">Thumbtack</p>
+          {lead.thumbtackLeadPrice != null && (
+            <p className="mt-1 text-neutral-600">Lead price: ${lead.thumbtackLeadPrice.toFixed(2)}</p>
+          )}
+          {lead.thumbtackRequestUrl && (
+            <a
+              href={lead.thumbtackRequestUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-block text-brand-700 hover:underline"
+            >
+              View this request on Thumbtack →
+            </a>
+          )}
+          {lead.possibleDuplicate && (
+            <p className="mt-2 text-amber-700">
+              ⚠ Possible duplicate — this phone number matched another open lead. See notes below.
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="mb-6 rounded-lg border border-neutral-200 bg-white p-4">
         <dl className="grid grid-cols-2 gap-3 text-sm">
           <div>
             <dt className="text-neutral-400">Email</dt>
-            <dd>{lead.email}</dd>
+            <dd>{lead.email || "—"}</dd>
           </div>
           <div>
             <dt className="text-neutral-400">Phone</dt>
@@ -179,7 +263,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
               excludes only the two field roles from there, by name. */}
           {session.role !== "TRAINEE" && session.role !== "TRAINER" && (
             <div className="col-span-2">
-              <LeadContactEditor leadId={lead.id} email={lead.email} phone={lead.phone} hasQuote={lead.quoteKey != null} />
+              <LeadContactEditor leadId={lead.id} email={lead.email ?? ""} phone={lead.phone} hasQuote={lead.quoteKey != null} />
             </div>
           )}
           {lead.address && (
@@ -270,7 +354,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
             pathname: "/sales/pricing-tool",
             query: {
               leadName: `${lead.firstName} ${lead.lastName}`,
-              leadEmail: lead.email,
+              ...(lead.email ? { leadEmail: lead.email } : {}),
               leadPhone: lead.phone,
               ...(lead.address
                 ? { leadAddress: lead.address, leadZip: extractZipFromAddress(lead.address) }
