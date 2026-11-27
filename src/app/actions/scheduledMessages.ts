@@ -29,8 +29,23 @@ async function authorizeRecipient(
   if (recipientType === "LEAD") {
     const { session, canEdit } = await requireDepartmentAccess("SALES");
     if (!canEdit) return { ok: false, error: "Not authorized." };
-    const lead = await prisma.lead.findUnique({ where: { id: recipientId }, select: { id: true, stage: true } });
+    const lead = await prisma.lead.findUnique({
+      where: { id: recipientId },
+      select: { id: true, stage: true, quarantined: true, isTest: true },
+    });
     if (!lead) return { ok: false, error: "Lead not found." };
+    // A quarantined/test lead is invisible to a non-Admin, same as the
+    // lead page itself — never reveal it exists via a different error
+    // message than a genuinely missing lead would get.
+    if ((lead.quarantined || lead.isTest) && session.role !== "ADMIN") {
+      return { ok: false, error: "Lead not found." };
+    }
+    // Scheduling a send IS customer contact — blocked for everyone,
+    // Admin included, until the lead is released from quarantine (or was
+    // never quarantined to begin with).
+    if (lead.quarantined || lead.isTest) {
+      return { ok: false, error: "This lead is held in Thumbtack quarantine — scheduling a send is blocked." };
+    }
     // Covers both creating a new scheduled send (scheduleMessageAction
     // calls this directly) and editing an existing one
     // (updateScheduledMessageAction -> authorizeScheduledMessage -> this),

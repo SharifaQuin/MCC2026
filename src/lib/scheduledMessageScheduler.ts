@@ -83,7 +83,7 @@ export async function processScheduledMessage(id: string, now: Date, senders: Me
     const msg = await prisma.scheduledMessage.findUniqueOrThrow({
       where: { id },
       include: {
-        lead: { select: { email: true, phone: true, stage: true } },
+        lead: { select: { email: true, phone: true, stage: true, quarantined: true, isTest: true } },
         applicant: { select: { email: true, phone: true } },
       },
     });
@@ -113,6 +113,18 @@ export async function processScheduledMessage(id: string, now: Date, senders: Me
       await prisma.scheduledMessage.update({
         where: { id },
         data: { status: "CANCELLED", cancelReason: "Lead was classified Scam after this send was queued" },
+      });
+      return;
+    }
+
+    // Same idea, for a lead quarantined (or confirmed as Thumbtack's own
+    // test) any time between scheduling and this tick — no customer
+    // contact of any kind reaches a lead still held, Admin-scheduled or
+    // not.
+    if (msg.leadId && (msg.lead?.quarantined || msg.lead?.isTest)) {
+      await prisma.scheduledMessage.update({
+        where: { id },
+        data: { status: "CANCELLED", cancelReason: "Lead is held in Thumbtack quarantine" },
       });
       return;
     }

@@ -31,11 +31,16 @@ export async function maybeSendAfterHoursAutoReply(
   const config = await getBusinessHours();
   if (isWithinBusinessHours(now, config)) return;
 
+  // quarantined/isTest is in the WHERE, not a separate early return — no
+  // customer contact of any kind for a lead still held in Thumbtack
+  // quarantine or confirmed as its own test, for any caller, present or
+  // future (this function is never called for a Thumbtack lead today, but
+  // the guard lives here too rather than relying solely on that).
   const claim = await prisma.lead.updateMany({
-    where: { id: lead.id, autoReplySentAt: null },
+    where: { id: lead.id, autoReplySentAt: null, quarantined: false, isTest: false },
     data: { autoReplySentAt: now },
   });
-  if (claim.count === 0) return; // already handled (or somehow already claimed)
+  if (claim.count === 0) return; // already handled, quarantined/test, or somehow already claimed
 
   // Never send to an existing client (someone with a prior Won lead on
   // file) or an employee. Email matches on an indexed, cheap query first;

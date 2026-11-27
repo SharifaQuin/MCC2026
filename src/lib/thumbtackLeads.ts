@@ -3,17 +3,17 @@
 // check, event-type routing, response codes); this file holds the parsing,
 // dedupe, quarantine, and alert logic the route calls into.
 //
-// ASSUMPTIONS — read before enabling the live connection (also called out
-// in this PR's own description):
-// - Thumbtack's webhook POSTs a flat JSON object with the fields this file
-//   reads (negotiationID, createdAt, customer{...}, request{...}, leadPrice,
-//   requestReviewLink) at the TOP LEVEL of the body, not nested under a
-//   wrapper key. This matches how the brief describing this payload reads,
-//   but was not confirmed against a captured real delivery.
-// - No single field name documenting "this is a Lead event" (vs. Message/
-//   Review) was available — see getThumbtackEventType below, which tries a
-//   few plausible field names first, then falls back to a structural check
-//   (only a Lead event has request.requestID + leadPrice together).
+// The real Lead/Message payload shapes below (field names and types) were
+// confirmed directly — negotiationID/request.requestID/leadPrice etc. are
+// real top-level fields, not nested under a wrapper key, and leadPrice can
+// arrive as either a number or a string (sometimes with a "$" and commas).
+//
+// Still unconfirmed:
+// - Review events' shape was never given — getThumbtackEventType only
+//   recognizes LEAD (request.requestID present) and MESSAGE (messageID
+//   present); anything else, Review included, is UNKNOWN and gets a
+//   non-2xx (see the route) so a shape this file doesn't yet handle is
+//   never silently swallowed.
 // - No test-marker field was found in what was read of Thumbtack's docs —
 //   see isExplicitTestMarker below, which currently always returns false.
 //   Until a real field name is confirmed, the owner identifies the test
@@ -21,15 +21,18 @@
 //   src/app/(portal)/sales/leads/actions.ts).
 //
 // Do not enable the live connection (configuring this URL + the Custom
-// Header secret in Thumbtack's own dashboard) until these assumptions are
-// checked against a real "Test this webhook" delivery.
+// Header secret in Thumbtack's own dashboard) until Review's shape (if it
+// matters) and the test-marker field are confirmed against a real
+// delivery.
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { normalizePhoneDigits } from "@/lib/formatPhone";
 import { sendEmail } from "@/lib/email";
 import { postSlackDMToOwner } from "@/lib/slack";
 import { notifyNewLead, ARCHIVED_LEAD_STAGES, buildThumbtackAddress } from "@/lib/leads";
 import type { Lead } from "@prisma/client";
+import type { SessionPayload } from "@/lib/session";
 
 const THUMBTACK_SECRET_HEADER = "x-thumbtack-webhook-secret";
 
@@ -64,9 +67,14 @@ export function isThumbtackQuarantineEnabled(): boolean {
 }
 
 interface ThumbtackCustomer {
+  customerID?: string;
   firstName?: string;
   lastName?: string;
   phone?: string;
+  // Message events only — the customer is shown as "Unknown" there, never
+  // a real name; this field is read nowhere, it's just part of the real
+  // shape.
+  displayName?: string;
 }
 
 interface ThumbtackLocation {
@@ -82,21 +90,35 @@ interface ThumbtackDetail {
   answer?: string;
 }
 
+interface ThumbtackProposedTime {
+  start?: string;
+  end?: string;
+}
+
 interface ThumbtackRequest {
   requestID?: string;
+  customerID?: string;
   description?: string;
-  category?: { name?: string };
+  category?: { categoryID?: string; name?: string };
+  proposedTimes?: ThumbtackProposedTime[];
   location?: ThumbtackLocation;
   details?: ThumbtackDetail[];
-  proposedTimes?: unknown;
+  attachments?: unknown[];
 }
 
 interface ThumbtackLeadBody {
   negotiationID?: string;
   createdAt?: string;
   customer?: ThumbtackCustomer;
+  business?: unknown;
   request?: ThumbtackRequest;
-  leadPrice?: number;
+  status?: string;
+  // Real deliveries send this as a string (sometimes with a "$" and
+  // commas), not a number — see parseThumbtackLeadPrice below. A plain
+  // number is still accepted too, in case that ever changes.
+  leadPrice?: number | string;
+  leadPriceBreakdown?: unknown;
+  chargeState?: string;
   requestReviewLink?: string;
   // Not a confirmed real field name — see the file header comment. Checked
   // defensively in case Thumbtack's own docs do name one of these.
@@ -104,22 +126,32 @@ interface ThumbtackLeadBody {
   test?: boolean;
 }
 
-export type ThumbtackEventType = "LEAD" | "MESSAGE" | "REVIEW" | "UNKNOWN";
+// Message events carry no request object at all, and the customer is shown
+// as "Unknown" — read nowhere below, this type exists only to document the
+// real shape getThumbtackEventType's MESSAGE branch matches against.
+interface ThumbtackMessageBody {
+  messageID?: string;
+  negotiationID?: string;
+  customer?: { customerID?: string; displayName?: string };
+  business?: unknown;
+  from?: string;
+  text?: string;
+  sentAt?: string;
+}
 
-// Tries a few plausible "what kind of event is this" field names first;
-// falls back to a structural check (a Lead event is the only one with both
-// request.requestID and a leadPrice) when none of those are present. See
-// the file header comment — this field name was not confirmed.
+export type ThumbtackEventType = "LEAD" | "MESSAGE" | "UNKNOWN";
+
+// A Lead event is identified by request.requestID being a non-empty
+// string; a Message event by messageID being a string — Thumbtack sends no
+// field of its own naming the event type. Anything else (Review events
+// included — their shape was never given) is UNKNOWN, which the route
+// turns into a non-2xx rather than a silent 2xx ignore, so a shape this
+// file doesn't yet handle is never mistaken for "nothing to do."
 export function getThumbtackEventType(body: unknown): ThumbtackEventType {
   if (!body || typeof body !== "object") return "UNKNOWN";
-  const b = body as Record<string, unknown>;
-  const raw = String(b.eventType ?? b.type ?? b.event ?? "").toLowerCase();
-  if (raw.includes("lead")) return "LEAD";
-  if (raw.includes("message")) return "MESSAGE";
-  if (raw.includes("review")) return "REVIEW";
-
-  const request = b.request as ThumbtackRequest | undefined;
-  if (b.negotiationID && request?.requestID && typeof b.leadPrice === "number") return "LEAD";
+  const b = body as ThumbtackLeadBody & ThumbtackMessageBody;
+  if (typeof b.request?.requestID === "string" && b.request.requestID.trim()) return "LEAD";
+  if (typeof b.messageID === "string" && b.messageID.trim()) return "MESSAGE";
   return "UNKNOWN";
 }
 
@@ -131,12 +163,23 @@ function isExplicitTestMarker(body: ThumbtackLeadBody): boolean {
   return body.isTest === true || body.test === true;
 }
 
-// Digits only, tolerant of a missing phone — the one sample seen was
-// digits-only with no formatting, but nothing here assumes that holds for
-// every delivery.
+// Digits only, tolerant of a missing phone — nothing here assumes a
+// particular incoming format.
 function normalizeThumbtackPhone(raw: string | null | undefined): string {
   if (!raw) return "";
   return raw.replace(/\D/g, "");
+}
+
+// Accepts a real number, or a string that may carry a "$" and/or commas
+// ("$1,234.50") — real deliveries send leadPrice as a string. Returns null
+// for anything that isn't a parseable amount, never guesses.
+function parseThumbtackLeadPrice(raw: number | string | undefined): number | null {
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
+  if (typeof raw !== "string") return null;
+  const cleaned = raw.replace(/[$,]/g, "").trim();
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
 }
 
 export interface ParsedThumbtackLead {
@@ -177,7 +220,7 @@ export function parseThumbtackLeadBody(body: unknown): ParsedThumbtackLead | nul
     serviceInterest: request.category?.name?.trim() || null,
     message: request.description?.trim() || null,
     customFields: customFields.length > 0 ? customFields : null,
-    leadPrice: typeof b.leadPrice === "number" ? b.leadPrice : null,
+    leadPrice: parseThumbtackLeadPrice(b.leadPrice),
     requestReviewLink: b.requestReviewLink?.trim() || null,
     isTest: isExplicitTestMarker(b),
   };
@@ -207,24 +250,41 @@ export async function ingestThumbtackLead(
   const duplicateOfId = await findPossibleDuplicateOpenLead(parsed.phone);
   const quarantined = isThumbtackQuarantineEnabled();
 
-  const lead = await prisma.lead.create({
-    data: {
-      firstName: parsed.firstName,
-      lastName: parsed.lastName,
-      phone: parsed.phone,
-      address: parsed.address,
-      source: "THUMBTACK",
-      serviceInterest: parsed.serviceInterest,
-      message: parsed.message,
-      customFields: parsed.customFields ?? undefined,
-      externalId: parsed.negotiationID,
-      isTest: parsed.isTest,
-      quarantined,
-      possibleDuplicate: duplicateOfId !== null,
-      thumbtackLeadPrice: parsed.leadPrice,
-      thumbtackRequestUrl: parsed.requestReviewLink,
-    },
-  });
+  let lead: Lead;
+  try {
+    lead = await prisma.lead.create({
+      data: {
+        firstName: parsed.firstName,
+        lastName: parsed.lastName,
+        phone: parsed.phone,
+        address: parsed.address,
+        source: "THUMBTACK",
+        serviceInterest: parsed.serviceInterest,
+        message: parsed.message,
+        customFields: parsed.customFields ?? undefined,
+        externalId: parsed.negotiationID,
+        isTest: parsed.isTest,
+        quarantined,
+        possibleDuplicate: duplicateOfId !== null,
+        thumbtackLeadPrice: parsed.leadPrice,
+        thumbtackRequestUrl: parsed.requestReviewLink,
+      },
+    });
+  } catch (err) {
+    // Two concurrent deliveries for the same negotiationID both pass the
+    // findUnique check above before either writes — the unique constraint
+    // on externalId is what actually decides it, and the loser lands here
+    // instead of a 500. Whichever row won the race is the real lead; this
+    // never creates a second one.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const winner = await prisma.lead.findUnique({
+        where: { externalId: parsed.negotiationID },
+        select: { id: true },
+      });
+      if (winner) return { outcome: "duplicate", leadId: winner.id };
+    }
+    throw err;
+  }
 
   if (duplicateOfId) {
     await prisma.leadNote.create({
@@ -302,17 +362,58 @@ export async function sendThumbtackQuarantineAlert(
 // that call these) — kept here, not inline in the "use server" actions
 // file, so tests can call them directly with an injected sendEmailFn, the
 // same pattern every other alert-sending function in this app uses.
-export async function markThumbtackLeadAsTest(leadId: string): Promise<void> {
-  await prisma.lead.update({ where: { id: leadId }, data: { isTest: true } });
+//
+// Restricted to source: THUMBTACK — this is Thumbtack-quarantine plumbing,
+// never a generic "flag any lead as test" control.
+export async function markThumbtackLeadAsTest(leadId: string): Promise<{ marked: boolean }> {
+  const updated = await prisma.lead.updateMany({
+    where: { id: leadId, source: "THUMBTACK" },
+    data: { isTest: true },
+  });
+  return { marked: updated.count === 1 };
 }
 
+// Conditional update (id + source: THUMBTACK + quarantined: true) so a
+// double click or a second tab can only ever win the race once — the
+// alert only fires when this exact call is the one that actually flipped
+// quarantined, never on a call that matched zero rows because another
+// request (or an earlier click) already released it.
 export async function releaseThumbtackLeadToPipeline(
   leadId: string,
   sendEmailFn: typeof sendEmail = sendEmail
-): Promise<Lead> {
-  const lead = await prisma.lead.update({ where: { id: leadId }, data: { quarantined: false } });
+): Promise<{ released: boolean }> {
+  const updated = await prisma.lead.updateMany({
+    where: { id: leadId, source: "THUMBTACK", quarantined: true },
+    data: { quarantined: false },
+  });
+  if (updated.count !== 1) return { released: false };
+
+  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
   await notifyNewLead(lead, sendEmailFn);
+  return { released: true };
+}
+
+// Shared server-side guard — used everywhere a lead id is accepted (every
+// action in src/app/(portal)/sales/leads/actions.ts, the scheduled-message
+// create path, and the scheduled-message sender). A non-Admin role gets
+// the exact same "doesn't exist" treatment the lead page itself already
+// gives a quarantined/test lead — hiding it from the UI was never real
+// access control on its own, every read and mutation needs this too.
+export async function getAccessibleLead(leadId: string, session: SessionPayload): Promise<Lead | null> {
+  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (!lead) return null;
+  if ((lead.quarantined || lead.isTest) && session.role !== "ADMIN") return null;
   return lead;
+}
+
+// Separate from getAccessibleLead above: this applies to EVERYONE,
+// including Admin — Release to pipeline / Mark as test and plain viewing
+// stay available to Admin, but no customer contact (email, text, a
+// scheduled send, the after-hours auto-reply) is ever allowed for a lead
+// still quarantined or confirmed as Thumbtack's own test, regardless of
+// who's asking.
+export function isLeadContactBlocked(lead: Pick<Lead, "quarantined" | "isTest">): boolean {
+  return lead.quarantined || lead.isTest;
 }
 
 // Logged on every delivery, success or not — negotiationID only, never a

@@ -9,7 +9,12 @@ import { getSession } from "@/lib/session";
 import { sendEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
 import { syncQuoteStatusForLead } from "@/lib/leads";
-import { markThumbtackLeadAsTest, releaseThumbtackLeadToPipeline } from "@/lib/thumbtackLeads";
+import {
+  markThumbtackLeadAsTest,
+  releaseThumbtackLeadToPipeline,
+  getAccessibleLead,
+  isLeadContactBlocked,
+} from "@/lib/thumbtackLeads";
 import { logAudit } from "@/lib/auditLog";
 import { getTrueActorId } from "@/lib/impersonation";
 import { formatPhone, normalizePhoneDigits } from "@/lib/formatPhone";
@@ -47,7 +52,7 @@ export async function updateLeadContactInfoAction(
   const emailRaw = String(formData.get("email") ?? "").trim();
   const phoneRaw = String(formData.get("phone") ?? "").trim();
 
-  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  const lead = await getAccessibleLead(leadId, session);
   if (!lead) return { error: "Lead not found." };
 
   const submittedEmail = emailRaw.toLowerCase();
@@ -163,7 +168,8 @@ function assertRoutineLeadStageTransition(role: string, stage: LeadStage, curren
 
 export async function setLeadStageAction(leadId: string, stage: LeadStage) {
   const session = await assertSalesLeadsEditAccess();
-  const current = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  const current = await getAccessibleLead(leadId, session);
+  if (!current) throw new Error("Lead not found.");
   assertRoutineLeadStageTransition(session.role, stage, current.stage);
 
   // Atomic guard against the race assertRoutineLeadStageTransition's read-
@@ -208,7 +214,8 @@ export async function markLeadLostAction(leadId: string, lostReason: string) {
   // explicitly anyway: marking a lead Lost is a business judgment call,
   // not a factual contact status this role may record on its own.
   if (session.role === "OFFICE_ASSISTANT") throw new Error("Not authorized.");
-  const current = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  const current = await getAccessibleLead(leadId, session);
+  if (!current) throw new Error("Lead not found.");
   if (current.stage === "SCAM") {
     throw new Error("This lead is classified as Scam — use Restore to change its stage.");
   }
@@ -271,6 +278,7 @@ export async function markLeadScamAction(
   // explicitly anyway: marking a lead Scam is a business judgment call, not
   // a factual contact status this role may record on its own.
   if (session.role === "OFFICE_ASSISTANT") throw new Error("Not authorized.");
+  if (!(await getAccessibleLead(leadId, session))) throw new Error("Lead not found.");
 
   const actorId = getTrueActorId(session);
   const trimmedReason = reason?.trim() || null;
@@ -368,6 +376,7 @@ export async function restoreLeadFromScamAction(
   const { session, canEdit } = await requireDepartmentAccess("SALES");
   if (!canEdit) return { ok: false, error: "Not authorized." };
   if (session.role === "OFFICE_ASSISTANT") throw new Error("Not authorized.");
+  if (!(await getAccessibleLead(leadId, session))) throw new Error("Lead not found.");
 
   const actorId = getTrueActorId(session);
 
@@ -441,7 +450,8 @@ export async function markLeadUnableToContactAction(leadId: string) {
   const { session, canEdit } = await requireDepartmentAccess("SALES");
   if (!canEdit) return;
   if (session.role === "OFFICE_ASSISTANT") throw new Error("Not authorized.");
-  const current = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  const current = await getAccessibleLead(leadId, session);
+  if (!current) throw new Error("Lead not found.");
   if (current.stage === "SCAM") {
     throw new Error("This lead is classified as Scam — use Restore to change its stage.");
   }
@@ -476,7 +486,8 @@ export async function reopenLeadFromUnableToContactAction(leadId: string) {
   const { session, canEdit } = await requireDepartmentAccess("SALES");
   if (!canEdit) return;
   if (session.role === "OFFICE_ASSISTANT") throw new Error("Not authorized.");
-  const current = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  const current = await getAccessibleLead(leadId, session);
+  if (!current) throw new Error("Lead not found.");
   if (current.stage !== "UNABLE_TO_CONTACT") return;
   const updated = await prisma.lead.updateMany({
     where: { id: leadId, stage: "UNABLE_TO_CONTACT" },
@@ -530,6 +541,7 @@ export async function createManualLeadAction(formData: FormData) {
 // field, so every entry keeps its own timestamp and author.
 export async function addLeadNoteAction(leadId: string, formData: FormData) {
   const session = await assertSalesLeadsEditAccess();
+  if (!(await getAccessibleLead(leadId, session))) throw new Error("Lead not found.");
   const body = String(formData.get("body") ?? "").trim();
   if (!body) return;
   await prisma.leadNote.create({ data: { leadId, authorId: getTrueActorId(session), body } });
@@ -550,6 +562,7 @@ export async function addLeadNoteAction(leadId: string, formData: FormData) {
 // so there's nothing for its own form to submit back).
 export async function setLeadDealDetailsAction(leadId: string, formData: FormData) {
   const session = await assertSalesLeadsEditAccess();
+  if (!(await getAccessibleLead(leadId, session))) throw new Error("Lead not found.");
   const followUpDateRaw = String(formData.get("followUpDate") ?? "");
   const followUpDueAt = followUpDateRaw ? new Date(followUpDateRaw) : null;
 
@@ -590,7 +603,8 @@ export async function markLeadFollowUpDoneAction(
   leadId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const session = await assertSalesLeadsEditAccess();
-  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId }, select: { followUpDueAt: true } });
+  const lead = await getAccessibleLead(leadId, session);
+  if (!lead) return { ok: false, error: "Lead not found." };
   if (!lead.followUpDueAt) return { ok: false, error: "No follow-up date is set on this lead." };
   const dueDateLabel = lead.followUpDueAt.toLocaleDateString();
   await prisma.$transaction([
@@ -618,7 +632,8 @@ export async function sendLeadEmailAction(leadId: string, formData: FormData) {
   const body = String(formData.get("body") ?? "").trim();
   if (!subject || !body) return;
 
-  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  const lead = await getAccessibleLead(leadId, session);
+  if (!lead) throw new Error("Lead not found.");
   // Surfaced the same way a real send failure already is — a FAILED
   // LeadCommunication row with a clear errorMessage, which
   // LeadCommunicationPanel already renders inline. No new error-reporting
@@ -633,6 +648,25 @@ export async function sendLeadEmailAction(leadId: string, formData: FormData) {
         body,
         status: "FAILED",
         errorMessage: "This lead is classified as Scam — sending is blocked.",
+        sentById: getTrueActorId(session),
+      },
+    });
+    revalidatePath(`/sales/leads/${leadId}`);
+    return;
+  }
+  // Blocked for every role, Admin included — a lead still quarantined or
+  // confirmed as Thumbtack's own test gets no customer contact of any kind
+  // until it's released.
+  if (isLeadContactBlocked(lead)) {
+    await prisma.leadCommunication.create({
+      data: {
+        leadId,
+        channel: "EMAIL",
+        direction: "OUTBOUND",
+        subject,
+        body,
+        status: "FAILED",
+        errorMessage: "This lead is held in Thumbtack quarantine — sending is blocked until it's released.",
         sentById: getTrueActorId(session),
       },
     });
@@ -680,7 +714,8 @@ export async function sendLeadTextAction(leadId: string, formData: FormData) {
   const body = String(formData.get("body") ?? "").trim();
   if (!body) return;
 
-  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  const lead = await getAccessibleLead(leadId, session);
+  if (!lead) throw new Error("Lead not found.");
   if (lead.stage === "SCAM") {
     await prisma.leadCommunication.create({
       data: {
@@ -690,6 +725,21 @@ export async function sendLeadTextAction(leadId: string, formData: FormData) {
         body,
         status: "FAILED",
         errorMessage: "This lead is classified as Scam — sending is blocked.",
+        sentById: getTrueActorId(session),
+      },
+    });
+    revalidatePath(`/sales/leads/${leadId}`);
+    return;
+  }
+  if (isLeadContactBlocked(lead)) {
+    await prisma.leadCommunication.create({
+      data: {
+        leadId,
+        channel: "SMS",
+        direction: "OUTBOUND",
+        body,
+        status: "FAILED",
+        errorMessage: "This lead is held in Thumbtack quarantine — sending is blocked until it's released.",
         sentById: getTrueActorId(session),
       },
     });
@@ -718,6 +768,7 @@ export async function sendLeadTextAction(leadId: string, formData: FormData) {
 // alongside the outbound history instead of living only in Outlook/RingCentral.
 export async function logLeadReplyAction(leadId: string, channel: "EMAIL" | "SMS", formData: FormData) {
   const session = await assertSalesLeadsEditAccess();
+  if (!(await getAccessibleLead(leadId, session))) throw new Error("Lead not found.");
   const subject = channel === "EMAIL" ? String(formData.get("subject") ?? "").trim() || null : null;
   const body = String(formData.get("body") ?? "").trim();
   if (!body) return;
@@ -744,6 +795,7 @@ export async function logLeadReplyAction(leadId: string, channel: "EMAIL" | "SMS
 // sensitivity metadata, so any Sales editor may set it, same as a lead note.
 export async function setLeadLanguageNoteAction(leadId: string, languageNote: string) {
   const session = await assertSalesLeadsEditAccess();
+  if (!(await getAccessibleLead(leadId, session))) throw new Error("Lead not found.");
   await prisma.lead.update({ where: { id: leadId }, data: { languageNote: languageNote.trim() || null } });
   if (session.role === "OFFICE_ASSISTANT") {
     await logAudit({
@@ -761,6 +813,7 @@ export async function setLeadAssignmentAction(leadId: string, assignedToId: stri
   const { session, canEdit } = await requireDepartmentAccess("SALES");
   if (!canEdit) return;
   if (session.role === "OFFICE_ASSISTANT") throw new Error("Not authorized.");
+  if (!(await getAccessibleLead(leadId, session))) throw new Error("Lead not found.");
   await prisma.lead.update({
     where: { id: leadId },
     data: { assignedToId: assignedToId || null },

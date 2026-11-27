@@ -32,11 +32,14 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
         assignedTo: { select: { name: true } },
       },
     });
-    // Office Assistant can never be Admin, so a quarantined Thumbtack lead
-    // (visible only to Admin — see this PR's own description) reads as
-    // not-found here, same as a genuinely missing lead, never revealing
-    // that it exists at all.
-    if (!lead || lead.quarantined) return <p className="text-neutral-500">Lead not found.</p>;
+    // Office Assistant can never be Admin, so a quarantined OR isTest
+    // Thumbtack lead (visible only to Admin — see this PR's own
+    // description) reads as not-found here, same as a genuinely missing
+    // lead, never revealing that it exists at all. isTest is checked
+    // separately from quarantined because a lead can be released
+    // (quarantined: false) and only later confirmed as Thumbtack's own
+    // test — it must stay hidden from non-Admin either way.
+    if (!lead || lead.quarantined || lead.isTest) return <p className="text-neutral-500">Lead not found.</p>;
     return (
       <OfficeAssistantLeadDetail
         lead={{
@@ -96,9 +99,10 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
     return <p className="text-neutral-500">Lead not found.</p>;
   }
   // Visible to Admin only — every other role (Sales Rep, Service Manager)
-  // reads a quarantined Thumbtack lead as not-found, same as genuinely
-  // missing, never revealing that a delivery is being held.
-  if (lead.quarantined && !isAdmin) {
+  // reads a quarantined OR isTest Thumbtack lead as not-found, same as
+  // genuinely missing, never revealing that a delivery is being held or
+  // was confirmed as Thumbtack's own test.
+  if ((lead.quarantined || lead.isTest) && !isAdmin) {
     return <p className="text-neutral-500">Lead not found.</p>;
   }
 

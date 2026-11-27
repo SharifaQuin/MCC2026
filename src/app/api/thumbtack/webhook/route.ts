@@ -44,13 +44,19 @@ export async function POST(request: Request) {
   const negotiationID = negotiationIdForLogging(body);
   const eventType = getThumbtackEventType(body);
 
-  if (eventType !== "LEAD") {
-    // Message and Review events (and anything unrecognized) are
-    // deliberately never treated as a failure — Thumbtack may add event
-    // types this receiver doesn't know about yet, and the one thing this
-    // must never do is create a lead from one.
+  if (eventType === "MESSAGE") {
     logThumbtackDelivery("ignored", negotiationID);
     return new Response("Ignored", { status: 200 });
+  }
+
+  if (eventType === "UNKNOWN") {
+    // A shape this receiver doesn't recognize at all (a Review event, or
+    // anything else) — never a silent 2xx. Thumbtack's own delivery log
+    // should show this as a failure so it actually gets noticed and this
+    // file gets taught the real shape, rather than quietly losing what
+    // might be a real Lead event that fell through the cracks.
+    logThumbtackDelivery("failed", negotiationID);
+    return new Response("Unrecognized event shape", { status: 422 });
   }
 
   const parsed = parseThumbtackLeadBody(body);
