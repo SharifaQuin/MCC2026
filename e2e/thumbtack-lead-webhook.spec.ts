@@ -430,6 +430,94 @@ test.describe("Thumbtack webhook: quarantine, release, and mark-as-test (direct 
       await prisma.lead.delete({ where: { id: websiteLead.id } });
     }
   });
+
+  test("a lead confirmed as test can never be released to the normal pipeline/alert, even after an Admin releases-then-marks it", async () => {
+    process.env.THUMBTACK_QUARANTINE_ENABLED = "true";
+    process.env.SALES_NOTIFY_EMAIL = `owner-${RUN_ID}@example.com`;
+
+    const calls: Parameters<typeof sendEmail>[0][] = [];
+    const spy: typeof sendEmail = async (args) => {
+      calls.push(args);
+      return { ok: true };
+    };
+
+    const result = await ingestThumbtackLead(parseThumbtackLeadBody(sampleLeadBody())!, spy);
+    const leadId = result.leadId!;
+    createdIds.push(leadId);
+    // The quiet owner-only held notice from ingest is expected here — not
+    // what this test is checking.
+
+    await markThumbtackLeadAsTest(leadId);
+    const beforeRelease = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+    expect(beforeRelease.isTest).toBe(true);
+    expect(beforeRelease.quarantined).toBe(true); // marking test never clears quarantined on its own
+
+    const funnelBefore = await getLeadFunnelBySource();
+    const kpisBefore = await loadLeadKpis();
+    expect(kpisBefore.needsAttention.some((a) => a.id === leadId)).toBe(false);
+
+    calls.length = 0; // reset — only Release's own alert (or lack of it) matters below
+
+    const released = await releaseThumbtackLeadToPipeline(leadId, spy);
+    expect(released.released).toBe(false);
+    expect(calls.length).toBe(0); // the normal team alert never fired
+
+    const after = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+    expect(after.quarantined).toBe(true); // still held — isTest: false in the WHERE blocked the update
+    expect(after.isTest).toBe(true);
+
+    // The refused release left the funnel/KPI exclusion exactly as it was —
+    // no row crossed from excluded to counted.
+    const funnelAfter = await getLeadFunnelBySource();
+    const kpisAfter = await loadLeadKpis();
+    expect(funnelAfter.find((f) => f.source === "THUMBTACK")?.total ?? 0).toBe(
+      funnelBefore.find((f) => f.source === "THUMBTACK")?.total ?? 0
+    );
+    expect(kpisAfter.needsAttention.some((a) => a.id === leadId)).toBe(false);
+  });
+
+  test("a delivery confirmed as Thumbtack's own test never alerts the sales team, even with quarantine OFF — only the quiet owner-only notice fires", async () => {
+    process.env.THUMBTACK_QUARANTINE_ENABLED = "false";
+    process.env.SALES_NOTIFY_EMAIL = `owner-${RUN_ID}@example.com`;
+
+    const calls: Parameters<typeof sendEmail>[0][] = [];
+    const spy: typeof sendEmail = async (args) => {
+      calls.push(args);
+      return { ok: true };
+    };
+
+    // isTest forced true directly on the parsed object — isExplicitTestMarker
+    // itself always returns false today (no confirmed real field name yet,
+    // see this file's own header comment), so this exercises
+    // ingestThumbtackLead's own isTest handling independent of that.
+    const funnelBefore = await getLeadFunnelBySource();
+    const parsed = { ...parseThumbtackLeadBody(sampleLeadBody())!, isTest: true };
+    const result = await ingestThumbtackLead(parsed, spy);
+    const leadId = result.leadId!;
+    createdIds.push(leadId);
+
+    const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+    expect(lead.quarantined).toBe(false); // quarantine was off
+    expect(lead.isTest).toBe(true);
+
+    // Not a raw zero count — the owner's own quiet notice is allowed and
+    // expected. What's actually being proven: no call ever reaches a sales
+    // rep or Office Assistant address (no bcc list, "to" is only the owner).
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      expect(call.to).toBe(process.env.SALES_NOTIFY_EMAIL);
+      expect(call.bcc ?? []).toHaveLength(0);
+    }
+
+    // Excluded from the funnel like any other isTest lead — the new lead
+    // never moved the Thumbtack total, despite "created" being the outcome.
+    const funnelAfter = await getLeadFunnelBySource();
+    expect(funnelAfter.find((f) => f.source === "THUMBTACK")?.total ?? 0).toBe(
+      funnelBefore.find((f) => f.source === "THUMBTACK")?.total ?? 0
+    );
+    const kpis = await loadLeadKpis();
+    expect(kpis.needsAttention.some((a) => a.id === leadId)).toBe(false);
+  });
 });
 
 // Hiding a quarantined/test lead from the UI was never real access control
@@ -998,6 +1086,176 @@ test.describe.serial("Thumbtack webhook: quarantine visibility and admin-only ac
     expect(replayRes.status()).toBe(500);
     const notesAfterReplay = await prisma.leadNote.count({ where: { leadId } });
     expect(notesAfterReplay, "no additional note was written").toBe(1);
+    await logout(page);
+  });
+
+  test("sendLeadTextAction: blocked for Admin's own attempt too (contact is blocked for everyone); replaying as Sales Rep is refused outright and never even reaches sendSms", async ({
+    page,
+  }) => {
+    const leadId = await freshQuarantinedLead();
+
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto(`/sales/leads/${leadId}`);
+    const captured = await captureAction(page, async () => {
+      await page.click('button:has-text("Send Text")');
+      // Scoped by placeholder, not just [name="body"] — the lead-notes
+      // form on the same page also has a textarea[name="body"], and a bare
+      // selector would match both and fail Playwright's strict mode.
+      await page.fill('textarea[name="body"][placeholder="Text message"]', "Following up by text");
+      await page.click('button:has-text("Send Text"):below(textarea[placeholder="Text message"])');
+    });
+    const commsAfterAdmin = await prisma.leadCommunication.findMany({ where: { leadId } });
+    // No way to spy on sendLeadTextAction's module-level sendSms import
+    // directly (unlike sendEmailFn, it's not an injectable parameter) — the
+    // real proof that sendSms was never reached is the same the existing
+    // sendLeadEmailAction test above relies on: a blocked attempt is logged
+    // as FAILED with the quarantine errorMessage, never a SENT row (which
+    // only sendSms's own result could have produced).
+    expect(commsAfterAdmin, "control: Admin's own attempt is blocked, logged as FAILED").toHaveLength(1);
+    expect(commsAfterAdmin[0].status).toBe("FAILED");
+    expect(commsAfterAdmin[0].channel).toBe("SMS");
+    expect(commsAfterAdmin[0].errorMessage).toContain("quarantine");
+    await logout(page);
+
+    await loginAs(page, salesRepEmail, PASSWORD);
+    const replayRes = await replayAction(page, `/sales/leads/${leadId}`, captured);
+    expect(replayRes.status()).toBe(500);
+    const commsAfterReplay = await prisma.leadCommunication.count({ where: { leadId } });
+    expect(commsAfterReplay, "no additional attempt was logged").toBe(1);
+    await logout(page);
+  });
+
+  test("scheduleMessageAction: refused for Admin too (scheduling is contact) and refused for Sales Rep ('Lead not found') on a quarantined lead — nothing is scheduled either way", async ({
+    page,
+  }) => {
+    const leadId = await freshQuarantinedLead();
+
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto(`/sales/leads/${leadId}`);
+    await page.click('button:has-text("Send Text")');
+    await page.fill('textarea[name="body"][placeholder="Text message"]', "Scheduled follow-up");
+    await page.click('button:has-text("Schedule")'); // the toggle — "Schedule Send" doesn't exist yet
+    const captured = await captureAction(page, async () => {
+      await page.click('button:has-text("Tomorrow 9am")');
+      await page.click('button:has-text("Schedule Send")');
+    });
+    // Admin's own attempt is refused too — scheduling IS customer contact,
+    // blocked for everyone until the lead is released (not an existence
+    // check, so the message is the quarantine one, not "Lead not found").
+    await expect(page.locator("text=held in Thumbtack quarantine")).toBeVisible();
+    const countAfterAdmin = await prisma.scheduledMessage.count({ where: { leadId } });
+    expect(countAfterAdmin, "Admin's own attempt scheduled nothing").toBe(0);
+    await logout(page);
+
+    await loginAs(page, salesRepEmail, PASSWORD);
+    const replayRes = await replayAction(page, `/sales/leads/${leadId}`, captured);
+    expect(replayRes.status()).toBeLessThan(300); // a typed {ok:false} result, not a throw
+    const replayBody = await replayRes.text();
+    expect(replayBody).toContain("Lead not found");
+    const countAfterReplay = await prisma.scheduledMessage.count({ where: { leadId } });
+    expect(countAfterReplay, "replay as Sales Rep scheduled nothing").toBe(0);
+    await logout(page);
+  });
+
+  test("updateScheduledMessageAction: a PENDING send on a lead quarantined after scheduling is refused for Admin (contact blocked) and for Sales Rep ('Lead not found') — the row is untouched", async ({
+    page,
+  }) => {
+    const adminUser = await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL } });
+    const lead = await prisma.lead.create({
+      data: {
+        firstName: "PreQuarantine",
+        lastName: `Lead-${RUN_ID}`,
+        email: `prequarantine-${RUN_ID}@example.com`,
+        phone: "9495550099",
+        source: "WEBSITE_FORM",
+      },
+    });
+    createdIds.push(lead.id);
+    const uniqueBody = `Edit-test body ${RUN_ID}`;
+    const msg = await prisma.scheduledMessage.create({
+      data: {
+        leadId: lead.id,
+        channel: "SMS",
+        body: uniqueBody,
+        sendAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        status: "PENDING",
+        createdById: adminUser.id,
+      },
+    });
+    // Seeded while open, THEN quarantined — matching a real Thumbtack hold
+    // landing on a lead that already had something scheduled.
+    await prisma.lead.update({ where: { id: lead.id }, data: { quarantined: true } });
+
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto("/scheduled");
+    const row = page.locator("div.rounded-lg.border.border-neutral-200.bg-white.p-4", { hasText: uniqueBody });
+    await row.locator('button:has-text("Edit / Reschedule")').click();
+    const captured = await captureAction(page, async () => {
+      await row.locator("textarea").fill(`${uniqueBody} (edited)`);
+      await row.locator('button:has-text("Save")').click();
+    });
+    await expect(row.locator("text=held in Thumbtack quarantine")).toBeVisible();
+    const afterAdmin = await prisma.scheduledMessage.findUniqueOrThrow({ where: { id: msg.id } });
+    expect(afterAdmin.body, "Admin's own refused attempt wrote nothing").toBe(uniqueBody);
+    await logout(page);
+
+    await loginAs(page, salesRepEmail, PASSWORD);
+    const replayRes = await replayAction(page, "/scheduled", captured);
+    expect(replayRes.status()).toBeLessThan(300);
+    const replayBody = await replayRes.text();
+    expect(replayBody).toContain("Lead not found");
+    const afterReplay = await prisma.scheduledMessage.findUniqueOrThrow({ where: { id: msg.id } });
+    expect(afterReplay.body, "Sales Rep replay wrote nothing").toBe(uniqueBody);
+    expect(afterReplay.status).toBe("PENDING");
+    await logout(page);
+  });
+
+  test("cancelScheduledMessageAction: on a lead quarantined after scheduling, Admin's cancel is ALSO refused (contact-block applies here too — the 'cancel is never blocked' comment above authorizeRecipient does not match this code path) and Sales Rep is refused ('Lead not found') — the row stays PENDING", async ({
+    page,
+  }) => {
+    const adminUser = await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL } });
+    const lead = await prisma.lead.create({
+      data: {
+        firstName: "PreQuarantine",
+        lastName: `Cancel-${RUN_ID}`,
+        email: `prequarantine-cancel-${RUN_ID}@example.com`,
+        phone: "9495550098",
+        source: "WEBSITE_FORM",
+      },
+    });
+    createdIds.push(lead.id);
+    const uniqueBody = `Cancel-test body ${RUN_ID}`;
+    const msg = await prisma.scheduledMessage.create({
+      data: {
+        leadId: lead.id,
+        channel: "SMS",
+        body: uniqueBody,
+        sendAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        status: "PENDING",
+        createdById: adminUser.id,
+      },
+    });
+    await prisma.lead.update({ where: { id: lead.id }, data: { quarantined: true } });
+
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto("/scheduled");
+    const row = page.locator("div.rounded-lg.border.border-neutral-200.bg-white.p-4", { hasText: uniqueBody });
+    page.once("dialog", (d) => d.accept()); // cancel() does a native confirm() first
+    const captured = await captureAction(page, async () => {
+      await row.locator('button:has-text("Cancel")').click();
+    });
+    await expect(row.locator("text=held in Thumbtack quarantine")).toBeVisible();
+    const afterAdmin = await prisma.scheduledMessage.findUniqueOrThrow({ where: { id: msg.id } });
+    expect(afterAdmin.status, "Admin's own refused cancel left the row PENDING").toBe("PENDING");
+    await logout(page);
+
+    await loginAs(page, salesRepEmail, PASSWORD);
+    const replayRes = await replayAction(page, "/scheduled", captured);
+    expect(replayRes.status()).toBeLessThan(300);
+    const replayBody = await replayRes.text();
+    expect(replayBody).toContain("Lead not found");
+    const afterReplay = await prisma.scheduledMessage.findUniqueOrThrow({ where: { id: msg.id } });
+    expect(afterReplay.status, "Sales Rep replay left the row PENDING too").toBe("PENDING");
     await logout(page);
   });
 });

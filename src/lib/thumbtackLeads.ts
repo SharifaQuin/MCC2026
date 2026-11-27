@@ -300,7 +300,13 @@ export async function ingestThumbtackLead(
   // is ever called here, quarantined or not. See maybeSendAfterHoursAutoReply/
   // createDraftQuoteForLead's own call sites: this function is the only
   // place a Thumbtack Lead gets created, and it never calls either.
-  if (quarantined) {
+  //
+  // isTest is checked here independently of `quarantined` — a delivery
+  // Thumbtack (or the owner) marked as its own test must never reach the
+  // sales team's normal alert, even on a delivery that arrives with
+  // quarantine turned off. The quiet owner-only notice still fires either
+  // way, so the owner always has a record of the delivery.
+  if (quarantined || parsed.isTest) {
     await sendThumbtackQuarantineAlert(lead, sendEmailFn);
   } else {
     await notifyNewLead(lead, sendEmailFn);
@@ -373,17 +379,20 @@ export async function markThumbtackLeadAsTest(leadId: string): Promise<{ marked:
   return { marked: updated.count === 1 };
 }
 
-// Conditional update (id + source: THUMBTACK + quarantined: true) so a
-// double click or a second tab can only ever win the race once — the
-// alert only fires when this exact call is the one that actually flipped
-// quarantined, never on a call that matched zero rows because another
-// request (or an earlier click) already released it.
+// Conditional update (id + source: THUMBTACK + quarantined: true +
+// isTest: false) so a double click or a second tab can only ever win the
+// race once — the alert only fires when this exact call is the one that
+// actually flipped quarantined, never on a call that matched zero rows
+// because another request (or an earlier click) already released it. The
+// isTest: false clause means a lead already confirmed as Thumbtack's own
+// test can never be released into the normal pipeline/alert this way —
+// Mark as test stays the one-way door it's meant to be.
 export async function releaseThumbtackLeadToPipeline(
   leadId: string,
   sendEmailFn: typeof sendEmail = sendEmail
 ): Promise<{ released: boolean }> {
   const updated = await prisma.lead.updateMany({
-    where: { id: leadId, source: "THUMBTACK", quarantined: true },
+    where: { id: leadId, source: "THUMBTACK", quarantined: true, isTest: false },
     data: { quarantined: false },
   });
   if (updated.count !== 1) return { released: false };
