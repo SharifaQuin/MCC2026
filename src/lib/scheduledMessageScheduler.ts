@@ -117,11 +117,22 @@ export async function processScheduledMessage(id: string, now: Date, senders: Me
       return;
     }
 
+    // A Lead recipient may have no email on file (e.g. a Thumbtack lead) —
+    // never crash or send to a null address; terminal FAILED, same as any
+    // other send failure, with a clear reason.
+    if (msg.channel === "EMAIL" && !recipient.email) {
+      await prisma.scheduledMessage.update({
+        where: { id },
+        data: { status: "FAILED", errorMessage: "Recipient has no email on file." },
+      });
+      return;
+    }
+
     let result: { ok: true } | { ok: false; error: string };
     try {
       result =
         msg.channel === "EMAIL"
-          ? await senders.sendEmail({ to: recipient.email, subject: msg.subject ?? "", body: msg.body })
+          ? await senders.sendEmail({ to: recipient.email!, subject: msg.subject ?? "", body: msg.body })
           : await senders.sendSms({ to: recipient.phone, text: msg.body });
     } catch (err) {
       // sendEmail/sendSms threw instead of returning { ok: false } (e.g. an

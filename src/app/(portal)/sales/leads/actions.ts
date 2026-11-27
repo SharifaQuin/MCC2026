@@ -9,6 +9,7 @@ import { getSession } from "@/lib/session";
 import { sendEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
 import { syncQuoteStatusForLead } from "@/lib/leads";
+import { markThumbtackLeadAsTest, releaseThumbtackLeadToPipeline } from "@/lib/thumbtackLeads";
 import { logAudit } from "@/lib/auditLog";
 import { getTrueActorId } from "@/lib/impersonation";
 import { formatPhone, normalizePhoneDigits } from "@/lib/formatPhone";
@@ -50,10 +51,13 @@ export async function updateLeadContactInfoAction(
   if (!lead) return { error: "Lead not found." };
 
   const submittedEmail = emailRaw.toLowerCase();
-  const emailUnchanged = submittedEmail.length > 0 && submittedEmail === lead.email.toLowerCase();
+  const emailUnchanged = submittedEmail.length > 0 && submittedEmail === (lead.email ?? "").toLowerCase();
   let email: string;
   if (emailUnchanged) {
-    email = lead.email;
+    // Can only be reached when lead.email is a non-empty string (see
+    // emailUnchanged's own condition above), but TypeScript doesn't know
+    // that from the nullable column type alone.
+    email = lead.email ?? "";
   } else {
     if (!submittedEmail || !EMAIL_PATTERN.test(submittedEmail)) {
       return { error: "Enter a valid email address." };
@@ -103,7 +107,7 @@ export async function updateLeadContactInfoAction(
 
   const changeLines: string[] = [];
   if (!emailUnchanged && email !== lead.email) {
-    changeLines.push(`Email changed from ${lead.email} to ${email}`);
+    changeLines.push(`Email changed from ${lead.email ?? "(none on file)"} to ${email}`);
   }
   if (!phoneUnchanged) {
     changeLines.push(`Phone changed from ${formatPhone(lead.phone)} to ${formatPhone(phone)}`);
@@ -635,6 +639,22 @@ export async function sendLeadEmailAction(leadId: string, formData: FormData) {
     revalidatePath(`/sales/leads/${leadId}`);
     return;
   }
+  if (!lead.email) {
+    await prisma.leadCommunication.create({
+      data: {
+        leadId,
+        channel: "EMAIL",
+        direction: "OUTBOUND",
+        subject,
+        body,
+        status: "FAILED",
+        errorMessage: "This lead has no email on file — nothing was sent.",
+        sentById: getTrueActorId(session),
+      },
+    });
+    revalidatePath(`/sales/leads/${leadId}`);
+    return;
+  }
   const result = await sendEmail({ to: lead.email, subject, body });
 
   await prisma.leadCommunication.create({
@@ -747,4 +767,32 @@ export async function setLeadAssignmentAction(leadId: string, assignedToId: stri
   });
   revalidatePath(`/sales/leads/${leadId}`);
   revalidatePath("/sales/leads");
+}
+
+// Admin-only — see this PR's own description for the full quarantine
+// design. Never deletes the record, never touches `quarantined`: a lead can
+// be marked test either while still held for review, or after being
+// released (the owner realizing only later that a given delivery was
+// Thumbtack's own test) — either way it's now permanently excluded from
+// every total via EXCLUDE_QUARANTINED_OR_TEST in src/lib/leads.ts.
+export async function markThumbtackLeadAsTestAction(leadId: string) {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") throw new Error("Not authorized.");
+  await markThumbtackLeadAsTest(leadId);
+  revalidatePath(`/sales/leads/${leadId}`);
+}
+
+// Admin-only. Clears quarantine and runs the exact same new-lead alert
+// (notifyNewLead) every other Thumbtack lead gets on arrival — same
+// recipients, same Thumbtack-branded content — so a real delivery that was
+// held for review reaches the sales team exactly as it would have if
+// quarantine had been off, just later.
+export async function releaseThumbtackLeadToPipelineAction(leadId: string) {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") throw new Error("Not authorized.");
+  await releaseThumbtackLeadToPipeline(leadId);
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath("/sales/leads");
+  revalidatePath("/sales");
+  revalidatePath("/");
 }

@@ -5,7 +5,7 @@ import { NEEDS_DECISION_STAGES, SCHEDULING_STAGES } from "@/lib/recruiting";
 import { businessDayRangeUtc } from "@/lib/timezone";
 import { effectiveChecklistStatus } from "@/lib/financials";
 import { getDueStatus } from "@/lib/checklistDisplay";
-import { getFollowUpUrgency, ARCHIVED_LEAD_STAGES } from "@/lib/leads";
+import { getFollowUpUrgency, ARCHIVED_LEAD_STAGES, EXCLUDE_QUARANTINED_OR_TEST } from "@/lib/leads";
 import type { ApplicantStage } from "@prisma/client";
 
 export interface HrTodayItem {
@@ -187,6 +187,7 @@ export async function getTodayCardData(
             // today, so this card never disagrees with Sales's own
             // Callbacks list about what's outstanding.
             followUpDueAt: { lt: end },
+            ...EXCLUDE_QUARANTINED_OR_TEST,
           },
           select: { id: true, firstName: true, lastName: true, followUpDueAt: true },
           orderBy: { followUpDueAt: "asc" },

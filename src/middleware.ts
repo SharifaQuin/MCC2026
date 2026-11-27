@@ -22,6 +22,10 @@ const PUBLIC_PATHS = [
   // (/reschedule/status/[token]) — a single prefix entry, same as
   // /interview-reschedule already covers its own token sub-route above.
   "/reschedule",
+  // Thumbtack's Lead/Message/Review webhook receiver — protected by its own
+  // Custom Header secret (see src/lib/thumbtackLeads.ts), not a session
+  // cookie, so it must never redirect to /login.
+  "/api/thumbtack",
   "/legal",
   "/manifest.webmanifest",
   "/icon.svg",

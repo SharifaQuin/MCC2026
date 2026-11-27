@@ -65,8 +65,40 @@ export const LEAD_SOURCE_LABELS: Record<string, string> = {
   FACEBOOK: "Facebook",
   CURRENT_CLIENT: "Current Client",
   LEAVE_BEHIND_CARD: "Leave-Behind Card",
+  THUMBTACK: "Thumbtack",
   OTHER: "Other",
 };
+
+// Thumbtack's address fields joined as "address1[, address2], city, state
+// zip" — deliberately NOT a dedicated city column; extractCityFromThumbtackAddress
+// below reverses this exact join when an alert needs just the city back
+// (e.g. after the original webhook payload is gone, on a later "release to
+// pipeline"). Only ever meaningful for a Thumbtack-sourced lead's address —
+// see src/lib/thumbtackLeads.ts, the only caller of either function.
+export function buildThumbtackAddress(location: {
+  address1?: string;
+  address2?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+} | undefined): string | null {
+  if (!location) return null;
+  const stateZip = [location.state, location.zipCode].filter(Boolean).join(" ").trim();
+  const parts = [location.address1, location.address2, location.city, stateZip]
+    .map((p) => p?.trim())
+    .filter((p): p is string => !!p);
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
+// Reverses buildThumbtackAddress's exact join to recover just the city —
+// city is always second-to-last (last is "state zip", which may itself be
+// empty and so absent from the joined string).
+export function extractCityFromThumbtackAddress(address: string | null | undefined): string | null {
+  if (!address) return null;
+  const parts = address.split(", ").map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 2) return parts[0] ?? null;
+  return parts[parts.length - 2] ?? null;
+}
 
 // The options shown on the public lead form's "How did you hear about us?"
 // dropdown — a curated, ordered subset of LeadSource. Deliberately leaves
@@ -183,6 +215,16 @@ export const LEAD_PIPELINE_COLUMNS: { stage: LeadStage; label: string }[] = [
 // bucket — see each call site.
 export const ARCHIVED_LEAD_STAGES: LeadStage[] = ["LOST", "SCAM", "UNABLE_TO_CONTACT"];
 
+// Spread into every rep/owner-facing list, KPI, digest, funnel, export, and
+// queue query over the Lead model — a Thumbtack lead held in quarantine for
+// owner review, or one the owner has confirmed was Thumbtack's own test
+// delivery, must never appear in any of them (see src/lib/thumbtackLeads.ts
+// and this PR's own description). Both flags are checked independently
+// (never just one): `isTest` can be set on a lead that's already been
+// released from quarantine (quarantined: false), and must still exclude it
+// forever.
+export const EXCLUDE_QUARANTINED_OR_TEST = { quarantined: false, isTest: false } as const;
+
 // The one obvious "move it forward" action for each pipeline-board column —
 // anything else (mark lost, jump stages) lives on the lead's own detail page.
 export const PRIMARY_NEXT_LEAD_STAGE: Record<string, { stage: LeadStage; label: string } | undefined> = {
@@ -235,30 +277,57 @@ export async function notifyNewLead(
     id: string;
     firstName: string;
     lastName: string;
-    email: string;
+    email: string | null;
     phone: string;
     serviceInterest: string | null;
     message: string | null;
     source?: LeadSource;
+    address?: string | null;
+    thumbtackLeadPrice?: number | null;
+    thumbtackRequestUrl?: string | null;
   },
   sendEmailFn: typeof sendEmail = sendEmail
 ) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
   const profileUrl = `${appUrl}/sales/leads/${lead.id}`;
-  const originLine =
-    lead.source === "PHONE_CALL"
+  const isThumbtack = lead.source === "THUMBTACK";
+
+  const originLine = isThumbtack
+    ? `${lead.firstName} ${lead.lastName} is a new Thumbtack lead.`
+    : lead.source === "PHONE_CALL"
       ? `${lead.firstName} ${lead.lastName} was just logged from a phone call-in.`
       : `${lead.firstName} ${lead.lastName} just submitted the website lead form.`;
-  const summaryLines = [
-    originLine,
-    "",
-    `Email: ${lead.email}`,
-    `Phone: ${lead.phone}`,
-    ...(lead.serviceInterest ? [`Interested in: ${lead.serviceInterest}`] : []),
-    ...(lead.message ? ["", `Message: ${lead.message}`] : []),
-    "",
-    `View this lead: ${profileUrl}`,
-  ];
+
+  // Thumbtack's own payload never includes an email at all — this alert
+  // deliberately has no "Email:" line for it (unlike every other source,
+  // which always has one), and shows the lead price/city/request link
+  // instead, same source-specific shape this alert already has for
+  // PHONE_CALL vs the website form above.
+  const summaryLines = isThumbtack
+    ? [
+        originLine,
+        "",
+        `Phone: ${lead.phone || "(none provided)"}`,
+        ...(lead.serviceInterest ? [`Service: ${lead.serviceInterest}`] : []),
+        ...(() => {
+          const city = extractCityFromThumbtackAddress(lead.address);
+          return city ? [`City: ${city}`] : [];
+        })(),
+        ...(lead.thumbtackLeadPrice != null ? [`Lead price: $${lead.thumbtackLeadPrice.toFixed(2)}`] : []),
+        "",
+        `View this lead: ${profileUrl}`,
+        ...(lead.thumbtackRequestUrl ? [`View on Thumbtack: ${lead.thumbtackRequestUrl}`] : []),
+      ]
+    : [
+        originLine,
+        "",
+        ...(lead.email ? [`Email: ${lead.email}`] : []),
+        `Phone: ${lead.phone}`,
+        ...(lead.serviceInterest ? [`Interested in: ${lead.serviceInterest}`] : []),
+        ...(lead.message ? ["", `Message: ${lead.message}`] : []),
+        "",
+        `View this lead: ${profileUrl}`,
+      ];
 
   const notifyEmail = process.env.SALES_NOTIFY_EMAIL || process.env.MS_GRAPH_SENDER_EMAIL;
   if (notifyEmail) {
@@ -328,11 +397,16 @@ export async function loadLeadKpis(): Promise<LeadKpis> {
   const [respondedLeads, openLeads, newUncontacted, overdueFollowUps, monthSpend, leadsThisMonth] =
     await Promise.all([
       prisma.lead.findMany({
-        where: { firstContactedAt: { not: null }, createdAt: { gte: thirtyDaysAgo }, stage: { not: "SCAM" } },
+        where: {
+          firstContactedAt: { not: null },
+          createdAt: { gte: thirtyDaysAgo },
+          stage: { not: "SCAM" },
+          ...EXCLUDE_QUARANTINED_OR_TEST,
+        },
         select: { createdAt: true, firstContactedAt: true },
       }),
       prisma.lead.findMany({
-        where: { stage: { notIn: ["WON", ...ARCHIVED_LEAD_STAGES] } },
+        where: { stage: { notIn: ["WON", ...ARCHIVED_LEAD_STAGES] }, ...EXCLUDE_QUARANTINED_OR_TEST },
         select: { estimatedValue: true },
       }),
       // Every New Inquiry needs a first response, regardless of age — unlike
@@ -340,7 +414,7 @@ export async function loadLeadKpis(): Promise<LeadKpis> {
       // date, since a brand-new lead nobody has touched yet is exactly the
       // case a due date wouldn't exist for.
       prisma.lead.findMany({
-        where: { stage: "NEW_INQUIRY" },
+        where: { stage: "NEW_INQUIRY", ...EXCLUDE_QUARANTINED_OR_TEST },
         select: { id: true, firstName: true, lastName: true, stage: true, createdAt: true },
         orderBy: { createdAt: "asc" },
       }),
@@ -348,6 +422,7 @@ export async function loadLeadKpis(): Promise<LeadKpis> {
         where: {
           stage: { notIn: ["NEW_INQUIRY", "WON", ...ARCHIVED_LEAD_STAGES] },
           followUpDueAt: { not: null, lt: businessDayRangeUtc().start },
+          ...EXCLUDE_QUARANTINED_OR_TEST,
         },
         select: { id: true, firstName: true, lastName: true, stage: true, followUpDueAt: true },
         orderBy: { followUpDueAt: "asc" },
@@ -359,11 +434,16 @@ export async function loadLeadKpis(): Promise<LeadKpis> {
       // not a new redefinition. Excluding it would change costPerLead/
       // costPerWon's current numbers, which isn't this fix's call to make
       // unilaterally — flagged explicitly in this PR rather than decided
-      // silently either way.
+      // silently either way. Quarantined/test leads ARE excluded here
+      // though (unlike SCAM) — a held-for-review or confirmed-test
+      // Thumbtack delivery was never a real acquisition cost data point.
       prisma.lead.groupBy({
         by: ["source", "stage"],
         _count: true,
-        where: { createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } },
+        where: {
+          createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) },
+          ...EXCLUDE_QUARANTINED_OR_TEST,
+        },
       }),
     ]);
 
@@ -784,7 +864,7 @@ export async function getActiveLeadFormFields() {
 // sources actually turn into paying jobs" answer, mirroring the Recruiting
 // pipeline's Applicants-by-Source table.
 export async function getLeadFunnelBySource() {
-  const rows = await prisma.lead.groupBy({ by: ["source", "stage"], _count: true });
+  const rows = await prisma.lead.groupBy({ by: ["source", "stage"], _count: true, where: EXCLUDE_QUARANTINED_OR_TEST });
 
   const bySource = new Map<
     string,
@@ -838,7 +918,7 @@ export async function getLeadFunnelBySource() {
 // place to browse all of them, since the board itself only shows a count.
 export async function getLostLeads() {
   const leads = await prisma.lead.findMany({
-    where: { stage: "LOST" },
+    where: { stage: "LOST", ...EXCLUDE_QUARANTINED_OR_TEST },
     include: {
       stageChanges: {
         where: { toStage: "LOST" },
@@ -870,7 +950,7 @@ export async function getLostLeads() {
 // one generic "archived" listing, since the owner wants to tell them apart.
 export async function getScamLeads() {
   const leads = await prisma.lead.findMany({
-    where: { stage: "SCAM" },
+    where: { stage: "SCAM", ...EXCLUDE_QUARANTINED_OR_TEST },
     include: {
       stageChanges: {
         where: { toStage: "SCAM" },
@@ -907,7 +987,7 @@ export async function getScamLeads() {
 // generic "archived" listing.
 export async function getUnableToContactLeads() {
   const leads = await prisma.lead.findMany({
-    where: { stage: "UNABLE_TO_CONTACT" },
+    where: { stage: "UNABLE_TO_CONTACT", ...EXCLUDE_QUARANTINED_OR_TEST },
     include: {
       stageChanges: {
         where: { toStage: "UNABLE_TO_CONTACT" },
@@ -941,7 +1021,11 @@ export async function getUnableToContactLeads() {
 // than two near-duplicate query builders.
 export async function buildLeadExportCsv({ excludeScam = false }: { excludeScam?: boolean } = {}): Promise<string> {
   const leads = await prisma.lead.findMany({
-    where: excludeScam ? { stage: { not: "SCAM" } } : undefined,
+    // A quarantined/test Thumbtack lead is excluded from BOTH export modes,
+    // unlike Scam (which "all-received" deliberately still includes) — it
+    // was never released to the sales team in the first place, so there's
+    // nothing "received" about it from their point of view yet.
+    where: { ...(excludeScam ? { stage: { not: "SCAM" } } : {}), ...EXCLUDE_QUARANTINED_OR_TEST },
     orderBy: { createdAt: "desc" },
   });
 
@@ -1053,7 +1137,15 @@ export async function getMonthlyLeadOutcomeCounts(
 ): Promise<{ wonThisMonth: number; lostThisMonth: number }> {
   const { start, end } = businessMonthRangeUtc(now);
   const latestOutcomes = await prisma.leadStageChange.findMany({
-    where: { toStage: { in: ["WON", "LOST"] }, createdAt: { gte: start, lt: end } },
+    where: {
+      toStage: { in: ["WON", "LOST"] },
+      createdAt: { gte: start, lt: end },
+      // A still-quarantined or confirmed-test lead can't actually reach
+      // WON/LOST (no one but Admin can even act on it) — this guards the
+      // theoretical case anyway, via the same two flags every other
+      // Lead-facing total excludes.
+      lead: EXCLUDE_QUARANTINED_OR_TEST,
+    },
     orderBy: { createdAt: "desc" },
     distinct: ["leadId"],
     select: { toStage: true },

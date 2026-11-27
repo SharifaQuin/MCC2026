@@ -24,7 +24,7 @@ export const AFTER_HOURS_AUTO_REPLY_MESSAGE =
 // rows and returns immediately, success or failure of the first attempt
 // notwithstanding (this fires once, it does not retry a failed attempt).
 export async function maybeSendAfterHoursAutoReply(
-  lead: { id: string; email: string; phone: string },
+  lead: { id: string; email: string | null; phone: string },
   now: Date = new Date(),
   senders: MessageSenders = DEFAULT_SENDERS
 ): Promise<void> {
@@ -47,7 +47,7 @@ export async function maybeSendAfterHoursAutoReply(
   if (existingClient || employee) return; // claimed above, so this still never fires again
 
   const hasPhone = !!lead.phone.trim();
-  const hasEmail = !!lead.email.trim();
+  const hasEmail = !!lead.email?.trim();
   const channel: "SMS" | "EMAIL" | null = hasPhone ? "SMS" : hasEmail ? "EMAIL" : null;
   if (!channel) return;
 
@@ -57,7 +57,8 @@ export async function maybeSendAfterHoursAutoReply(
       channel === "SMS"
         ? await senders.sendSms({ to: lead.phone, text: AFTER_HOURS_AUTO_REPLY_MESSAGE })
         : await senders.sendEmail({
-            to: lead.email,
+            // channel is only ever "EMAIL" when hasEmail is true, above.
+            to: lead.email!,
             subject: AFTER_HOURS_AUTO_REPLY_SUBJECT,
             body: AFTER_HOURS_AUTO_REPLY_MESSAGE,
           });
@@ -93,22 +94,30 @@ export async function maybeSendAfterHoursAutoReply(
 // revisit if either table ever gets large enough for that fallback fetch to
 // matter.
 async function findExistingClientOrEmployee(
-  email: string,
+  email: string | null,
   phone: string,
   excludeLeadId: string
 ): Promise<{ existingClient: boolean; employee: boolean }> {
-  const [clientByEmail, employeeByEmail] = await Promise.all([
-    prisma.lead.findFirst({
-      where: { id: { not: excludeLeadId }, stage: "WON", email: { equals: email, mode: "insensitive" } },
-      select: { id: true },
-    }),
-    prisma.user.findFirst({
-      where: { email: { equals: email, mode: "insensitive" } },
-      select: { id: true },
-    }),
-  ]);
-  if (clientByEmail || employeeByEmail) {
-    return { existingClient: !!clientByEmail, employee: !!employeeByEmail };
+  // A blank email must never match anything — in particular, it must never
+  // match another lead that also has no email on file (e.g. a second
+  // Thumbtack lead). Skipped entirely rather than querying with "", since
+  // Prisma's `equals` would only ever match a literal empty-string row
+  // anyway, but there's no reason to rely on that distinction holding.
+  const trimmedEmail = email?.trim();
+  if (trimmedEmail) {
+    const [clientByEmail, employeeByEmail] = await Promise.all([
+      prisma.lead.findFirst({
+        where: { id: { not: excludeLeadId }, stage: "WON", email: { equals: trimmedEmail, mode: "insensitive" } },
+        select: { id: true },
+      }),
+      prisma.user.findFirst({
+        where: { email: { equals: trimmedEmail, mode: "insensitive" } },
+        select: { id: true },
+      }),
+    ]);
+    if (clientByEmail || employeeByEmail) {
+      return { existingClient: !!clientByEmail, employee: !!employeeByEmail };
+    }
   }
 
   const phoneDigits = normalizePhoneDigits(phone);

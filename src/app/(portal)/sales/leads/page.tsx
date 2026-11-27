@@ -5,6 +5,7 @@ import {
   LEAD_PIPELINE_COLUMNS,
   ARCHIVED_LEAD_STAGES,
   LEAD_SOURCE_LABELS,
+  EXCLUDE_QUARANTINED_OR_TEST,
   getLeadFunnelBySource,
   getFollowUpUrgency,
 } from "@/lib/leads";
@@ -25,7 +26,7 @@ export default async function LeadsPage({
 
   if (session.role === "OFFICE_ASSISTANT") {
     const leads = await prisma.lead.findMany({
-      where: { stage: { notIn: ARCHIVED_LEAD_STAGES } },
+      where: { stage: { notIn: ARCHIVED_LEAD_STAGES }, ...EXCLUDE_QUARANTINED_OR_TEST },
       include: { assignedTo: { select: { name: true } } },
       orderBy: { createdAt: "desc" },
     });
@@ -74,6 +75,7 @@ export default async function LeadsPage({
               ],
             }
           : {}),
+        ...EXCLUDE_QUARANTINED_OR_TEST,
       },
       include: { assignedTo: { select: { name: true } } },
       orderBy: { createdAt: "desc" },
@@ -82,9 +84,9 @@ export default async function LeadsPage({
     // count) so each stage keeps its own accurate "N not shown here" link —
     // ARCHIVED_LEAD_STAGES now covers Lost, Scam, and Unable-to-Contact,
     // which would otherwise silently merge into one misleading number here.
-    prisma.lead.count({ where: { stage: "LOST" } }),
-    prisma.lead.count({ where: { stage: "SCAM" } }),
-    prisma.lead.count({ where: { stage: "UNABLE_TO_CONTACT" } }),
+    prisma.lead.count({ where: { stage: "LOST", ...EXCLUDE_QUARANTINED_OR_TEST } }),
+    prisma.lead.count({ where: { stage: "SCAM", ...EXCLUDE_QUARANTINED_OR_TEST } }),
+    prisma.lead.count({ where: { stage: "UNABLE_TO_CONTACT", ...EXCLUDE_QUARANTINED_OR_TEST } }),
     getLeadFunnelBySource(),
   ]);
 
