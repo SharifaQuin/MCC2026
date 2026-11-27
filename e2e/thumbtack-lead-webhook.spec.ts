@@ -6,6 +6,7 @@ import {
   ingestThumbtackLead,
   markThumbtackLeadAsTest,
   releaseThumbtackLeadToPipeline,
+  shouldAlertAfterRelease,
   getAccessibleLead,
   isLeadContactBlocked,
   THUMBTACK_SECRET_HEADER,
@@ -404,6 +405,21 @@ test.describe("Thumbtack webhook: quarantine, release, and mark-as-test (direct 
     const third = await releaseThumbtackLeadToPipeline(leadId, spy);
     expect(third.released).toBe(false);
     expect(calls.length).toBe(1); // still exactly once
+  });
+
+  // shouldAlertAfterRelease is the post-read decision
+  // releaseThumbtackLeadToPipeline makes right before calling notifyNewLead
+  // — it exists so a lead marked test in the gap between the updateMany
+  // above committing and the re-read still doesn't get the team alert.
+  // There's no way to make that updateMany match (isTest: false in its own
+  // WHERE) while the re-read sees isTest: true without landing a real write
+  // in that exact gap — not something a single-process test can force
+  // without editing the function under test — so this is covered as a
+  // direct, exhaustive unit test of the extracted decision instead; the
+  // test above already covers the updateMany race itself.
+  test("shouldAlertAfterRelease: false once isTest is true, true otherwise — this is what keeps a lead marked test in the gap between Release's own update and its re-read from still alerting the team", () => {
+    expect(shouldAlertAfterRelease({ isTest: true })).toBe(false);
+    expect(shouldAlertAfterRelease({ isTest: false })).toBe(true);
   });
 
   test("Mark as test and Release to pipeline are both restricted to source: THUMBTACK — a non-Thumbtack lead is never affected", async () => {
@@ -1210,7 +1226,7 @@ test.describe.serial("Thumbtack webhook: quarantine visibility and admin-only ac
     await logout(page);
   });
 
-  test("cancelScheduledMessageAction: on a lead quarantined after scheduling, Admin's cancel is ALSO refused (contact-block applies here too — the 'cancel is never blocked' comment above authorizeRecipient does not match this code path) and Sales Rep is refused ('Lead not found') — the row stays PENDING", async ({
+  test("cancelScheduledMessageAction: on a lead quarantined after scheduling, Admin's cancel is ALSO refused (contact-block applies to cancel too, same as update) and Sales Rep is refused ('Lead not found') — the row stays PENDING", async ({
     page,
   }) => {
     const adminUser = await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL } });

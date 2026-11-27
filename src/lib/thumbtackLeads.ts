@@ -379,6 +379,15 @@ export async function markThumbtackLeadAsTest(leadId: string): Promise<{ marked:
   return { marked: updated.count === 1 };
 }
 
+// Extracted so the post-release re-read's own isTest check is a single,
+// directly testable decision rather than buried inline — true for every
+// lead except one marked test in the gap between the updateMany above and
+// the re-read below (see releaseThumbtackLeadToPipeline's own comment for
+// what this does and doesn't close).
+export function shouldAlertAfterRelease(lead: Pick<Lead, "isTest">): boolean {
+  return !lead.isTest;
+}
+
 // Conditional update (id + source: THUMBTACK + quarantined: true +
 // isTest: false) so a double click or a second tab can only ever win the
 // race once — the alert only fires when this exact call is the one that
@@ -387,6 +396,15 @@ export async function markThumbtackLeadAsTest(leadId: string): Promise<{ marked:
 // isTest: false clause means a lead already confirmed as Thumbtack's own
 // test can never be released into the normal pipeline/alert this way —
 // Mark as test stays the one-way door it's meant to be.
+//
+// The updateMany's own isTest: false only catches a lead already marked
+// test *before* this call started. It can still be marked test in the gap
+// between that updateMany committing and the re-read just below — this
+// post-read check catches that case too, but it narrows the window, it
+// does not remove it: a mark-as-test landing after this re-read but before
+// notifyNewLead's own send would still alert. Closing that fully would
+// need a transaction or row lock around the whole sequence, which this
+// does not add.
 export async function releaseThumbtackLeadToPipeline(
   leadId: string,
   sendEmailFn: typeof sendEmail = sendEmail
@@ -398,6 +416,7 @@ export async function releaseThumbtackLeadToPipeline(
   if (updated.count !== 1) return { released: false };
 
   const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  if (!shouldAlertAfterRelease(lead)) return { released: false };
   await notifyNewLead(lead, sendEmailFn);
   return { released: true };
 }
