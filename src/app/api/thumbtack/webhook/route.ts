@@ -5,6 +5,9 @@ import {
   parseThumbtackLeadBody,
   ingestThumbtackLead,
   logThumbtackDelivery,
+  logThumbtackAuthRejectedDiagnostics,
+  logThumbtackBodyDiagnostics,
+  maybeAlertOwnerOfThumbtackSaveFailure,
 } from "@/lib/thumbtackLeads";
 
 // Thumbtack's webhook form only offers Authorization None/Basic/Custom
@@ -27,17 +30,41 @@ export async function POST(request: Request) {
     return typeof id === "string" && id.trim() ? id.trim() : null;
   };
 
+  // Nothing about the body is read, parsed, or logged below this check —
+  // only the secret header's presence/length and the request's own
+  // Content-Length header, never the header's value.
   const headerValue = request.headers.get(THUMBTACK_SECRET_HEADER);
   if (!verifyThumbtackWebhookSecret(headerValue)) {
     logThumbtackDelivery("rejected", null);
+    logThumbtackAuthRejectedDiagnostics({
+      headerPresent: headerValue !== null,
+      headerLength: headerValue?.length ?? 0,
+      contentLength: request.headers.get("content-length"),
+    });
     return new Response("Not authorized", { status: 401 });
   }
 
+  // Read once, as text, then parsed here (not via request.json()) so a
+  // parse failure can be diagnosed — transport details and byte length —
+  // without a second, impossible read of an already-consumed stream.
+  const contentType = request.headers.get("content-type");
+  const contentEncoding = request.headers.get("content-encoding");
+  const rawText = await request.text();
+  const byteLength = new TextEncoder().encode(rawText).length;
+
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
+    body = JSON.parse(rawText);
+  } catch (err) {
     logThumbtackDelivery("failed", null);
+    logThumbtackBodyDiagnostics({
+      contentType,
+      contentEncoding,
+      byteLength,
+      parseOk: false,
+      parseErrorClass: err instanceof Error ? err.constructor.name : "UnknownError",
+    });
+    await maybeAlertOwnerOfThumbtackSaveFailure("malformed_json");
     return new Response("Malformed JSON body", { status: 400 });
   }
 
@@ -56,12 +83,16 @@ export async function POST(request: Request) {
     // file gets taught the real shape, rather than quietly losing what
     // might be a real Lead event that fell through the cracks.
     logThumbtackDelivery("failed", negotiationID);
+    logThumbtackBodyDiagnostics({ contentType, contentEncoding, byteLength, parseOk: true, parsedBody: body });
+    await maybeAlertOwnerOfThumbtackSaveFailure("unrecognized_shape");
     return new Response("Unrecognized event shape", { status: 422 });
   }
 
   const parsed = parseThumbtackLeadBody(body);
   if (!parsed) {
     logThumbtackDelivery("failed", negotiationID);
+    logThumbtackBodyDiagnostics({ contentType, contentEncoding, byteLength, parseOk: true, parsedBody: body });
+    await maybeAlertOwnerOfThumbtackSaveFailure("missing_negotiation_id");
     return new Response("Missing negotiationID", { status: 400 });
   }
 
@@ -73,7 +104,9 @@ export async function POST(request: Request) {
     // A real save failure — never swallowed. Thumbtack's delivery log must
     // show this as a failure, never a silent 2xx (item 9's own rule).
     logThumbtackDelivery("failed", parsed.negotiationID);
+    logThumbtackBodyDiagnostics({ contentType, contentEncoding, byteLength, parseOk: true, parsedBody: body });
     console.error("[thumbtack-webhook] failed to save lead:", err instanceof Error ? err.message : err);
+    await maybeAlertOwnerOfThumbtackSaveFailure("save_failed");
     return new Response("Failed to save lead", { status: 500 });
   }
 }

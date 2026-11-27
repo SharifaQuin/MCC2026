@@ -10,6 +10,11 @@ import {
   getAccessibleLead,
   isLeadContactBlocked,
   THUMBTACK_SECRET_HEADER,
+  logThumbtackAuthRejectedDiagnostics,
+  logThumbtackBodyDiagnostics,
+  maybeAlertOwnerOfThumbtackSaveFailure,
+  resetThumbtackAlertState,
+  type ThumbtackSaveFailureReason,
 } from "../src/lib/thumbtackLeads";
 import { loadLeadKpis, getLeadFunnelBySource, getLostLeads, buildLeadExportCsv } from "../src/lib/leads";
 import { maybeSendAfterHoursAutoReply } from "../src/lib/leadAutoReply";
@@ -77,6 +82,25 @@ async function replayAction(page: Page, path: string, captured: CapturedAction) 
   });
 }
 
+// Captures console.log lines written by `fn` (a synchronous diagnostic
+// logger) without touching the real console — used to assert on the
+// failure-diagnostics log lines directly, since this is a plain function
+// call, not an HTTP round trip (whose server-process stdout this Playwright
+// process can't read).
+function captureConsoleLog(fn: () => void): string[] {
+  const original = console.log;
+  const lines: string[] = [];
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map((a) => (typeof a === "string" ? a : String(a))).join(" "));
+  };
+  try {
+    fn();
+  } finally {
+    console.log = original;
+  }
+  return lines;
+}
+
 // A sample Thumbtack "Lead" event — field names and types confirmed
 // against the real payload shape (see src/lib/thumbtackLeads.ts's file
 // header): a flat body, leadPrice sent as a STRING (sometimes with a "$"
@@ -126,6 +150,21 @@ function sampleMessageBody(overrides: Record<string, unknown> = {}) {
     sentAt: new Date().toISOString(),
     ...overrides,
   };
+}
+
+// The exact shape Thumbtack's own delivery screen showed for the real
+// paid lead this diagnostics work was prompted by (Nov 27, 2026) — adds
+// estimate and refundRequestLink on top of sampleLeadBody's fields, plus
+// an invented accessCode to stand in for whatever unlisted key a real
+// delivery might carry. Still only invented values — no real customer
+// data, no real Thumbtack URLs or codes.
+function sampleRealDeliveryShapeLeadBody(overrides: Record<string, unknown> = {}) {
+  return sampleLeadBody({
+    estimate: { low: 100, high: 200 },
+    refundRequestLink: "https://www.thumbtack.com/some-refund-request",
+    accessCode: "fake-access-code-not-real",
+    ...overrides,
+  });
 }
 
 async function cleanupLead(id: string | null) {
@@ -774,6 +813,265 @@ test.describe("Thumbtack webhook: HTTP receiver (secret, routing, response codes
     const leads = await prisma.lead.findMany({ where: { externalId: body.negotiationID } });
     expect(leads).toHaveLength(1);
     createdIds.push(leads[0].id);
+  });
+
+  test("the real delivery's own shape (estimate + refundRequestLink on top of the existing fields) is still accepted and saved exactly as today", async ({
+    request,
+  }) => {
+    const body = sampleRealDeliveryShapeLeadBody();
+    expect(getThumbtackEventType(body)).toBe("LEAD");
+    const parsed = parseThumbtackLeadBody(body);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.negotiationID).toBe(body.negotiationID);
+    expect(parsed!.leadPrice).toBe(24.5);
+
+    const res = await request.post(WEBHOOK_URL, {
+      headers: { [THUMBTACK_SECRET_HEADER]: WEBHOOK_SECRET },
+      data: body,
+    });
+    expect(res.status()).toBe(200);
+    const created = await prisma.lead.findFirst({ where: { externalId: body.negotiationID } });
+    expect(created).not.toBeNull();
+    createdIds.push(created!.id);
+  });
+
+  test("a wrong secret header is still refused with 401 even when the body itself is unparseable — proving the body is never read before the auth check", async ({
+    request,
+  }) => {
+    const res = await request.post(WEBHOOK_URL, {
+      headers: { [THUMBTACK_SECRET_HEADER]: "definitely-not-the-real-secret", "content-type": "application/json" },
+      data: "{ not even valid json",
+    });
+    expect(res.status()).toBe(401);
+  });
+});
+
+test.describe("Thumbtack webhook: failure diagnostics and owner alert (direct lib calls)", () => {
+  test.beforeEach(() => {
+    resetThumbtackAlertState();
+  });
+
+  test("auth-rejected diagnostics: logs only header presence/length and content-length — never the header value", () => {
+    const lines = captureConsoleLog(() => {
+      logThumbtackAuthRejectedDiagnostics({
+        headerPresent: true,
+        headerLength: 47,
+        contentLength: "812",
+      });
+    });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("auth-rejected");
+    expect(lines[0]).toContain("headerPresent=true");
+    expect(lines[0]).toContain("headerLength=47");
+    expect(lines[0]).toContain("contentLength=812");
+    // Never the real secret value, by construction — this call site has
+    // no parameter that could carry it.
+    expect(lines[0]).not.toContain("fake-secret-value-should-never-appear");
+  });
+
+  test("auth-rejected diagnostics: a missing header logs headerPresent=false headerLength=0", () => {
+    const lines = captureConsoleLog(() => {
+      logThumbtackAuthRejectedDiagnostics({ headerPresent: false, headerLength: 0, contentLength: null });
+    });
+    expect(lines[0]).toContain("headerPresent=false");
+    expect(lines[0]).toContain("headerLength=0");
+    expect(lines[0]).toContain("contentLength=none");
+  });
+
+  test("body diagnostics: a malformed-JSON failure logs only the error class, never the parse-error message text", () => {
+    let errorClass = "";
+    try {
+      JSON.parse("{ not valid json, fake-secret: abc123");
+    } catch (err) {
+      errorClass = err instanceof Error ? err.constructor.name : "UnknownError";
+    }
+    const lines = captureConsoleLog(() => {
+      logThumbtackBodyDiagnostics({
+        contentType: "application/json",
+        contentEncoding: null,
+        byteLength: 38,
+        parseOk: false,
+        parseErrorClass: errorClass,
+      });
+    });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("parseOk=false");
+    expect(lines[0]).toContain(`errorClass=${errorClass}`);
+    expect(lines[0]).toBe("[thumbtack-webhook] body-diagnostics contentType=application/json contentEncoding=none bytes=38 parseOk=false errorClass=SyntaxError");
+  });
+
+  test("body diagnostics: a real-shaped Lead body reports every allowlisted key's type, counts (never names) an unknown key, and never logs accessCode or any value", () => {
+    const body = sampleRealDeliveryShapeLeadBody();
+    const lines = captureConsoleLog(() => {
+      logThumbtackBodyDiagnostics({
+        contentType: "application/json",
+        contentEncoding: null,
+        byteLength: 999,
+        parseOk: true,
+        parsedBody: body,
+      });
+    });
+    expect(lines).toHaveLength(1);
+    const line = lines[0];
+    expect(line).toContain("parseOk=true");
+    expect(line).toContain("topType=object");
+    expect(line).toContain("negotiationID=string");
+    expect(line).toContain("createdAt=string");
+    expect(line).toContain("customer=object");
+    expect(line).toContain("business=object");
+    expect(line).toContain("request=object");
+    expect(line).toContain("status=string");
+    expect(line).toContain("leadPrice=string");
+    expect(line).toContain("leadPriceBreakdown=object");
+    expect(line).toContain("chargeState=string");
+    expect(line).toContain("requestReviewLink=string");
+    expect(line).toContain("refundRequestLink=string");
+    expect(line).toContain("messageID=missing"); // a Lead body has no messageID
+    expect(line).toContain("estimate=object");
+    // accessCode is the one key in this body not on the allowlist — it
+    // must be counted, never named.
+    expect(line).toContain("otherKeys=1");
+    expect(line).not.toContain("accessCode");
+    expect(line).not.toContain(body.negotiationID); // never a body value
+    expect(line).not.toContain("fake-access-code-not-real"); // never a body value
+  });
+
+  test("body diagnostics: an UNKNOWN shape (e.g. a Review event) still reports the allowlisted keys it does/doesn't have, missing ones marked missing", () => {
+    const reviewLikeBody = { negotiationID: `negotiation-${RUN_ID}-review`, reviewID: "fake-review-id", rating: 5 };
+    const lines = captureConsoleLog(() => {
+      logThumbtackBodyDiagnostics({
+        contentType: "application/json",
+        contentEncoding: null,
+        byteLength: 120,
+        parseOk: true,
+        parsedBody: reviewLikeBody,
+      });
+    });
+    const line = lines[0];
+    expect(line).toContain("negotiationID=string");
+    expect(line).toContain("request=missing");
+    expect(line).toContain("customer=missing");
+    // reviewID and rating aren't on the allowlist — counted, never named.
+    expect(line).toContain("otherKeys=2");
+    expect(line).not.toContain("reviewID");
+    expect(line).not.toContain("rating");
+  });
+
+  test("body diagnostics: a top-level array reports its length and element-0 type only", () => {
+    const lines = captureConsoleLog(() => {
+      logThumbtackBodyDiagnostics({
+        contentType: "application/json",
+        contentEncoding: null,
+        byteLength: 20,
+        parseOk: true,
+        parsedBody: [{ negotiationID: "fake" }, { negotiationID: "fake2" }],
+      });
+    });
+    expect(lines[0]).toContain("topType=array");
+    expect(lines[0]).toContain("length=2");
+    expect(lines[0]).toContain("elem0Type=object");
+  });
+
+  test("body diagnostics: a top-level string reports its length and whether it reparses as JSON, nothing else", () => {
+    const doubleEncoded = JSON.stringify({ negotiationID: "fake" });
+    const linesReparses = captureConsoleLog(() => {
+      logThumbtackBodyDiagnostics({
+        contentType: "application/json",
+        contentEncoding: null,
+        byteLength: doubleEncoded.length,
+        parseOk: true,
+        parsedBody: doubleEncoded,
+      });
+    });
+    expect(linesReparses[0]).toContain("topType=string");
+    expect(linesReparses[0]).toContain(`length=${doubleEncoded.length}`);
+    expect(linesReparses[0]).toContain("reparsesAsJson=yes");
+
+    const linesPlain = captureConsoleLog(() => {
+      logThumbtackBodyDiagnostics({
+        contentType: "application/json",
+        contentEncoding: null,
+        byteLength: 11,
+        parseOk: true,
+        parsedBody: "not json at all",
+      });
+    });
+    expect(linesPlain[0]).toContain("reparsesAsJson=no");
+  });
+
+  test("owner alert: each distinct failure reason sends exactly one Slack DM through the injected function, never a second time for a repeat within 60 minutes", async () => {
+    const calls: string[] = [];
+    const spy = async (text: string) => {
+      calls.push(text);
+    };
+    const reasons: ThumbtackSaveFailureReason[] = [
+      "malformed_json",
+      "unrecognized_shape",
+      "missing_negotiation_id",
+      "save_failed",
+    ];
+    const baseNow = Date.now();
+    for (const reason of reasons) {
+      await maybeAlertOwnerOfThumbtackSaveFailure(reason, spy, baseNow);
+    }
+    expect(calls).toHaveLength(4);
+    expect(calls.every((c) => c === "A Thumbtack delivery could not be saved. Check Thumbtack directly.")).toBe(true);
+
+    // A repeat of the same reason 1 minute later — still within the
+    // reason's own 60-minute window — does not alert again.
+    await maybeAlertOwnerOfThumbtackSaveFailure("malformed_json", spy, baseNow + 60_000);
+    expect(calls).toHaveLength(4);
+
+    // Just past 60 minutes, the same reason can alert again.
+    await maybeAlertOwnerOfThumbtackSaveFailure("malformed_json", spy, baseNow + 61 * 60_000);
+    expect(calls).toHaveLength(5);
+  });
+
+  test("owner alert: the 6th alert within a rolling hour is refused by the global cap", async () => {
+    const calls: string[] = [];
+    const spy = async (text: string) => {
+      calls.push(text);
+    };
+    const baseNow = Date.now();
+    // Only 4 real failure reasons exist, and the per-reason dedupe already
+    // forces a 60+ minute gap between two firings of the SAME reason —
+    // together that caps real traffic at 4 alerts per rolling hour, below
+    // the global cap of 5, so the global cap can never be the binding
+    // constraint using only real reason values within one window. To test
+    // its own arithmetic in isolation, this uses a series of distinct
+    // synthetic reason strings (cast past the real 4-value union) fired a
+    // second apart — each is a first-time reason, so none is blocked by
+    // the per-reason dedupe; only the global cap can refuse any of them.
+    for (let i = 0; i < 5; i++) {
+      await maybeAlertOwnerOfThumbtackSaveFailure(
+        `synthetic-reason-${i}` as ThumbtackSaveFailureReason,
+        spy,
+        baseNow + i * 1000
+      );
+    }
+    expect(calls).toHaveLength(5);
+
+    await maybeAlertOwnerOfThumbtackSaveFailure("synthetic-reason-5" as ThumbtackSaveFailureReason, spy, baseNow + 5000);
+    expect(calls).toHaveLength(5); // the 6th, still within the hour, is refused
+
+    // Well past the hour, the cap has room again.
+    await maybeAlertOwnerOfThumbtackSaveFailure(
+      "synthetic-reason-6" as ThumbtackSaveFailureReason,
+      spy,
+      baseNow + 61 * 60_000
+    );
+    expect(calls).toHaveLength(6);
+  });
+
+  test("owner alert: never anything but the injected Slack function — no email, no team/BCC alert, by construction (the function takes no other sender)", async () => {
+    const calls: string[] = [];
+    const spy = async (text: string) => {
+      calls.push(text);
+    };
+    await maybeAlertOwnerOfThumbtackSaveFailure("save_failed", spy, Date.now());
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).not.toContain("@"); // no email address embedded in the text
+    expect(calls[0]).toBe("A Thumbtack delivery could not be saved. Check Thumbtack directly.");
   });
 });
 
