@@ -5,8 +5,19 @@
 //
 // The real Lead/Message payload shapes below (field names and types) were
 // confirmed directly — negotiationID/request.requestID/leadPrice etc. are
-// real top-level fields, not nested under a wrapper key, and leadPrice can
-// arrive as either a number or a string (sometimes with a "$" and commas).
+// real top-level fields when a delivery arrives flat, not nested under a
+// wrapper key, and leadPrice can arrive as either a number or a string
+// (sometimes with a "$" and commas).
+//
+// A delivery can ALSO arrive wrapped in Thumbtack's own documented v4
+// webhook envelope — {"event": {"eventType": "...", ...}, "data": {...}}
+// (see https://developers.thumbtack.com/apidocs, Negotiations webhook
+// request sample) — see detectThumbtackEnvelope below. This is a
+// documented-shape fix, not proof every real delivery uses it: a real
+// failed delivery's own diagnostic log showed a 2-top-level-key object
+// with every expected flat field missing, consistent with this envelope,
+// but the actual key names/nesting were never captured on the wire. Both
+// shapes are accepted; neither assumes the other away.
 //
 // Still unconfirmed:
 // - Review events' shape was never given — getThumbtackEventType only
@@ -153,6 +164,32 @@ export function getThumbtackEventType(body: unknown): ThumbtackEventType {
   if (typeof b.request?.requestID === "string" && b.request.requestID.trim()) return "LEAD";
   if (typeof b.messageID === "string" && b.messageID.trim()) return "MESSAGE";
   return "UNKNOWN";
+}
+
+// Thumbtack's own documented v4 webhook request envelope (Negotiations
+// webhook, https://developers.thumbtack.com/apidocs):
+// {"event": {"eventType": "...", ...}, "data": {...the lead or message...}}.
+// This is a documented-shape fix, not proof every real delivery uses it —
+// a real failed delivery's own log showed a 2-top-level-key object with
+// every expected flat field missing, consistent with this envelope, but
+// the actual key names were never captured on the wire. So detection is
+// narrow and never guessed at: a body counts as an envelope only when
+// "event" is itself a plain object carrying a string eventType AND "data"
+// is a plain object. A body with only one of the two, or a non-object
+// "data", is NOT treated as an envelope — it falls through to the exact
+// same flat-body handling as before, ending in the same non-2xx + owner
+// alert when it isn't recognized, never a new/different error path.
+export interface ThumbtackEnvelope {
+  eventType: string;
+  data: Record<string, unknown>;
+}
+
+export function detectThumbtackEnvelope(body: unknown): ThumbtackEnvelope | null {
+  if (!isPlainObject(body)) return null;
+  const event = body.event;
+  const data = body.data;
+  if (!isPlainObject(event) || typeof event.eventType !== "string" || !isPlainObject(data)) return null;
+  return { eventType: event.eventType, data };
 }
 
 // Always false today — no confirmed test-marker field exists in what was
@@ -566,6 +603,27 @@ function describeNestedShapeDetailForLogging(parsed: unknown): string {
   );
 }
 
+// Every event type Thumbtack's own docs name for this webhook family —
+// logged by name since these are documented, public identifiers, not
+// customer data. Anything else is logged as "unknown" with its type and
+// (for a string) length only, never the value itself — the same shape-not-
+// content rule as everywhere else in this file.
+const KNOWN_THUMBTACK_ENVELOPE_EVENT_TYPES = new Set<string>([
+  "NegotiationCreatedV4",
+  "MessageCreatedV4",
+  "ReviewCreatedV4",
+  "PresetJobMatchedV4",
+  "PresetJobStatusChangedV4",
+  "PresetJobCancelledV4",
+]);
+
+function describeEnvelopeEventTypeForLogging(eventType: string): string {
+  if (KNOWN_THUMBTACK_ENVELOPE_EVENT_TYPES.has(eventType)) {
+    return `eventType=${eventType}`;
+  }
+  return `eventType=unknown eventTypeType=${typeof eventType} eventTypeLength=${eventType.length}`;
+}
+
 // For the 401 path ONLY — called before the body is ever read. Logs
 // whether the secret header was present and its length (never its
 // value), plus the request's own Content-Length header. Nothing else.
@@ -592,6 +650,12 @@ export function logThumbtackAuthRejectedDiagnostics(opts: {
 // getThumbtackEventType/parseThumbtackLeadBody actually key on) is
 // missing versus present with the wrong type. Never set for the
 // malformed-JSON or save-failure branches, which are unchanged.
+//
+// envelopeEventType is set only when the body was detected as Thumbtack's
+// documented v4 envelope ({event:{eventType},data}) — it logs that exact
+// eventType string if it's one of the documented values, or "unknown" plus
+// its type/length (never the string itself) otherwise. Omitted entirely
+// for a flat (non-envelope) body, which logs exactly as before.
 export function logThumbtackBodyDiagnostics(opts: {
   contentType: string | null;
   contentEncoding: string | null;
@@ -600,6 +664,7 @@ export function logThumbtackBodyDiagnostics(opts: {
   parseErrorClass?: string | null;
   parsedBody?: unknown;
   includeNestedShapeDetail?: boolean;
+  envelopeEventType?: string;
 }): void {
   const parts = [
     "[thumbtack-webhook] body-diagnostics",
@@ -612,6 +677,9 @@ export function logThumbtackBodyDiagnostics(opts: {
     parts.push(`errorClass=${opts.parseErrorClass ?? "UnknownError"}`);
   } else {
     parts.push(describeParsedTopLevelForLogging(opts.parsedBody));
+    if (opts.envelopeEventType !== undefined) {
+      parts.push(describeEnvelopeEventTypeForLogging(opts.envelopeEventType));
+    }
     if (opts.includeNestedShapeDetail) {
       const nested = describeNestedShapeDetailForLogging(opts.parsedBody);
       if (nested) parts.push(nested);
