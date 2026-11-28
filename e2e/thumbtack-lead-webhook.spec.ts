@@ -14,6 +14,7 @@ import {
   logThumbtackBodyDiagnostics,
   maybeAlertOwnerOfThumbtackSaveFailure,
   resetThumbtackAlertState,
+  detectThumbtackEnvelope,
   type ThumbtackSaveFailureReason,
 } from "../src/lib/thumbtackLeads";
 import { loadLeadKpis, getLeadFunnelBySource, getLostLeads, buildLeadExportCsv } from "../src/lib/leads";
@@ -165,6 +166,60 @@ function sampleRealDeliveryShapeLeadBody(overrides: Record<string, unknown> = {}
     accessCode: "fake-access-code-not-real",
     ...overrides,
   });
+}
+
+// Thumbtack's own documented v4 webhook envelope (Negotiations webhook
+// request sample, https://developers.thumbtack.com/apidocs):
+// {"event": {"eventType", "description", "webhookID", "triggeredAt"},
+//  "data": {...}}. Invented description/webhookID — no real Thumbtack
+// identifiers.
+function sampleEnvelopeBody(eventType: string, data: Record<string, unknown>) {
+  return {
+    event: {
+      eventType,
+      description: `Fake invented description for ${eventType}`,
+      webhookID: `webhook-${RUN_ID}-${Math.random().toString(36).slice(2)}`,
+      triggeredAt: new Date().toISOString(),
+    },
+    data,
+  };
+}
+
+// The lead field shape named in this round's brief, invented values only —
+// matches a NegotiationCreatedV4 envelope's "data".
+function sampleEnvelopeLeadData(overrides: Record<string, unknown> = {}) {
+  return {
+    negotiationID: `negotiation-${RUN_ID}-${Math.random().toString(36).slice(2)}`,
+    createdAt: new Date().toISOString(),
+    customer: {
+      customerID: `customer-${RUN_ID}`,
+      firstName: "Jordan",
+      lastName: "Envelope",
+      phone: `949555${Math.floor(1000 + Math.random() * 8999)}`,
+    },
+    business: {
+      businessID: "business-fake-id",
+      name: "Fake Cleaning Co",
+      imageURL: "https://example.com/fake-business-image.png",
+      accessCode: "fake-access-code-not-real",
+    },
+    request: {
+      requestID: `request-${RUN_ID}-${Math.random().toString(36).slice(2)}`,
+      customerID: `customer-${RUN_ID}`,
+      description: "Envelope test request — deep clean",
+      category: { categoryID: "cat-fake-id", name: "House Cleaning" },
+      proposedTimes: [{ start: "2026-12-02T09:00:00Z", end: "2026-12-02T11:00:00Z" }],
+      location: { address1: "456 Elm St", city: "Irvine", state: "CA", zipCode: "92618" },
+      details: [],
+      attachments: [],
+    },
+    estimate: { low: 100, high: 200 },
+    status: "ACTIVE",
+    leadPrice: "$25.00",
+    leadPriceBreakdown: {},
+    chargeState: "CHARGED",
+    ...overrides,
+  };
 }
 
 async function cleanupLead(id: string | null) {
@@ -1150,6 +1205,192 @@ test.describe("Thumbtack webhook: failure diagnostics and owner alert (direct li
     expect(calls).toHaveLength(1);
     expect(calls[0]).not.toContain("@"); // no email address embedded in the text
     expect(calls[0]).toBe("A Thumbtack delivery could not be saved. Check Thumbtack directly.");
+  });
+});
+
+test.describe("Thumbtack webhook: v4 envelope ({event, data}) detection", () => {
+  test.skip(!WEBHOOK_SECRET, "THUMBTACK_WEBHOOK_SECRET isn't configured in this environment");
+
+  const createdIds: string[] = [];
+
+  test.afterAll(async () => {
+    for (const id of createdIds) await cleanupLead(id);
+  });
+
+  test("detectThumbtackEnvelope: only a plain object with an {event:{eventType:string}, data:object} shape counts as an envelope", () => {
+    const leadData = sampleEnvelopeLeadData();
+    const good = detectThumbtackEnvelope(sampleEnvelopeBody("NegotiationCreatedV4", leadData));
+    expect(good).not.toBeNull();
+    expect(good!.eventType).toBe("NegotiationCreatedV4");
+    expect(good!.data).toBe(leadData);
+
+    // Only "event" present.
+    expect(detectThumbtackEnvelope({ event: { eventType: "NegotiationCreatedV4" } })).toBeNull();
+    // Only "data" present.
+    expect(detectThumbtackEnvelope({ data: leadData })).toBeNull();
+    // "data" present but not an object.
+    expect(detectThumbtackEnvelope({ event: { eventType: "NegotiationCreatedV4" }, data: "not an object" })).toBeNull();
+    // "event" present but eventType isn't a string.
+    expect(detectThumbtackEnvelope({ event: { eventType: 123 }, data: leadData })).toBeNull();
+    // A flat lead body — no "event"/"data" at all.
+    expect(detectThumbtackEnvelope(sampleLeadBody())).toBeNull();
+    // Not an object at all.
+    expect(detectThumbtackEnvelope("just a string")).toBeNull();
+    expect(detectThumbtackEnvelope(null)).toBeNull();
+  });
+
+  test("an envelope with eventType NegotiationCreatedV4 and the documented lead field shape is saved exactly like a flat lead — quarantine/hold behavior unchanged", async ({
+    request,
+  }) => {
+    process.env.THUMBTACK_QUARANTINE_ENABLED = "true"; // default-on, unchanged by this round
+    const leadData = sampleEnvelopeLeadData();
+    const body = sampleEnvelopeBody("NegotiationCreatedV4", leadData);
+
+    const res = await request.post(WEBHOOK_URL, {
+      headers: { [THUMBTACK_SECRET_HEADER]: WEBHOOK_SECRET },
+      data: body,
+    });
+    expect(res.status()).toBe(200);
+
+    const created = await prisma.lead.findFirst({ where: { externalId: leadData.negotiationID } });
+    expect(created).not.toBeNull();
+    createdIds.push(created!.id);
+    expect(created!.source).toBe("THUMBTACK");
+    expect(created!.quarantined).toBe(true); // held for review, same default as a flat lead
+    expect(created!.thumbtackLeadPrice).toBe(25);
+    expect(created!.email).toBeNull(); // no email invented, same as a flat lead
+  });
+
+  test("an envelope with eventType MessageCreatedV4 returns the existing 200 Ignored and saves nothing", async ({ request }) => {
+    const messageData = {
+      messageID: `message-${RUN_ID}-${Math.random().toString(36).slice(2)}`,
+      negotiationID: `negotiation-${RUN_ID}-${Math.random().toString(36).slice(2)}`,
+      customer: { customerID: `customer-${RUN_ID}`, displayName: "Unknown" },
+      business: { businessID: "business-fake-id" },
+      from: "CUSTOMER",
+      text: "Envelope message test",
+      sentAt: new Date().toISOString(),
+    };
+    const body = sampleEnvelopeBody("MessageCreatedV4", messageData);
+
+    const res = await request.post(WEBHOOK_URL, {
+      headers: { [THUMBTACK_SECRET_HEADER]: WEBHOOK_SECRET },
+      data: body,
+    });
+    expect(res.status()).toBe(200);
+    expect(await prisma.lead.count({ where: { externalId: messageData.negotiationID } })).toBe(0);
+  });
+
+  test("an envelope with eventType ReviewCreatedV4 returns 422, saves nothing, and alerts the owner once", async ({
+    request,
+  }) => {
+    resetThumbtackAlertState();
+    const reviewData = { reviewID: "fake-review-id", rating: 5, negotiationID: `negotiation-${RUN_ID}-review` };
+    const body = sampleEnvelopeBody("ReviewCreatedV4", reviewData);
+
+    const res = await request.post(WEBHOOK_URL, {
+      headers: { [THUMBTACK_SECRET_HEADER]: WEBHOOK_SECRET },
+      data: body,
+    });
+    expect(res.status()).toBe(422);
+    expect(await prisma.lead.count({ where: { externalId: reviewData.negotiationID } })).toBe(0);
+
+    // The log line itself (the HTTP test above can't read the server
+    // process's own stdout) — direct call with the same eventType proves
+    // what the route's own call to logThumbtackBodyDiagnostics produces.
+    const lines = captureConsoleLog(() => {
+      logThumbtackBodyDiagnostics({
+        contentType: "application/json",
+        contentEncoding: null,
+        byteLength: 999,
+        parseOk: true,
+        parsedBody: reviewData,
+        includeNestedShapeDetail: true,
+        envelopeEventType: "ReviewCreatedV4",
+      });
+    });
+    expect(lines[0]).toContain("eventType=ReviewCreatedV4");
+  });
+
+  test("an envelope with an unlisted (invented) eventType returns 422, saves nothing, and logs eventType=unknown with type/length only — never the string itself", async ({
+    request,
+  }) => {
+    const weirdEventType = `InventedUnlistedEventTypeForTesting${RUN_ID}NotARealThumbtackValue`;
+    const data = { negotiationID: `negotiation-${RUN_ID}-weird`, someField: "fake" };
+    const body = sampleEnvelopeBody(weirdEventType, data);
+
+    const res = await request.post(WEBHOOK_URL, {
+      headers: { [THUMBTACK_SECRET_HEADER]: WEBHOOK_SECRET },
+      data: body,
+    });
+    expect(res.status()).toBe(422);
+    expect(await prisma.lead.count({ where: { externalId: data.negotiationID } })).toBe(0);
+
+    const lines = captureConsoleLog(() => {
+      logThumbtackBodyDiagnostics({
+        contentType: "application/json",
+        contentEncoding: null,
+        byteLength: 999,
+        parseOk: true,
+        parsedBody: data,
+        includeNestedShapeDetail: true,
+        envelopeEventType: weirdEventType,
+      });
+    });
+    const line = lines[0];
+    expect(line).toContain("eventType=unknown");
+    expect(line).toContain("eventTypeType=string");
+    expect(line).toContain(`eventTypeLength=${weirdEventType.length}`);
+    expect(line).not.toContain(weirdEventType); // the string itself is never logged
+  });
+
+  test("a body with only 'event' (no 'data') is not an envelope — handled by the flat path, same 422 and alert as any other unrecognized flat shape", async ({
+    request,
+  }) => {
+    const body = { event: { eventType: "NegotiationCreatedV4" }, negotiationID: `negotiation-${RUN_ID}-onlyevent` };
+    const res = await request.post(WEBHOOK_URL, {
+      headers: { [THUMBTACK_SECRET_HEADER]: WEBHOOK_SECRET },
+      data: body,
+    });
+    // Same status a flat UNKNOWN shape gets today — no new error path.
+    expect(res.status()).toBe(422);
+    expect(await prisma.lead.count({ where: { externalId: body.negotiationID } })).toBe(0);
+  });
+
+  test("a body whose 'data' is not an object is not an envelope — handled by the flat path, same status as any other unrecognized flat shape", async ({
+    request,
+  }) => {
+    const body = { event: { eventType: "NegotiationCreatedV4" }, data: "not an object", negotiationID: `negotiation-${RUN_ID}-dataisstring` };
+    const res = await request.post(WEBHOOK_URL, {
+      headers: { [THUMBTACK_SECRET_HEADER]: WEBHOOK_SECRET },
+      data: body,
+    });
+    expect(res.status()).toBe(422);
+    expect(await prisma.lead.count({ where: { externalId: body.negotiationID } })).toBe(0);
+  });
+
+  test("a flat (non-envelope) Lead body still saves exactly as before", async ({ request }) => {
+    const body = sampleLeadBody();
+    const res = await request.post(WEBHOOK_URL, {
+      headers: { [THUMBTACK_SECRET_HEADER]: WEBHOOK_SECRET },
+      data: body,
+    });
+    expect(res.status()).toBe(200);
+    const created = await prisma.lead.findFirst({ where: { externalId: body.negotiationID } });
+    expect(created).not.toBeNull();
+    createdIds.push(created!.id);
+  });
+
+  test("a wrong secret header is still refused with 401, with no body read, regardless of an envelope-shaped body", async ({
+    request,
+  }) => {
+    const body = sampleEnvelopeBody("NegotiationCreatedV4", sampleEnvelopeLeadData());
+    const res = await request.post(WEBHOOK_URL, {
+      headers: { [THUMBTACK_SECRET_HEADER]: "definitely-not-the-real-secret" },
+      data: body,
+    });
+    expect(res.status()).toBe(401);
+    expect(await prisma.lead.count({ where: { externalId: (body.data as { negotiationID: string }).negotiationID } })).toBe(0);
   });
 });
 

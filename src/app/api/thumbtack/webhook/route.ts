@@ -8,6 +8,7 @@ import {
   logThumbtackAuthRejectedDiagnostics,
   logThumbtackBodyDiagnostics,
   maybeAlertOwnerOfThumbtackSaveFailure,
+  detectThumbtackEnvelope,
 } from "@/lib/thumbtackLeads";
 
 // Thumbtack's webhook form only offers Authorization None/Basic/Custom
@@ -68,6 +69,74 @@ export async function POST(request: Request) {
     return new Response("Malformed JSON body", { status: 400 });
   }
 
+  // Shared by both the flat-Lead path and the enveloped NegotiationCreatedV4
+  // path below — same parse/ingest/diagnostics/alert sequence either way,
+  // the only difference being which object the lead fields are read from
+  // (the flat body itself, or an envelope's "data") and, for diagnostics,
+  // which eventType (if any) wrapped it.
+  async function processLeadPayload(payload: unknown, envelopeEventType?: string): Promise<Response> {
+    const negotiationID = negotiationIdForLogging(payload);
+    const parsed = parseThumbtackLeadBody(payload);
+    if (!parsed) {
+      logThumbtackDelivery("failed", negotiationID);
+      logThumbtackBodyDiagnostics({
+        contentType,
+        contentEncoding,
+        byteLength,
+        parseOk: true,
+        parsedBody: payload,
+        includeNestedShapeDetail: true,
+        envelopeEventType,
+      });
+      await maybeAlertOwnerOfThumbtackSaveFailure("missing_negotiation_id");
+      return new Response("Missing negotiationID", { status: 400 });
+    }
+
+    try {
+      const result = await ingestThumbtackLead(parsed);
+      logThumbtackDelivery(result.outcome, parsed.negotiationID);
+      return new Response(result.outcome === "created" ? "Created" : "Duplicate", { status: 200 });
+    } catch (err) {
+      // A real save failure — never swallowed. Thumbtack's delivery log must
+      // show this as a failure, never a silent 2xx (item 9's own rule).
+      logThumbtackDelivery("failed", parsed.negotiationID);
+      logThumbtackBodyDiagnostics({ contentType, contentEncoding, byteLength, parseOk: true, parsedBody: payload, envelopeEventType });
+      console.error("[thumbtack-webhook] failed to save lead:", err instanceof Error ? err.message : err);
+      await maybeAlertOwnerOfThumbtackSaveFailure("save_failed");
+      return new Response("Failed to save lead", { status: 500 });
+    }
+  }
+
+  // Thumbtack's documented v4 envelope ({event:{eventType}, data}) — see
+  // detectThumbtackEnvelope's own comment for exactly what does and
+  // doesn't count as one. Anything that isn't an envelope falls through
+  // unchanged to the flat-body handling below it.
+  const envelope = detectThumbtackEnvelope(body);
+  if (envelope) {
+    if (envelope.eventType === "NegotiationCreatedV4") {
+      return processLeadPayload(envelope.data, envelope.eventType);
+    }
+    if (envelope.eventType === "MessageCreatedV4") {
+      logThumbtackDelivery("ignored", negotiationIdForLogging(envelope.data));
+      return new Response("Ignored", { status: 200 });
+    }
+    // Any other eventType (Review/PresetJob* events, or a genuinely
+    // unknown one) — same non-2xx + diagnostics + alert treatment as an
+    // unrecognized flat shape, never a silent 2xx.
+    logThumbtackDelivery("failed", negotiationIdForLogging(envelope.data));
+    logThumbtackBodyDiagnostics({
+      contentType,
+      contentEncoding,
+      byteLength,
+      parseOk: true,
+      parsedBody: envelope.data,
+      includeNestedShapeDetail: true,
+      envelopeEventType: envelope.eventType,
+    });
+    await maybeAlertOwnerOfThumbtackSaveFailure("unrecognized_shape");
+    return new Response("Unrecognized event shape", { status: 422 });
+  }
+
   const negotiationID = negotiationIdForLogging(body);
   const eventType = getThumbtackEventType(body);
 
@@ -97,32 +166,5 @@ export async function POST(request: Request) {
     return new Response("Unrecognized event shape", { status: 422 });
   }
 
-  const parsed = parseThumbtackLeadBody(body);
-  if (!parsed) {
-    logThumbtackDelivery("failed", negotiationID);
-    logThumbtackBodyDiagnostics({
-      contentType,
-      contentEncoding,
-      byteLength,
-      parseOk: true,
-      parsedBody: body,
-      includeNestedShapeDetail: true,
-    });
-    await maybeAlertOwnerOfThumbtackSaveFailure("missing_negotiation_id");
-    return new Response("Missing negotiationID", { status: 400 });
-  }
-
-  try {
-    const result = await ingestThumbtackLead(parsed);
-    logThumbtackDelivery(result.outcome, parsed.negotiationID);
-    return new Response(result.outcome === "created" ? "Created" : "Duplicate", { status: 200 });
-  } catch (err) {
-    // A real save failure — never swallowed. Thumbtack's delivery log must
-    // show this as a failure, never a silent 2xx (item 9's own rule).
-    logThumbtackDelivery("failed", parsed.negotiationID);
-    logThumbtackBodyDiagnostics({ contentType, contentEncoding, byteLength, parseOk: true, parsedBody: body });
-    console.error("[thumbtack-webhook] failed to save lead:", err instanceof Error ? err.message : err);
-    await maybeAlertOwnerOfThumbtackSaveFailure("save_failed");
-    return new Response("Failed to save lead", { status: 500 });
-  }
+  return processLeadPayload(body);
 }
