@@ -452,3 +452,218 @@ export function logThumbtackDelivery(
 ): void {
   console.log(JSON.stringify({ source: "thumbtack-webhook", outcome, negotiationID }));
 }
+
+// ---------------------------------------------------------------------
+// Failure diagnostics — console log only. A real paid lead was rejected
+// (Nov 27, 2026) with nothing but {outcome: failed, negotiationID: null}
+// to go on; Thumbtack's own delivery screen showed a body that today's
+// parser should accept, so the bytes this route actually received and
+// what Thumbtack's screen renders may differ — we don't yet know how.
+// This logs *shape*, never *content*, so the next real failure's log line
+// is enough to tell what's different, without ever printing a customer's
+// data to the server console. Never log a body value, and never log
+// accessCode by name or value, anywhere below.
+// ---------------------------------------------------------------------
+
+// Every top-level key this file's parser currently looks for, plus the
+// extra fields Thumbtack's delivery screen showed that aren't read today
+// (estimate, refundRequestLink) — listed here purely so the diagnostic
+// line can say "present, this type" for them too, not as a parsing change.
+// A key outside this list is counted, never named — accessCode included.
+const EXPECTED_THUMBTACK_BODY_KEYS = [
+  "negotiationID",
+  "createdAt",
+  "customer",
+  "business",
+  "request",
+  "status",
+  "leadPrice",
+  "leadPriceBreakdown",
+  "chargeState",
+  "requestReviewLink",
+  "refundRequestLink",
+  "messageID",
+  "estimate",
+] as const;
+
+const DIAGNOSTIC_LINE_MAX_LENGTH = 2000;
+
+// "missing" for an absent key, "null" for a present-but-null value,
+// "array(N)" for an array (length only, never its contents), otherwise
+// the plain typeof — never the value itself.
+function describeValueTypeForLogging(value: unknown): string {
+  if (value === undefined) return "missing";
+  if (value === null) return "null";
+  if (Array.isArray(value)) return `array(${value.length})`;
+  return typeof value;
+}
+
+// Only ever describes the *shape* of a successfully-parsed top-level
+// value — object (allowlisted keys + an other-keys count), array (length
+// + element-0 type), string (length + whether it itself reparses as
+// JSON), or anything else. Never includes a value from the body.
+function describeParsedTopLevelForLogging(parsed: unknown): string {
+  if (Array.isArray(parsed)) {
+    return `topType=array length=${parsed.length} elem0Type=${describeValueTypeForLogging(parsed[0])}`;
+  }
+  if (parsed === null) return "topType=null";
+  if (typeof parsed === "object") {
+    const obj = parsed as Record<string, unknown>;
+    const known = new Set<string>(EXPECTED_THUMBTACK_BODY_KEYS);
+    const fields = EXPECTED_THUMBTACK_BODY_KEYS.map((k) => `${k}=${describeValueTypeForLogging(obj[k])}`);
+    const otherKeyCount = Object.keys(obj).filter((k) => !known.has(k)).length;
+    return `topType=object ${fields.join(" ")} otherKeys=${otherKeyCount}`;
+  }
+  if (typeof parsed === "string") {
+    let reparsesAsJson = false;
+    try {
+      JSON.parse(parsed);
+      reparsesAsJson = true;
+    } catch {
+      reparsesAsJson = false;
+    }
+    return `topType=string length=${parsed.length} reparsesAsJson=${reparsesAsJson ? "yes" : "no"}`;
+  }
+  return "topType=other";
+}
+
+function capDiagnosticLine(line: string): string {
+  return line.length > DIAGNOSTIC_LINE_MAX_LENGTH ? `${line.slice(0, DIAGNOSTIC_LINE_MAX_LENGTH)} …(truncated)` : line;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+// Same type label as describeValueTypeForLogging, but for an object value
+// it also appends a key *count* — never the key names, never a value.
+// Used only for the extra request/customer/business detail below, not
+// the top-level allowlist breakdown (which stays exactly as it was).
+function describeNestedFieldForLogging(value: unknown): string {
+  const type = describeValueTypeForLogging(value);
+  return type === "object" ? `object(keys=${Object.keys(value as Record<string, unknown>).length})` : type;
+}
+
+// Extra detail used only on the unrecognized_shape and missing_negotiation_id
+// paths — the two failures where "request is present" isn't enough to tell
+// what's actually wrong, since getThumbtackEventType and
+// parseThumbtackLeadBody both key on request.requestID specifically being a
+// non-empty string. Reports its type (and length, if it's a string — never
+// its value), plus request/customer/business's own type and, for an object,
+// its key count. Never a nested key name, never a nested value. Returns ""
+// for anything that isn't a plain object (nothing nested to describe).
+function describeNestedShapeDetailForLogging(parsed: unknown): string {
+  if (!isPlainObject(parsed)) return "";
+  const requestVal = parsed.request;
+  const requestIdVal = isPlainObject(requestVal) ? requestVal.requestID : undefined;
+  const requestIdType = describeValueTypeForLogging(requestIdVal);
+  const requestIdLengthPart = typeof requestIdVal === "string" ? ` requestIdLength=${requestIdVal.length}` : "";
+  return (
+    `requestIdType=${requestIdType}${requestIdLengthPart} ` +
+    `requestDetail=${describeNestedFieldForLogging(requestVal)} ` +
+    `customerDetail=${describeNestedFieldForLogging(parsed.customer)} ` +
+    `businessDetail=${describeNestedFieldForLogging(parsed.business)}`
+  );
+}
+
+// For the 401 path ONLY — called before the body is ever read. Logs
+// whether the secret header was present and its length (never its
+// value), plus the request's own Content-Length header. Nothing else.
+export function logThumbtackAuthRejectedDiagnostics(opts: {
+  headerPresent: boolean;
+  headerLength: number;
+  contentLength: string | null;
+}): void {
+  console.log(
+    `[thumbtack-webhook] auth-rejected headerPresent=${opts.headerPresent} headerLength=${opts.headerLength} contentLength=${opts.contentLength ?? "none"}`
+  );
+}
+
+// For the 4 post-auth failure paths (malformed JSON, unrecognized shape,
+// missing negotiationID, save failure). One line: transport details
+// (content-type/content-encoding/byte length), whether JSON.parse
+// succeeded (and if not, only the error's class name, never its message
+// text, which can quote back fragments of the body), and — only once
+// parsing succeeded — the shape breakdown above.
+//
+// includeNestedShapeDetail is set only by the route's unrecognized_shape
+// and missing_negotiation_id branches — the two cases where "request is
+// an object" alone can't say whether request.requestID (what
+// getThumbtackEventType/parseThumbtackLeadBody actually key on) is
+// missing versus present with the wrong type. Never set for the
+// malformed-JSON or save-failure branches, which are unchanged.
+export function logThumbtackBodyDiagnostics(opts: {
+  contentType: string | null;
+  contentEncoding: string | null;
+  byteLength: number;
+  parseOk: boolean;
+  parseErrorClass?: string | null;
+  parsedBody?: unknown;
+  includeNestedShapeDetail?: boolean;
+}): void {
+  const parts = [
+    "[thumbtack-webhook] body-diagnostics",
+    `contentType=${opts.contentType ?? "none"}`,
+    `contentEncoding=${opts.contentEncoding ?? "none"}`,
+    `bytes=${opts.byteLength}`,
+    `parseOk=${opts.parseOk}`,
+  ];
+  if (!opts.parseOk) {
+    parts.push(`errorClass=${opts.parseErrorClass ?? "UnknownError"}`);
+  } else {
+    parts.push(describeParsedTopLevelForLogging(opts.parsedBody));
+    if (opts.includeNestedShapeDetail) {
+      const nested = describeNestedShapeDetailForLogging(opts.parsedBody);
+      if (nested) parts.push(nested);
+    }
+  }
+  console.log(capDiagnosticLine(parts.join(" ")));
+}
+
+// ---------------------------------------------------------------------
+// Owner alert for a delivery that passed the secret check but wasn't
+// saved — the 4 failure paths above. One quiet Slack DM, no lead data,
+// deduped so a retry storm can't spam the owner: at most one alert per
+// failure reason per hour, and at most 5 alerts total per hour across
+// every reason. In-memory only — a server restart clears it, which is
+// an acceptable trade for not needing a durable store for this.
+// ---------------------------------------------------------------------
+const THUMBTACK_ALERT_WINDOW_MS = 60 * 60 * 1000;
+const THUMBTACK_ALERT_MAX_PER_WINDOW = 5;
+let thumbtackAlertLastSentByReason = new Map<string, number>();
+let thumbtackAlertTimestamps: number[] = [];
+
+export type ThumbtackSaveFailureReason =
+  | "malformed_json"
+  | "unrecognized_shape"
+  | "missing_negotiation_id"
+  | "save_failed";
+
+// Test-only — clears all alert dedupe/rate-limit state between tests.
+export function resetThumbtackAlertState(): void {
+  thumbtackAlertLastSentByReason = new Map();
+  thumbtackAlertTimestamps = [];
+}
+
+// Both caps are checked before either is recorded, so a send blocked by
+// the global cap never "spends" that reason's own hourly window for
+// nothing — the per-reason window only ever advances when an alert for
+// that reason actually goes out.
+export async function maybeAlertOwnerOfThumbtackSaveFailure(
+  reason: ThumbtackSaveFailureReason,
+  postSlackDMFn: typeof postSlackDMToOwner = postSlackDMToOwner,
+  now: number = Date.now()
+): Promise<void> {
+  const lastForReason = thumbtackAlertLastSentByReason.get(reason);
+  if (lastForReason !== undefined && now - lastForReason < THUMBTACK_ALERT_WINDOW_MS) return;
+
+  const recentGlobal = thumbtackAlertTimestamps.filter((t) => now - t < THUMBTACK_ALERT_WINDOW_MS);
+  if (recentGlobal.length >= THUMBTACK_ALERT_MAX_PER_WINDOW) {
+    thumbtackAlertTimestamps = recentGlobal;
+    return;
+  }
+
+  thumbtackAlertLastSentByReason.set(reason, now);
+  thumbtackAlertTimestamps = [...recentGlobal, now];
+  await postSlackDMFn("A Thumbtack delivery could not be saved. Check Thumbtack directly.");
+}
