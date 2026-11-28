@@ -531,6 +531,41 @@ function capDiagnosticLine(line: string): string {
   return line.length > DIAGNOSTIC_LINE_MAX_LENGTH ? `${line.slice(0, DIAGNOSTIC_LINE_MAX_LENGTH)} …(truncated)` : line;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+// Same type label as describeValueTypeForLogging, but for an object value
+// it also appends a key *count* — never the key names, never a value.
+// Used only for the extra request/customer/business detail below, not
+// the top-level allowlist breakdown (which stays exactly as it was).
+function describeNestedFieldForLogging(value: unknown): string {
+  const type = describeValueTypeForLogging(value);
+  return type === "object" ? `object(keys=${Object.keys(value as Record<string, unknown>).length})` : type;
+}
+
+// Extra detail used only on the unrecognized_shape and missing_negotiation_id
+// paths — the two failures where "request is present" isn't enough to tell
+// what's actually wrong, since getThumbtackEventType and
+// parseThumbtackLeadBody both key on request.requestID specifically being a
+// non-empty string. Reports its type (and length, if it's a string — never
+// its value), plus request/customer/business's own type and, for an object,
+// its key count. Never a nested key name, never a nested value. Returns ""
+// for anything that isn't a plain object (nothing nested to describe).
+function describeNestedShapeDetailForLogging(parsed: unknown): string {
+  if (!isPlainObject(parsed)) return "";
+  const requestVal = parsed.request;
+  const requestIdVal = isPlainObject(requestVal) ? requestVal.requestID : undefined;
+  const requestIdType = describeValueTypeForLogging(requestIdVal);
+  const requestIdLengthPart = typeof requestIdVal === "string" ? ` requestIdLength=${requestIdVal.length}` : "";
+  return (
+    `requestIdType=${requestIdType}${requestIdLengthPart} ` +
+    `requestDetail=${describeNestedFieldForLogging(requestVal)} ` +
+    `customerDetail=${describeNestedFieldForLogging(parsed.customer)} ` +
+    `businessDetail=${describeNestedFieldForLogging(parsed.business)}`
+  );
+}
+
 // For the 401 path ONLY — called before the body is ever read. Logs
 // whether the secret header was present and its length (never its
 // value), plus the request's own Content-Length header. Nothing else.
@@ -550,6 +585,13 @@ export function logThumbtackAuthRejectedDiagnostics(opts: {
 // succeeded (and if not, only the error's class name, never its message
 // text, which can quote back fragments of the body), and — only once
 // parsing succeeded — the shape breakdown above.
+//
+// includeNestedShapeDetail is set only by the route's unrecognized_shape
+// and missing_negotiation_id branches — the two cases where "request is
+// an object" alone can't say whether request.requestID (what
+// getThumbtackEventType/parseThumbtackLeadBody actually key on) is
+// missing versus present with the wrong type. Never set for the
+// malformed-JSON or save-failure branches, which are unchanged.
 export function logThumbtackBodyDiagnostics(opts: {
   contentType: string | null;
   contentEncoding: string | null;
@@ -557,6 +599,7 @@ export function logThumbtackBodyDiagnostics(opts: {
   parseOk: boolean;
   parseErrorClass?: string | null;
   parsedBody?: unknown;
+  includeNestedShapeDetail?: boolean;
 }): void {
   const parts = [
     "[thumbtack-webhook] body-diagnostics",
@@ -569,6 +612,10 @@ export function logThumbtackBodyDiagnostics(opts: {
     parts.push(`errorClass=${opts.parseErrorClass ?? "UnknownError"}`);
   } else {
     parts.push(describeParsedTopLevelForLogging(opts.parsedBody));
+    if (opts.includeNestedShapeDetail) {
+      const nested = describeNestedShapeDetailForLogging(opts.parsedBody);
+      if (nested) parts.push(nested);
+    }
   }
   console.log(capDiagnosticLine(parts.join(" ")));
 }

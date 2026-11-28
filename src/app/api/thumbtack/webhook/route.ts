@@ -83,7 +83,16 @@ export async function POST(request: Request) {
     // file gets taught the real shape, rather than quietly losing what
     // might be a real Lead event that fell through the cracks.
     logThumbtackDelivery("failed", negotiationID);
-    logThumbtackBodyDiagnostics({ contentType, contentEncoding, byteLength, parseOk: true, parsedBody: body });
+    logThumbtackBodyDiagnostics({
+      contentType,
+      contentEncoding,
+      byteLength,
+      parseOk: true,
+      parsedBody: body,
+      // Distinguishes a missing request.requestID from one present with
+      // the wrong type — "request is an object" alone doesn't say which.
+      includeNestedShapeDetail: true,
+    });
     await maybeAlertOwnerOfThumbtackSaveFailure("unrecognized_shape");
     return new Response("Unrecognized event shape", { status: 422 });
   }
@@ -91,7 +100,14 @@ export async function POST(request: Request) {
   const parsed = parseThumbtackLeadBody(body);
   if (!parsed) {
     logThumbtackDelivery("failed", negotiationID);
-    logThumbtackBodyDiagnostics({ contentType, contentEncoding, byteLength, parseOk: true, parsedBody: body });
+    logThumbtackBodyDiagnostics({
+      contentType,
+      contentEncoding,
+      byteLength,
+      parseOk: true,
+      parsedBody: body,
+      includeNestedShapeDetail: true,
+    });
     await maybeAlertOwnerOfThumbtackSaveFailure("missing_negotiation_id");
     return new Response("Missing negotiationID", { status: 400 });
   }

@@ -957,6 +957,84 @@ test.describe("Thumbtack webhook: failure diagnostics and owner alert (direct li
     expect(line).not.toContain("rating");
   });
 
+  test("body diagnostics: nested shape detail (unrecognized_shape/missing_negotiation_id only) — a numeric request.requestID is distinguished from a missing one, with no nested key names or values", () => {
+    // A LEAD-shaped body, but request.requestID is the WRONG type (a
+    // number instead of a string) — this is exactly the ambiguity
+    // "request=object" alone couldn't resolve: present with a bad type,
+    // vs. genuinely absent (covered by the next test below).
+    const numericIdBody = sampleRealDeliveryShapeLeadBody({
+      request: { ...sampleLeadBody().request, requestID: 123456 },
+    });
+    const lines = captureConsoleLog(() => {
+      logThumbtackBodyDiagnostics({
+        contentType: "application/json",
+        contentEncoding: null,
+        byteLength: 999,
+        parseOk: true,
+        parsedBody: numericIdBody,
+        includeNestedShapeDetail: true,
+      });
+    });
+    expect(lines).toHaveLength(1);
+    const line = lines[0];
+    expect(line).toContain("requestIdType=number");
+    expect(line).not.toContain("requestIdLength"); // only logged when it's a string
+    expect(line).toContain(`requestDetail=object(keys=${Object.keys(numericIdBody.request).length})`);
+    expect(line).toContain(`customerDetail=object(keys=${Object.keys(numericIdBody.customer).length})`);
+    expect(line).toContain(`businessDetail=object(keys=${Object.keys(numericIdBody.business).length})`);
+    // Never a nested key name (e.g. from inside request/customer/business),
+    // never a nested value, never accessCode by name or value.
+    expect(line).not.toContain("requestID");
+    expect(line).not.toContain("customerID");
+    expect(line).not.toContain("description");
+    expect(line).not.toContain("accessCode");
+    expect(line).not.toContain("fake-access-code-not-real");
+    expect(line).not.toContain("Pat"); // invented customer first name — never a value
+    expect(line).not.toContain(numericIdBody.customer.phone); // invented customer phone — never a value
+    expect(line).not.toContain("123456"); // the bad requestID's own value — never logged
+  });
+
+  test("body diagnostics: nested shape detail — a request object with no requestID at all reports requestIdType=missing", () => {
+    const noIdBody = sampleRealDeliveryShapeLeadBody({
+      request: { customerID: `customer-${RUN_ID}`, description: "Need a deep clean" }, // no requestID key
+    });
+    const lines = captureConsoleLog(() => {
+      logThumbtackBodyDiagnostics({
+        contentType: "application/json",
+        contentEncoding: null,
+        byteLength: 999,
+        parseOk: true,
+        parsedBody: noIdBody,
+        includeNestedShapeDetail: true,
+      });
+    });
+    const line = lines[0];
+    expect(line).toContain("requestIdType=missing");
+    expect(line).not.toContain("requestIdLength");
+    expect(line).toContain(`requestDetail=object(keys=${Object.keys(noIdBody.request).length})`);
+    expect(line).not.toContain("description"); // nested value — never logged
+    expect(line).not.toContain("customerID");
+  });
+
+  test("body diagnostics: nested shape detail is omitted entirely when includeNestedShapeDetail is not set (malformed_json and save_failed paths are unchanged)", () => {
+    const body = sampleRealDeliveryShapeLeadBody();
+    const lines = captureConsoleLog(() => {
+      logThumbtackBodyDiagnostics({
+        contentType: "application/json",
+        contentEncoding: null,
+        byteLength: 999,
+        parseOk: true,
+        parsedBody: body,
+        // includeNestedShapeDetail omitted — same as the existing
+        // malformed_json/save_failed call sites.
+      });
+    });
+    expect(lines[0]).not.toContain("requestIdType");
+    expect(lines[0]).not.toContain("requestDetail");
+    expect(lines[0]).not.toContain("customerDetail");
+    expect(lines[0]).not.toContain("businessDetail");
+  });
+
   test("body diagnostics: a top-level array reports its length and element-0 type only", () => {
     const lines = captureConsoleLog(() => {
       logThumbtackBodyDiagnostics({
